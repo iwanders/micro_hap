@@ -1,0 +1,7 @@
+use trouble_host::attribute::Uuid;
+
+//DC46F0FE-81D2-4616-B5D9-6ABDD796939A
+pub const CHARACTERISTIC_INSTANCE_UUID_BYTES: [u8; 16] = [
+    0x9a, 0x93, 0x96, 0xd7, 0xBD, 0x6A, 0xD9, 0xB5, 0x16, 0x46, 0xD2, 0x81, 0xFE, 0xF0, 0x46, 0xDC,
+];
+pub const CHARACTERISTIC_INSTANCE_UUID: Uuid = Uuid::new_long(CHARACTERISTIC_INSTANCE_UUID_BYTES);

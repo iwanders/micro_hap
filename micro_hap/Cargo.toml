@@ -1,0 +1,50 @@
+[package]
+name = "micro_hap"
+version = "0.1.0"
+edition = "2024"
+
+
+# The linux examples were added in https://github.com/embassy-rs/trouble/pull/420
+# The 0.2.4 release is just before that.
+# Switching to devel, be sure to modify both trouble-host as well as the linux examples in dev-dependencies.
+
+[dependencies]
+trouble-host = { git = "https://github.com/embassy-rs/trouble", features = [
+    "peripheral",
+], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+# trouble-host = { path="../../, features = [
+#     "peripheral",
+# ], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+embassy-sync = { version = "0.7.0" }
+static_cell = "2.1"
+embassy-futures = "0.1.1"
+embassy-time = "0.4"
+defmt = { version = "1.0.1", optional = true }
+
+sha2 = "0.10.9"
+#zerocopy = { version = "0.8.26", features = ["derive"] }
+heapless = { version = "0.7.0", features = ["serde"] }
+log = { version = "0.4", optional = true }
+
+
+[dev-dependencies]
+trouble-linux-examples = { git = "https://github.com/embassy-rs/trouble", rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+trouble-example-apps = { git = "https://github.com/embassy-rs/trouble", rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+tokio = { version = "1", features = [
+    "io-util",
+    "net",
+    "rt",
+    "macros",
+    "signal",
+    "sync",
+    "time",
+] }
+bt-hci = { version = "0.3.2", default-features = false }
+env_logger = "0.11"
+log = { version = "0.4" }
+rand = "0.9.2"
+
+[features]
+
+log = ["dep:log"]
+std = ["bt-hci/log", "trouble-host/log", "log"]
