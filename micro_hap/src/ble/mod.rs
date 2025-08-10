@@ -4,6 +4,7 @@ use trouble_host::prelude::*;
 mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
+mod pdu;
 
 #[gatt_service(uuid = service::ACCESSORY_INFORMATION)]
 pub struct AccessoryInformationService {
@@ -165,12 +166,33 @@ pub struct HapServices<'a> {
     pub pairing: &'a PairingService,
 }
 
+use pdu::MemSizeOf;
+use pdu::ParsePdu;
+
 impl HapPeripheralContext {
     pub fn new() -> Self {
         Self {
             protocol_service_properties: Default::default(),
         }
     }
+
+    pub async fn service_signature_request(
+        &mut self,
+        payload: &[u8],
+    ) -> Result<pdu::ServiceSignatureReadResponseHeader, pdu::HapBleError> {
+        let req = pdu::ServiceSignatureReadRequest::parse_pdu(payload)?;
+
+        let resp = pdu::ServiceSignatureReadResponseHeader {
+            control: todo!(),
+            tid: todo!(),
+            status: todo!(),
+        };
+
+        // How do we get the payload at the other side???
+
+        Ok(resp)
+    }
+
     pub async fn process_gatt_event<'stack, 'server, 'hap, P: PacketPool>(
         &mut self,
         hap: &HapServices<'hap>,
@@ -241,6 +263,7 @@ impl HapPeripheralContext {
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
                     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
+                    self.service_signature_request(&event.data());
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
                 }
@@ -263,11 +286,12 @@ impl HapPeripheralContext {
     }
 }
 
-// use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, TryFromBytes};
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, TryFromBytes, IntoBytes, Immutable)]
 #[repr(u8)]
-enum OpCode {
+pub enum OpCode {
     CharacteristicSignatureRead = 0x01,
     CharacteristicWrite = 0x02,
     CharacteristicRead = 0x03,
@@ -281,15 +305,60 @@ enum OpCode {
     Info = 0x12,
 }
 
-//https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLETransaction.h#L120
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-#[repr(C, packed)]
-struct TransactionRequestHeader {
-    opcode: OpCode,
-    iid: u16,
-    // Followed by the payload, but we can't handle that in one go.
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-// #[bitfield(u8)]
-// #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, defmt::Format)] // <- Attributes after `bitfield` are carried over
-// struct ControlField {}
+    fn init() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::max())
+            .try_init();
+    }
+    #[gatt_server]
+    struct Server {
+        accessory_information: AccessoryInformationService,
+        protocol: ProtocolInformationService,
+        pairing: PairingService,
+    }
+    impl Server<'_> {
+        pub fn as_hap(&self) -> HapServices {
+            HapServices {
+                information: &self.accessory_information,
+                protocol: &self.protocol,
+                pairing: &self.pairing,
+            }
+        }
+    }
+
+    #[tokio::test]
+
+    async fn test_service_requests() {
+        init();
+        let name = "micro_hap";
+        let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+            name,
+            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+        }))
+        .unwrap();
+
+        // Setup the accessory information.
+        let value = crate::AccessoryInformationStatic {
+            name,
+            ..Default::default()
+        };
+        let _ = server
+            .accessory_information
+            .set_information_static(&server, &value)
+            .unwrap();
+
+        let hap = server.as_hap();
+
+        let mut ctx = HapPeripheralContext::new();
+
+        let service_signature_req = [0, 6, 107, 2, 0];
+        let resp = ctx.service_signature_request(&service_signature_req).await;
+        warn!("resp: {:?}", resp);
+        assert!(resp.is_ok());
+    }
+}

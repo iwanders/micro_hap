@@ -23,12 +23,14 @@ embassy-futures = "0.1.1"
 embassy-time = "0.4"
 
 # http deps
-embassy-net = { version = "0.7", features = ["proto-ipv4", "tcp", "medium-ip"] }
+#embassy-net = { version = "0.7", features = ["proto-ipv4", "tcp", "medium-ip"] }
 httparse = "1.10.1"
+embedded-io-async = "0.6.1"
 # /http deps
 
 sha2 = "0.10.9"
-#zerocopy = { version = "0.8.26", features = ["derive"] }
+zerocopy = { version = "0.8.26", features = ["derive"] }
+bitfield-struct = "0.11.0"
 heapless = { version = "0.8", features = ["serde"] }
 static_cell = "2.1"
 
@@ -59,10 +61,11 @@ embassy-executor = { version = "0.8.0", features = [
     "executor-thread",
     "log",
 ] }
-embedded-io-async = { version = "0.6.1" }
 rand_core = { version = "0.9.1", features = ["std", "os_rng"] }
+embedded-io-adapters = { version = "0.6.2", features = ["tokio-1"] }
+
 
 [features]
 
 log = ["dep:log"]
-std = ["bt-hci/log", "trouble-host/log", "log", "embassy-net/std"]
+std = ["bt-hci/log", "trouble-host/log", "log", "embedded-io-async/std"]
