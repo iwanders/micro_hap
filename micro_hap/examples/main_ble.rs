@@ -22,13 +22,13 @@ mod ble_bas_peripheral {
     struct Server {
         //battery_service: BatteryService,
         //protocol_service: micro_hap::ProtocolInformationServiceFacade,
-        accessory_information: micro_hap::AccessoryInformationService,
-        protocol: micro_hap::ProtocolInformationService,
-        pairing: micro_hap::PairingService,
+        accessory_information: micro_hap::ble::AccessoryInformationService,
+        protocol: micro_hap::ble::ProtocolInformationService,
+        pairing: micro_hap::ble::PairingService,
     }
     impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::HapServices {
-            micro_hap::HapServices {
+        pub fn as_hap(&self) -> micro_hap::ble::HapServices {
+            micro_hap::ble::HapServices {
                 information: &self.accessory_information,
                 protocol: &self.protocol,
                 pairing: &self.pairing,
@@ -102,7 +102,7 @@ mod ble_bas_peripheral {
             .set_information_static(&server, &value)
             .unwrap();
 
-        let mut hap_context = micro_hap::HapPeripheralContext::new();
+        let mut hap_context = micro_hap::ble::HapPeripheralContext::new();
 
         let _ = join(ble_task(runner), async {
             loop {
@@ -156,7 +156,7 @@ mod ble_bas_peripheral {
     /// This function will handle the GATT events and process them.
     /// This is how we interact with read and write requests.
     async fn gatt_events_task<P: PacketPool>(
-        hap_context: &mut micro_hap::HapPeripheralContext,
+        hap_context: &mut micro_hap::ble::HapPeripheralContext,
         server: &Server<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), Error> {

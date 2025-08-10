@@ -37,7 +37,7 @@ impl Default for AdvertisementConfig {
             accessory_category: 1,
             config_number: 1,
             global_state: 1,
-            setup_id: "ABCD".into(),
+            setup_id: "ABCD".try_into().unwrap(),
         }
     }
 }

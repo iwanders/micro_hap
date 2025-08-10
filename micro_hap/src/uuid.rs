@@ -1,8 +1,3 @@
-use trouble_host::attribute::Uuid;
-
-// definitely pfilfered from the trouble uuid module.
-//
-
 pub const HOMEKIT_BASE_UUID_BYTES: [u8; 16] = [
     0x91, 0x52, 0x76, 0xbb, 0x26, 0x0, 0x0, 0x80, 0x0, 0x10, 0x0, 0x0, // First block.
     0x0, 0x0, 0x0, 0x0,
@@ -69,6 +64,7 @@ impl defmt::Format for HomekitUuid16 {
     }
 }
 
+use trouble_host::attribute::Uuid;
 impl From<HomekitUuid16> for Uuid {
     fn from(uuid: HomekitUuid16) -> Uuid {
         // "0000xxxx-0000-1000-8000-0026BB765291"

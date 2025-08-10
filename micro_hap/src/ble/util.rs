@@ -19,13 +19,17 @@ impl<const N: usize> FromGatt for GattString<N> {
     fn from_gatt(data: &[u8]) -> Result<Self, trouble_host::types::gatt_traits::FromGattError> {
         let s: &str = core::str::from_utf8(data)
             .map_err(|_e| trouble_host::types::gatt_traits::FromGattError::InvalidCharacter)?;
-        Ok(Self(String::from(s)))
+        Ok(Self(String::try_from(s).map_err(|_| {
+            trouble_host::types::gatt_traits::FromGattError::InvalidLength
+        })?))
     }
 }
 
-// Define `From`
-impl<T: Into<String<N>>, const N: usize> From<T> for GattString<N> {
-    fn from(item: T) -> Self {
-        Self(item.into())
+impl<'a, const N: usize> TryFrom<&'a str> for GattString<N> {
+    type Error = ();
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        let mut new = String::new();
+        new.push_str(s)?;
+        Ok(GattString(new))
     }
 }
