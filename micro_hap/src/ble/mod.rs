@@ -283,6 +283,7 @@ impl HapPeripheralContext {
                     warn!("Reading protocol.service_instance");
                 } else if event.handle() == hap.protocol.service_signature.handle {
                     warn!("Reading protocol.service_signature ");
+                    todo!();
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Reading protocol.version ");
                 }
@@ -324,13 +325,27 @@ impl HapPeripheralContext {
                     warn!("Writing protocol.service_signature  {:?}", event.data());
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
-                    let data = &event.data();
+                    if false {
+                        let data = &event.data();
 
-                    let resp = self.service_signature_request(data).await?;
-                    let reply = self.read_reply(resp);
-                    warn!("Replying to write: {:?}", reply);
-                    event.into_payload().reply(reply).await?;
-                    return Ok(None);
+                        let resp = self.service_signature_request(data).await?;
+                        let reply = self.read_reply(resp);
+                        warn!("Replying to write: {:?}", reply);
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                    } else {
+                        // Do we just echo the data instead?
+
+                        let reply = event.data();
+                        let mut buff = [0u8; 32];
+                        buff[0..reply.len()].copy_from_slice(reply);
+                        let reply = trouble_host::att::AttRsp::Write;
+                        warn!("Replying to write: {:?}", reply);
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                        //
+                    }
+                    // Maybe the write request has to go through and it is followed by a read?
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
                 }
