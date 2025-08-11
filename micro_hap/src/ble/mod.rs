@@ -1,10 +1,34 @@
-use crate::{AccessoryInformationStatic, ServiceProperties};
+use crate::AccessoryInformationStatic;
 use crate::{characteristic, descriptor, service};
 use trouble_host::prelude::*;
 mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
+
+// Non-compliance:
+//   - Linked services in service_signature_request;service signature response
+
+#[derive(Debug, Copy, Clone)]
+pub enum HapBleError {
+    UnexpectedDataLength { expected: usize, actual: usize },
+    UnexpectedRequest,
+    InvalidValue,
+    BufferOverrun,
+}
+
+impl From<HapBleError> for trouble_host::Error {
+    fn from(e: HapBleError) -> trouble_host::Error {
+        match e {
+            HapBleError::UnexpectedDataLength { expected, actual } => {
+                trouble_host::Error::UnexpectedDataLength { expected, actual }
+            }
+            HapBleError::UnexpectedRequest => trouble_host::Error::Other,
+            HapBleError::InvalidValue => trouble_host::Error::InvalidValue,
+            HapBleError::BufferOverrun => trouble_host::Error::OutOfMemory,
+        }
+    }
+}
 
 #[gatt_service(uuid = service::ACCESSORY_INFORMATION)]
 pub struct AccessoryInformationService {
@@ -19,7 +43,7 @@ pub struct AccessoryInformationService {
     pub serial_number: GattString<64>,
 
     /// Service instance ID, must be a 16 bit unsigned integer.
-    // Service instance id for accessory information must be 1.
+    // Service instance id for accessory information must be 1, 0 is invalid.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x03])]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
     pub service_instance: u16,
@@ -94,19 +118,6 @@ impl AccessoryInformationService {
     }
 }
 
-// This is... very clunky :/
-impl ServiceProperties {
-    pub fn as_u16(&self) -> u16 {
-        (if self.primary { 0x01 } else { 0x00 })
-            | (if self.hidden { 0x02 } else { 0x00 })
-            | (if self.supports_configuration {
-                0x04
-            } else {
-                0x00
-            })
-    }
-}
-
 type FacadeDummyType = [u8; 0];
 
 #[gatt_service(uuid = service::PROTOCOL_INFORMATION)]
@@ -155,8 +166,19 @@ pub struct PairingService {
     pairings: FacadeDummyType,
 }
 
-pub struct HapPeripheralContext {
-    protocol_service_properties: ServiceProperties,
+use bitfield_struct::bitfield;
+#[bitfield(u16)]
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
+pub struct ServiceProperties {
+    #[bits(1)]
+    primary: bool,
+    #[bits(1)]
+    hidden: bool,
+    #[bits(1)]
+    configurable: bool,
+
+    #[bits(13)]
+    __: u16,
 }
 
 /// Simple helper struct that's used to capture input to the gatt event handler.
@@ -166,31 +188,71 @@ pub struct HapServices<'a> {
     pub pairing: &'a PairingService,
 }
 
-use pdu::MemSizeOf;
-use pdu::ParsePdu;
+use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
+
+pub struct HapPeripheralContext {
+    protocol_service_properties: ServiceProperties,
+    buffer: &'static mut [u8],
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub struct BufferResponse(pub usize);
 
 impl HapPeripheralContext {
-    pub fn new() -> Self {
+    pub fn new(buffer: &'static mut [u8]) -> Self {
         Self {
             protocol_service_properties: Default::default(),
+            buffer,
         }
     }
 
     pub async fn service_signature_request(
         &mut self,
         payload: &[u8],
-    ) -> Result<pdu::ServiceSignatureReadResponseHeader, pdu::HapBleError> {
+    ) -> Result<BufferResponse, HapBleError> {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
         let req = pdu::ServiceSignatureReadRequest::parse_pdu(payload)?;
 
         let resp = pdu::ServiceSignatureReadResponseHeader {
-            control: todo!(),
-            tid: todo!(),
-            status: todo!(),
+            control: pdu::ControlField::response(),
+            tid: req.tid,
+            status: pdu::Status::Success,
         };
+        let len = resp.write_into_length(&mut self.buffer)?;
+        // WHat is the actual output?
+        // Something something TLV...
+        //
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEService%2BSignature.c#L10
+        // which then goes into
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L600
+        // and linked services in
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L640
 
-        // How do we get the payload at the other side???
+        // I have no idea what a linked service is yet... so lets ehm, just ignore that?
+        // read was:
+        // 00 06 93 10 00
+        // Reply was
+        //    02 93 00 06 00 0f 02 04 00 10 00
+        // So Payload is 6 body length, then 0f 02 04 and no linked svc.
+        // What does this service property do!?
+        let len = BodyBuilder::new_at(&mut self.buffer, len)
+            .add_u16(
+                BleTLVType::HAPServiceProperties,
+                ServiceProperties::new().with_configurable(true).0,
+            )
+            .add_u16s(BleTLVType::HAPLinkedServices, &[])
+            .end();
 
-        Ok(resp)
+        Ok(BufferResponse(len))
+    }
+
+    fn get_response(&self, v: BufferResponse) -> &[u8] {
+        &self.buffer[0..v.0]
+    }
+    fn read_reply(&self, v: BufferResponse) -> trouble_host::att::AttRsp<'_> {
+        trouble_host::att::AttRsp::Read {
+            data: &self.get_response(v),
+        }
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, P: PacketPool>(
@@ -262,8 +324,13 @@ impl HapPeripheralContext {
                     warn!("Writing protocol.service_signature  {:?}", event.data());
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
-                    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
-                    self.service_signature_request(&event.data());
+                    let data = &event.data();
+
+                    let resp = self.service_signature_request(data).await?;
+                    let reply = self.read_reply(resp);
+                    warn!("Replying to write: {:?}", reply);
+                    event.into_payload().reply(reply).await?;
+                    return Ok(None);
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
                 }
@@ -308,7 +375,7 @@ pub enum OpCode {
 #[cfg(test)]
 mod test {
     use super::*;
-
+    use static_cell::StaticCell;
     fn init() {
         let _ = env_logger::builder()
             .is_test(true)
@@ -322,7 +389,7 @@ mod test {
         pairing: PairingService,
     }
     impl Server<'_> {
-        pub fn as_hap(&self) -> HapServices {
+        pub fn as_hap(&self) -> HapServices<'_> {
             HapServices {
                 information: &self.accessory_information,
                 protocol: &self.protocol,
@@ -332,8 +399,7 @@ mod test {
     }
 
     #[tokio::test]
-
-    async fn test_service_requests() {
+    async fn test_service_requests() -> Result<(), HapBleError> {
         init();
         let name = "micro_hap";
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
@@ -354,11 +420,25 @@ mod test {
 
         let hap = server.as_hap();
 
-        let mut ctx = HapPeripheralContext::new();
+        let buffer: &mut [u8] = {
+            static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
+            STATE.init([0u8; 2048])
+        };
+        let mut ctx = HapPeripheralContext::new(buffer);
 
         let service_signature_req = [0, 6, 107, 2, 0];
-        let resp = ctx.service_signature_request(&service_signature_req).await;
-        warn!("resp: {:?}", resp);
-        assert!(resp.is_ok());
+        let resp = ctx
+            .service_signature_request(&service_signature_req)
+            .await?;
+        let reply = ctx.read_reply(resp);
+        warn!("reply: {:?}", reply);
+
+        // 00 06 93 10 00
+        // Reply was
+        //    02 93 00 06 00 0f 02 04 00 10 00
+        //[2025-08-11T00:30:24Z WARN  micro_hap::ble] Writing protocol.service_signature
+        // [0, 6, 81, 2, 0]
+        //    [2, 81, 0, 6, 0, 15, 2, 4, 0, 16, 0]
+        Ok(())
     }
 }

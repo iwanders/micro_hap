@@ -102,7 +102,7 @@ impl AdvertisementConfig {
 }
 
 impl HapAdvertisement {
-    pub fn as_advertisement(&self) -> AdStructure {
+    pub fn as_advertisement(&self) -> AdStructure<'_> {
         AdStructure::ManufacturerSpecificData {
             company_identifier: COMPANY_IDENTIFIER_CODE,
             payload: &self.data,

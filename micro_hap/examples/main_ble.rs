@@ -7,6 +7,7 @@ mod ble_bas_peripheral {
     use embassy_futures::select::select;
     use embassy_time::Timer;
     use log::{info, warn};
+    use static_cell::StaticCell;
     use trouble_host::prelude::*;
 
     /// Max number of connections
@@ -27,7 +28,7 @@ mod ble_bas_peripheral {
         pairing: micro_hap::ble::PairingService,
     }
     impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::ble::HapServices {
+        pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
             micro_hap::ble::HapServices {
                 information: &self.accessory_information,
                 protocol: &self.protocol,
@@ -65,7 +66,7 @@ mod ble_bas_peripheral {
             Address::random([
                 0xff,
                 0x8f,
-                0x1a,
+                rng.random::<u8>(),
                 0x05,
                 rng.random::<u8>(),
                 rng.random::<u8>() | 0b11, // ensure its considered a static device address.
@@ -102,7 +103,11 @@ mod ble_bas_peripheral {
             .set_information_static(&server, &value)
             .unwrap();
 
-        let mut hap_context = micro_hap::ble::HapPeripheralContext::new();
+        let buffer: &mut [u8] = {
+            static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
+            STATE.init([0u8; 2048])
+        };
+        let mut hap_context = micro_hap::ble::HapPeripheralContext::new(buffer);
 
         let _ = join(ble_task(runner), async {
             loop {

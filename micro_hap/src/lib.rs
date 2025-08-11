@@ -83,20 +83,3 @@ impl Default for AccessoryInformationStatic {
         }
     }
 }
-
-/// Service properties struct.
-#[derive(Copy, Clone, Debug)]
-pub struct ServiceProperties {
-    pub primary: bool,
-    pub hidden: bool,
-    pub supports_configuration: bool,
-}
-impl Default for ServiceProperties {
-    fn default() -> Self {
-        Self {
-            primary: true,
-            hidden: false,
-            supports_configuration: false,
-        }
-    }
-}
