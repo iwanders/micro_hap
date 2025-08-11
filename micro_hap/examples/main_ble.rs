@@ -56,7 +56,7 @@ mod ble_bas_peripheral {
     {
         // Using a fixed "random" address can be useful for testing. In real scenarios, one would
         // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
-        const ACTUAL_RANDOM_ADDRESS: bool = true;
+        const ACTUAL_RANDOM_ADDRESS: bool = false;
         let address: Address = if ACTUAL_RANDOM_ADDRESS {
             // So it was caching my services, and it cost me a while to figure that out, make a true random address here
             // here.

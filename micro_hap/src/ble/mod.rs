@@ -190,9 +190,15 @@ pub struct HapServices<'a> {
 
 use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 
+struct Reply {
+    payload: BufferResponse,
+    handle: u16,
+}
+
 pub struct HapPeripheralContext {
     protocol_service_properties: ServiceProperties,
     buffer: &'static mut [u8],
+    prepared_reply: Option<Reply>,
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -203,6 +209,7 @@ impl HapPeripheralContext {
         Self {
             protocol_service_properties: Default::default(),
             buffer,
+            prepared_reply: None,
         }
     }
 
@@ -235,6 +242,7 @@ impl HapPeripheralContext {
         //    02 93 00 06 00 0f 02 04 00 10 00
         // So Payload is 6 body length, then 0f 02 04 and no linked svc.
         // What does this service property do!?
+        //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
         let len = BodyBuilder::new_at(&mut self.buffer, len)
             .add_u16(
                 BleTLVType::HAPServiceProperties,
@@ -249,11 +257,6 @@ impl HapPeripheralContext {
     fn get_response(&self, v: BufferResponse) -> &[u8] {
         &self.buffer[0..v.0]
     }
-    fn read_reply(&self, v: BufferResponse) -> trouble_host::att::AttRsp<'_> {
-        trouble_host::att::AttRsp::Read {
-            data: &self.get_response(v),
-        }
-    }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, P: PacketPool>(
         &mut self,
@@ -261,6 +264,7 @@ impl HapPeripheralContext {
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
     {
+        // we seem to miss 'read by type' requests on handlex 0x0010 - 0x0012
         match event {
             GattEvent::Read(event) => {
                 if event.handle() == hap.information.hardware_revision.handle {
@@ -283,7 +287,19 @@ impl HapPeripheralContext {
                     warn!("Reading protocol.service_instance");
                 } else if event.handle() == hap.protocol.service_signature.handle {
                     warn!("Reading protocol.service_signature ");
-                    todo!();
+                    if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
+                        let reply = self.prepared_reply.take().unwrap();
+
+                        let reply = trouble_host::att::AttRsp::Read {
+                            data: &self.get_response(reply.payload),
+                        };
+                        warn!("Replying with: {:x?}", reply);
+                        // We see this print,
+                        //
+                        // but nothing ever ends up in the aether
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                    }
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Reading protocol.version ");
                 }
@@ -322,29 +338,25 @@ impl HapPeripheralContext {
                 if event.handle() == hap.protocol.service_instance.handle {
                     warn!("Writing protocol.service_instance  {:?}", event.data());
                 } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!("Writing protocol.service_signature  {:?}", event.data());
+                    warn!("Writing protocol.service_signature  {:x?}", event.data());
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
-                    if false {
-                        let data = &event.data();
 
-                        let resp = self.service_signature_request(data).await?;
-                        let reply = self.read_reply(resp);
-                        warn!("Replying to write: {:?}", reply);
-                        event.into_payload().reply(reply).await?;
-                        return Ok(None);
-                    } else {
-                        // Do we just echo the data instead?
+                    // Do we just echo the data instead?
+                    let data = &event.data();
+                    let resp = self.service_signature_request(data).await?;
+                    self.prepared_reply = Some(Reply {
+                        payload: resp,
+                        handle: hap.protocol.service_signature.handle,
+                    });
 
-                        let reply = event.data();
-                        let mut buff = [0u8; 32];
-                        buff[0..reply.len()].copy_from_slice(reply);
-                        let reply = trouble_host::att::AttRsp::Write;
-                        warn!("Replying to write: {:?}", reply);
-                        event.into_payload().reply(reply).await?;
-                        return Ok(None);
-                        //
-                    }
+                    // let reply = event.data();
+                    // let mut buff = [0u8; 32];
+                    // buff[0..reply.len()].copy_from_slice(reply);
+                    let reply = trouble_host::att::AttRsp::Write;
+                    warn!("Replying to write.");
+                    event.into_payload().reply(reply).await?;
+                    return Ok(None);
                     // Maybe the write request has to go through and it is followed by a read?
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
