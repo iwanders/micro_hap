@@ -296,6 +296,10 @@ mod test {
         info!("parsed: {parsed:?}");
         let back = parsed.unwrap().as_bytes();
         assert_eq!(b, back);
+
+        let b = [0, 1, 44, 2, 2];
+        let parsed = ServiceSignatureReadRequest::try_ref_from_bytes(&b);
+        info!("parsed: {parsed:?}");
     }
     #[test]
     fn test_body_builder() {

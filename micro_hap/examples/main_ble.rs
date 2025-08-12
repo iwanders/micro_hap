@@ -118,7 +118,15 @@ mod ble_bas_peripheral {
                         let b = custom_task(&server, &conn, &stack);
                         // run until any task ends (usually because the connection has been closed),
                         // then return to advertising state.
-                        select(a, b).await;
+                        let x = select(a, b).await;
+                        match x {
+                            embassy_futures::select::Either::First(a) => {
+                                if let Err(e) = a {
+                                    log::error!("Error occured in processing: {e:?}");
+                                }
+                            }
+                            embassy_futures::select::Either::Second(_) => {}
+                        }
                     }
                     Err(e) => {
                         #[cfg(feature = "defmt")]

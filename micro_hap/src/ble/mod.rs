@@ -342,6 +342,8 @@ impl HapPeripheralContext {
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 
+                    // second one is on [0, 1, 44, 2, 2]
+
                     // Do we just echo the data instead?
                     let data = &event.data();
                     let resp = self.service_signature_request(data).await?;
@@ -457,7 +459,7 @@ mod test {
         let resp = ctx
             .service_signature_request(&service_signature_req)
             .await?;
-        let reply = ctx.read_reply(resp);
+        let reply = ctx.get_response(resp);
         warn!("reply: {:?}", reply);
 
         // 00 06 93 10 00

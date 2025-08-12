@@ -31,3 +31,17 @@ macro_rules! warn {
         }
     };
 }
+
+#[collapse_debuginfo(yes)]
+macro_rules! error {
+    ($s:literal $(, $x:expr)* $(,)?) => {
+        {
+            #[cfg(feature = "log")]
+            ::log::error!($s $(, $x)*);
+            #[cfg(feature = "defmt")]
+            ::defmt::error!($s $(, $x)*);
+            #[cfg(not(any(feature = "log", feature="defmt")))]
+            let _ = ($( & $x ),*);
+        }
+    };
+}
