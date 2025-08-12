@@ -5,9 +5,23 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
+use bitfield_struct::bitfield;
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // Non-compliance:
 //   - Linked services in service_signature_request;service signature response
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct CharId(pub u16);
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct SvcId(pub u16);
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct TId(pub u8);
 
 #[derive(Debug, Copy, Clone)]
 pub enum HapBleError {
@@ -166,7 +180,6 @@ pub struct PairingService {
     pairings: FacadeDummyType,
 }
 
-use bitfield_struct::bitfield;
 #[bitfield(u16)]
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
 pub struct ServiceProperties {
@@ -342,23 +355,28 @@ impl HapPeripheralContext {
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 
-                    // second one is on [0, 1, 44, 2, 2]
+                    let header = pdu::RequestHeader::parse_pdu(event.data())?;
+                    if header.opcode == pdu::OpCode::ServiceSignatureRead {
+                        let resp = self.service_signature_request(event.data()).await?;
+                        self.prepared_reply = Some(Reply {
+                            payload: resp,
+                            handle: hap.protocol.service_signature.handle,
+                        });
 
-                    // Do we just echo the data instead?
-                    let data = &event.data();
-                    let resp = self.service_signature_request(data).await?;
-                    self.prepared_reply = Some(Reply {
-                        payload: resp,
-                        handle: hap.protocol.service_signature.handle,
-                    });
+                        let reply = trouble_host::att::AttRsp::Write;
+                        warn!("Replying to write.");
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                    }
 
-                    // let reply = event.data();
-                    // let mut buff = [0u8; 32];
-                    // buff[0..reply.len()].copy_from_slice(reply);
-                    let reply = trouble_host::att::AttRsp::Write;
-                    warn!("Replying to write.");
-                    event.into_payload().reply(reply).await?;
-                    return Ok(None);
+                    if header.opcode == pdu::OpCode::CharacteristicSignatureRead {
+                        // second one is on [0, 1, 44, 2, 2]
+                        let char_sign_req =
+                            pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
+                        warn!("Got req: {:?}", char_sign_req);
+                        todo!();
+                    }
+
                     // Maybe the write request has to go through and it is followed by a read?
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
@@ -380,25 +398,6 @@ impl HapPeripheralContext {
             remainder => Ok(Some(remainder)),
         }
     }
-}
-
-use zerocopy::{FromBytes, Immutable, IntoBytes, TryFromBytes};
-
-// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
-#[derive(Debug, Copy, Clone, TryFromBytes, IntoBytes, Immutable)]
-#[repr(u8)]
-pub enum OpCode {
-    CharacteristicSignatureRead = 0x01,
-    CharacteristicWrite = 0x02,
-    CharacteristicRead = 0x03,
-    CharacteristicTimedWrite = 0x04,
-    CharacteristicExecuteWrite = 0x05,
-    ServiceSignatureRead = 0x06,
-    CharacteristicConfiguration = 0x07,
-    ProtocolConfiguration = 0x08,
-    Token = 0x10,
-    TokenUpdate = 0x11,
-    Info = 0x12,
 }
 
 #[cfg(test)]
@@ -448,6 +447,7 @@ mod test {
             .unwrap();
 
         let hap = server.as_hap();
+        let _ = hap;
 
         let buffer: &mut [u8] = {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
@@ -455,19 +455,23 @@ mod test {
         };
         let mut ctx = HapPeripheralContext::new(buffer);
 
-        let service_signature_req = [0, 6, 107, 2, 0];
+        let service_signature_req = [0, 6, 0x3a, 2, 0];
         let resp = ctx
             .service_signature_request(&service_signature_req)
             .await?;
         let reply = ctx.get_response(resp);
         warn!("reply: {:?}", reply);
 
-        // 00 06 93 10 00
-        // Reply was
-        //    02 93 00 06 00 0f 02 04 00 10 00
-        //[2025-08-11T00:30:24Z WARN  micro_hap::ble] Writing protocol.service_signature
-        // [0, 6, 81, 2, 0]
-        //    [2, 81, 0, 6, 0, 15, 2, 4, 0, 16, 0]
+        let expected_req = [2, 0x3a, 0, 6, 0, 0xf, 2, 4, 0, 0x10, 0];
+        assert_eq!(reply, expected_req);
+
+        // and then it sends... which we have no clue what it is yet.
+        let payload = [0x00, 0x01, 0xae, 0x02, 0x02];
+        // [micro_hap::ble] Writing protocol.service_signature  [0, 1, ae, 2, 2]
+        let resp = ctx.service_signature_request(&payload).await?;
+        // Oh... that's a characteristic signature read request.
+        // we need the PDU types, and interpret based on that.
+
         Ok(())
     }
 }

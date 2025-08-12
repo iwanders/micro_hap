@@ -4,6 +4,8 @@ use super::HapBleError;
 use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
+use super::{CharId, SvcId, TId};
+
 // PDU? Protocol Data Unit?
 
 // PDU looks like:
@@ -35,7 +37,7 @@ impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
                 actual: data.len(),
             });
         }
-        T::try_ref_from_bytes(data).map_err(|_| HapBleError::InvalidValue)
+        T::try_ref_from_bytes(&data[0..exp]).map_err(|_| HapBleError::InvalidValue)
     }
 }
 
@@ -128,27 +130,52 @@ impl ControlField {
     }
 }
 
-#[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Debug, Copy, Clone)]
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
+#[derive(Debug, Copy, Clone, TryFromBytes, KnownLayout, IntoBytes, Immutable, PartialEq)]
 #[repr(u8)]
-pub enum HapPduServiceSignatureRead {
-    Only = 0x06,
+pub enum OpCode {
+    CharacteristicSignatureRead = 0x01,
+    CharacteristicWrite = 0x02,
+    CharacteristicRead = 0x03,
+    CharacteristicTimedWrite = 0x04,
+    CharacteristicExecuteWrite = 0x05,
+    ServiceSignatureRead = 0x06,
+    CharacteristicConfiguration = 0x07,
+    ProtocolConfiguration = 0x08,
+    Token = 0x10,
+    TokenUpdate = 0x11,
+    Info = 0x12,
+}
+
+#[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Debug, Copy, Clone)]
+#[repr(C, packed)]
+pub struct RequestHeader {
+    pub control: ControlField,
+    pub opcode: OpCode,
+}
+
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct CharacteristicSignatureReadRequest {
+    pub header: RequestHeader,
+    pub tid: TId,
+    pub char_id: CharId,
 }
 
 //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLETransaction.h#L120
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct ServiceSignatureReadRequest {
-    pub control: ControlField,
-    pub hap_pdu: HapPduServiceSignatureRead,
-    pub tid: u8,
-    pub svc_id: u16,
+    pub header: RequestHeader,
+    pub tid: TId,
+    pub svc_id: SvcId,
 }
-
+//[0, 6, 3d, 2, 0]
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct ServiceSignatureReadResponseHeader {
     pub control: ControlField,
-    pub tid: u8,
+    pub tid: TId,
     pub status: Status,
 }
 
@@ -298,8 +325,14 @@ mod test {
         assert_eq!(b, back);
 
         let b = [0, 1, 44, 2, 2];
-        let parsed = ServiceSignatureReadRequest::try_ref_from_bytes(&b);
+        let parsed = RequestHeader::try_ref_from_prefix(&b);
         info!("parsed: {parsed:?}");
+        assert!(parsed.is_ok());
+
+        let payload = [0, 6, 0x3d, 2, 0];
+        let parsed = ServiceSignatureReadRequest::parse_pdu(&payload);
+        info!("parsed: {parsed:?}");
+        assert!(parsed.is_ok());
     }
     #[test]
     fn test_body_builder() {
