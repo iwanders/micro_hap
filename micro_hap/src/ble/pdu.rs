@@ -130,6 +130,40 @@ impl ControlField {
     }
 }
 
+// HAPBLEPDUTLVSerializeHAPCharacteristicPropertiesDescriptor
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L84
+#[bitfield(u16)]
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
+pub struct CharacteristicProperties {
+    // Bit 0
+    #[bits(1)]
+    readable_without_security: bool,
+
+    #[bits(1)]
+    writable_without_security: bool,
+
+    #[bits(1)]
+    supports_authorization_data: bool,
+    #[bits(1)]
+    requires_timed_write: bool,
+    #[bits(1)]
+    readable: bool,
+    #[bits(1)]
+    writable: bool,
+    #[bits(1)]
+    hidden: bool,
+    #[bits(1)]
+    supports_event_notification: bool,
+    #[bits(1)]
+    supports_disconnect_notification: bool,
+    #[bits(1)]
+    supports_broadcast_notification: bool,
+
+    // remainder, reserved
+    #[bits(6)]
+    __: u8,
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
 #[derive(Debug, Copy, Clone, TryFromBytes, KnownLayout, IntoBytes, Immutable, PartialEq)]
 #[repr(u8)]
@@ -152,13 +186,30 @@ pub enum OpCode {
 pub struct RequestHeader {
     pub control: ControlField,
     pub opcode: OpCode,
+    pub tid: TId,
+}
+impl RequestHeader {
+    pub fn to_success(&self) -> ResponseHeader {
+        ResponseHeader {
+            control: self.control.with_pdu_type(PduType::Response),
+            tid: self.tid,
+            status: Status::Success,
+        }
+    }
+}
+
+#[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Debug, Copy, Clone)]
+#[repr(C, packed)]
+pub struct ResponseHeader {
+    pub control: ControlField,
+    pub tid: TId,
+    pub status: Status,
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct CharacteristicSignatureReadRequest {
     pub header: RequestHeader,
-    pub tid: TId,
     pub char_id: CharId,
 }
 
@@ -167,16 +218,7 @@ pub struct CharacteristicSignatureReadRequest {
 #[repr(C, packed)]
 pub struct ServiceSignatureReadRequest {
     pub header: RequestHeader,
-    pub tid: TId,
     pub svc_id: SvcId,
-}
-//[0, 6, 3d, 2, 0]
-#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
-#[repr(C, packed)]
-pub struct ServiceSignatureReadResponseHeader {
-    pub control: ControlField,
-    pub tid: TId,
-    pub status: Status,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26
@@ -268,6 +310,30 @@ impl<'a> BodyBuilder<'a> {
     pub fn add_u16s(mut self, t: BleTLVType, value: &[u16]) -> Self {
         self.push_internal(&t);
         self.push_slice(value);
+        self
+    }
+
+    pub fn add_service(mut self, id: SvcId) -> Self {
+        self.push_internal(&(BleTLVType::ServiceInstanceID as u8));
+        self.push_slice(&[id.0]);
+        self
+    }
+
+    pub fn add_service_uuid(mut self, uid: crate::uuid::Uuid) -> Self {
+        self.push_internal(&(BleTLVType::ServiceType as u8));
+        self.push_slice(uid.as_raw());
+        self
+    }
+
+    pub fn add_characteristic_uuid(mut self, uid: crate::uuid::Uuid) -> Self {
+        self.push_internal(&(BleTLVType::CharacteristicType as u8));
+        self.push_slice(uid.as_raw());
+        self
+    }
+
+    pub fn add_characteristic_properties(mut self, properties: CharacteristicProperties) -> Self {
+        self.push_internal(&(BleTLVType::HAPCharacteristicPropertiesDescriptor as u8));
+        self.push_slice(&[properties.0]);
         self
     }
 

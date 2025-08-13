@@ -8,8 +8,8 @@ mod pdu;
 use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-// Non-compliance:
-//   - Linked services in service_signature_request;service signature response
+// Todo, we should probably detach this completely from the HapServices struct
+// because it would be really nice if we can keep properties per service, characteristic and property.
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -228,16 +228,12 @@ impl HapPeripheralContext {
 
     pub async fn service_signature_request(
         &mut self,
-        payload: &[u8],
+        req: &pdu::ServiceSignatureReadRequest,
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
-        let req = pdu::ServiceSignatureReadRequest::parse_pdu(payload)?;
 
-        let resp = pdu::ServiceSignatureReadResponseHeader {
-            control: pdu::ControlField::response(),
-            tid: req.tid,
-            status: pdu::Status::Success,
-        };
+        let resp = req.header.to_success();
+
         let len = resp.write_into_length(&mut self.buffer)?;
         // WHat is the actual output?
         // Something something TLV...
@@ -248,6 +244,7 @@ impl HapPeripheralContext {
         // and linked services in
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L640
 
+        // NONCOMPLIANCE: Ignoring linked services.
         // I have no idea what a linked service is yet... so lets ehm, just ignore that?
         // read was:
         // 00 06 93 10 00
@@ -256,6 +253,27 @@ impl HapPeripheralContext {
         // So Payload is 6 body length, then 0f 02 04 and no linked svc.
         // What does this service property do!?
         //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
+        let len = BodyBuilder::new_at(&mut self.buffer, len)
+            .add_u16(
+                BleTLVType::HAPServiceProperties,
+                ServiceProperties::new().with_configurable(true).0,
+            )
+            .add_u16s(BleTLVType::HAPLinkedServices, &[])
+            .end();
+
+        Ok(BufferResponse(len))
+    }
+    pub async fn characteristic_signature_request(
+        &mut self,
+        req: &pdu::CharacteristicSignatureReadRequest,
+    ) -> Result<BufferResponse, HapBleError> {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
+
+        // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
+
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
+        let reply = req.header.to_success();
+        let len = reply.write_into_length(&mut self.buffer)?;
         let len = BodyBuilder::new_at(&mut self.buffer, len)
             .add_u16(
                 BleTLVType::HAPServiceProperties,
@@ -356,25 +374,27 @@ impl HapPeripheralContext {
                     // Yes, that matches the hap service signature read
 
                     let header = pdu::RequestHeader::parse_pdu(event.data())?;
-                    if header.opcode == pdu::OpCode::ServiceSignatureRead {
-                        let resp = self.service_signature_request(event.data()).await?;
-                        self.prepared_reply = Some(Reply {
-                            payload: resp,
-                            handle: hap.protocol.service_signature.handle,
-                        });
+                    match header.opcode {
+                        pdu::OpCode::CharacteristicSignatureRead => {
+                            let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
+                            let resp = self.service_signature_request(&req).await?;
+                            self.prepared_reply = Some(Reply {
+                                payload: resp,
+                                handle: hap.protocol.service_signature.handle,
+                            });
 
-                        let reply = trouble_host::att::AttRsp::Write;
-                        warn!("Replying to write.");
-                        event.into_payload().reply(reply).await?;
-                        return Ok(None);
-                    }
-
-                    if header.opcode == pdu::OpCode::CharacteristicSignatureRead {
-                        // second one is on [0, 1, 44, 2, 2]
-                        let char_sign_req =
-                            pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
-                        warn!("Got req: {:?}", char_sign_req);
-                        todo!();
+                            let reply = trouble_host::att::AttRsp::Write;
+                            event.into_payload().reply(reply).await?;
+                            return Ok(None);
+                        }
+                        pdu::OpCode::CharacteristicSignatureRead => {
+                            // second one is on [0, 1, 44, 2, 2]
+                            let char_sign_req =
+                                pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
+                            warn!("Got req: {:?}", char_sign_req);
+                            todo!();
+                        }
+                        _ => return Err(HapBleError::UnexpectedRequest.into()),
                     }
 
                     // Maybe the write request has to go through and it is followed by a read?
