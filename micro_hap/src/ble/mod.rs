@@ -13,14 +13,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
-pub struct CharId(pub u16);
-
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
-#[repr(transparent)]
-pub struct SvcId(pub u16);
-
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
-#[repr(transparent)]
 pub struct TId(pub u8);
 
 #[derive(Debug, Copy, Clone)]
@@ -499,6 +491,8 @@ mod test {
         let mut ctx = HapPeripheralContext::new(buffer);
 
         let service_signature_req = [0, 6, 0x3a, 2, 0];
+        let service_signature_req =
+            pdu::ServiceSignatureReadRequest::parse_pdu(&service_signature_req)?;
         let resp = ctx
             .service_signature_request(&service_signature_req)
             .await?;
@@ -511,7 +505,10 @@ mod test {
         // and then it sends... which we have no clue what it is yet.
         let payload = [0x00, 0x01, 0xae, 0x02, 0x02];
         // [micro_hap::ble] Writing protocol.service_signature  [0, 1, ae, 2, 2]
-        let resp = ctx.service_signature_request(&payload).await?;
+        let service_signature_req = pdu::ServiceSignatureReadRequest::parse_pdu(&payload)?;
+        let resp = ctx
+            .service_signature_request(&service_signature_req)
+            .await?;
         // Oh... that's a characteristic signature read request.
         // we need the PDU types, and interpret based on that.
 
