@@ -88,6 +88,28 @@ pub struct AccessoryInformationService {
     pub identify: bool,
 }
 
+fn make_table() {
+    // from https://github.com/embassy-rs/trouble/blame/404b0f77345522764582747e0acd50a22236b59e/examples/apps/src/ble_bas_peripheral.rs
+    const MAX_ATTRIBUTES: usize = 10;
+    use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+    let mut table: AttributeTable<'_, NoopRawMutex, { MAX_ATTRIBUTES }> = AttributeTable::new();
+    let mut svc = table.add_service(Service {
+        uuid: service::ACCESSORY_INFORMATION.into(),
+    });
+    let v = svc
+        .add_characteristic::<FacadeDummyType, crate::uuid::HomekitUuid16>(
+            characteristic::HARDWARE_REVISION,
+            &[CharacteristicProp::Read, CharacteristicProp::Write],
+            FacadeDummyType::default(),
+            &mut [],
+        )
+        //.add_descriptor(uuid, props, data)
+        .build();
+    let handle = v.handle;
+
+    // let server = GattServer::<C, NoopRawMutex, MAX_ATTRIBUTES, L2CAP_MTU>::new(stack, &table);
+}
+
 impl AccessoryInformationService {
     pub fn set_information_static<
         M: RawMutex,
@@ -296,6 +318,7 @@ impl HapPeripheralContext {
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
     {
         // we seem to miss 'read by type' requests on handlex 0x0010 - 0x0012
+
         match event {
             GattEvent::Read(event) => {
                 if event.handle() == hap.information.hardware_revision.handle {
@@ -375,7 +398,7 @@ impl HapPeripheralContext {
 
                     let header = pdu::RequestHeader::parse_pdu(event.data())?;
                     match header.opcode {
-                        pdu::OpCode::CharacteristicSignatureRead => {
+                        pdu::OpCode::ServiceSignatureRead => {
                             let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
                             let resp = self.service_signature_request(&req).await?;
                             self.prepared_reply = Some(Reply {
