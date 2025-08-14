@@ -320,13 +320,13 @@ impl<'a> BodyBuilder<'a> {
         self
     }
 
-    pub fn add_service_uuid(mut self, uid: crate::uuid::Uuid) -> Self {
+    pub fn add_service_uuid(mut self, uid: &crate::uuid::Uuid) -> Self {
         self.push_internal(&(BleTLVType::ServiceType as u8));
         self.push_slice(uid.as_raw());
         self
     }
 
-    pub fn add_characteristic_uuid(mut self, uid: crate::uuid::Uuid) -> Self {
+    pub fn add_characteristic_uuid(mut self, uid: &crate::uuid::Uuid) -> Self {
         self.push_internal(&(BleTLVType::CharacteristicType as u8));
         self.push_slice(uid.as_raw());
         self
@@ -335,6 +335,16 @@ impl<'a> BodyBuilder<'a> {
     pub fn add_characteristic_properties(mut self, properties: CharacteristicProperties) -> Self {
         self.push_internal(&(BleTLVType::HAPCharacteristicPropertiesDescriptor as u8));
         self.push_slice(&[properties.0]);
+        self
+    }
+    pub fn add_optional_user_description<const N: usize>(
+        mut self,
+        user_description: &Option<heapless::String<N>>,
+    ) -> Self {
+        if let Some(str) = user_description {
+            self.push_internal(&(BleTLVType::GATTUserDescriptionDescriptor as u8));
+            self.push_slice(str.as_bytes());
+        }
         self
     }
 

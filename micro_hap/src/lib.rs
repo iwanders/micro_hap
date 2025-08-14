@@ -145,4 +145,5 @@ pub struct Attribute {
     // valid_range: Option<(u16, u16)>,
     // step_value: Option<u16>,
     pub ble_handle: Option<u16>,
+    pub gatt_format: Option<u16>,
 }

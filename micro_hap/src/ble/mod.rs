@@ -107,6 +107,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x01])),
                 user_description: None,
                 ble_handle: Some(self.hardware_revision.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -116,6 +117,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x02])),
                 user_description: None,
                 ble_handle: Some(self.serial_number.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -125,6 +127,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x03])),
                 user_description: None,
                 ble_handle: Some(self.service_instance.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -134,6 +137,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x04])),
                 user_description: None,
                 ble_handle: Some(self.model.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -143,6 +147,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x05])),
                 user_description: None,
                 ble_handle: Some(self.name.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -152,6 +157,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x06])),
                 user_description: None,
                 ble_handle: Some(self.manufacturer.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -161,6 +167,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x06])),
                 user_description: None,
                 ble_handle: Some(self.firmware_revision.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -170,6 +177,7 @@ impl AccessoryInformationService {
                 iid: CharId(u16::from_le_bytes([0x01, 0x07])),
                 user_description: None,
                 ble_handle: Some(self.identify.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -280,6 +288,7 @@ impl ProtocolInformationService {
                 iid: CharId(u16::from_le_bytes([0x02, 0x01])),
                 user_description: None,
                 ble_handle: Some(self.service_instance.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -290,6 +299,7 @@ impl ProtocolInformationService {
                 iid: CharId(u16::from_le_bytes([0x02, 0x02])),
                 user_description: None,
                 ble_handle: Some(self.service_signature.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -300,6 +310,7 @@ impl ProtocolInformationService {
                 iid: CharId(u16::from_le_bytes([0x02, 0x03])),
                 user_description: None,
                 ble_handle: Some(self.version.handle),
+                gatt_format: Default::default(),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -355,7 +366,7 @@ pub struct HapPeripheralContext {
     protocol_service: crate::Service,
 }
 impl HapPeripheralContext {
-    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&crate::Attribute> {
+    pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Attribute> {
         if let Some(a) = self.information_service.get_attribute_by_iid(chr) {
             Some(a)
         } else if let Some(b) = self.protocol_service.get_attribute_by_iid(chr) {
@@ -364,7 +375,18 @@ impl HapPeripheralContext {
             None
         }
     }
-    pub fn get_service_by_iid(&self, srv: SvcId) -> Option<&crate::Service> {
+
+    pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
+        if self.information_service.get_attribute_by_iid(chr).is_some() {
+            Some(&self.information_service)
+        } else if self.protocol_service.get_attribute_by_iid(chr).is_some() {
+            Some(&self.protocol_service)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_service_by_svc(&self, srv: SvcId) -> Option<&crate::Service> {
         if self.information_service.iid == srv {
             Some(&self.information_service)
         } else if self.protocol_service.iid == srv {
@@ -405,7 +427,7 @@ impl HapPeripheralContext {
 
         let len = resp.write_into_length(*buffer)?;
 
-        let svc = self.get_service_by_iid(req.svc_id);
+        let svc = self.get_service_by_svc(req.svc_id);
 
         if let Some(svc) = svc {
             // WHat is the actual output?
@@ -442,20 +464,23 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
 
-        if let Some(chr) = self.get_attribute_by_iid(req.char_id) {
+        if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
             // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
-
+            let srv = self.get_service_by_char(req.char_id).unwrap();
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
             let reply = req.header.to_success();
             let len = reply.write_into_length(*buffer)?;
+
             let len = BodyBuilder::new_at(*buffer, len)
-                .add_u16(
-                    BleTLVType::HAPServiceProperties,
-                    ServiceProperties::new().with_configurable(true).0,
-                )
-                .add_u16s(BleTLVType::HAPLinkedServices, &[])
+                .add_characteristic_uuid(&chr.uuid)
+                .add_service(srv.iid)
+                //.add_characteristic_properties(0)
+                .add_u16(BleTLVType::HAPCharacteristicPropertiesDescriptor, 0)
+                .add_optional_user_description(&chr.user_description)
+                //.add_gatt_format(&chr.gatt_format)
                 .end();
+            // Characteristic Presentation Format, p1492 of the Bluetooth core spec, v5.3; section 3.3.3.5
 
             Ok(BufferResponse(len))
         } else {
@@ -664,7 +689,8 @@ mod test {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
-        let mut ctx = HapPeripheralContext::new(buffer, &server.accessory_information)?;
+        let mut ctx =
+            HapPeripheralContext::new(buffer, &server.accessory_information, &server.protocol)?;
 
         let service_signature_req = [0, 6, 0x3a, 2, 0];
         let service_signature_req =
