@@ -15,6 +15,7 @@ pub mod uuid;
 
 pub mod ble;
 pub mod http;
+use bitfield_struct::bitfield;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
@@ -59,6 +60,11 @@ pub mod http;
 //
 // Http transport seems to just use the same underlying bytes as the ble side?
 //
+//
+// Accessory may only expose a single primary interface. Linked services display as a group in the ui.
+// Primary service is optional,
+
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 /// Helper to set all accessory information from static values in bulk.
 #[derive(Copy, Clone, Debug)]
@@ -83,4 +89,60 @@ impl Default for AccessoryInformationStatic {
             firmware_revision: "0.0.1",
         }
     }
+}
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct CharId(pub u16);
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct SvcId(pub u16);
+
+/// Properties for a service.
+#[bitfield(u16)]
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
+pub struct ServiceProperties {
+    #[bits(1)]
+    primary: bool,
+    #[bits(1)]
+    hidden: bool,
+    #[bits(1)]
+    configurable: bool,
+
+    #[bits(13)]
+    __: u16,
+}
+
+#[derive(Clone, Debug)]
+pub struct Service {
+    pub uuid: uuid::Uuid,
+    pub iid: SvcId,
+    // 8 = accessory information service, its the one with the most attributes.
+    pub attributes: heapless::Vec<Attribute, 8>,
+    pub ble_handle: Option<u16>,
+
+    pub properties: ServiceProperties,
+}
+impl Service {
+    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&Attribute> {
+        for a in self.attributes.iter() {
+            if a.iid == chr {
+                return Some(a);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Attribute {
+    pub uuid: uuid::Uuid,
+    pub iid: CharId,
+    // permission?
+    // something something descriptors.
+    pub user_description: Option<heapless::String<32>>,
+    // valid_range: Option<(u16, u16)>,
+    // step_value: Option<u16>,
+    pub ble_handle: Option<u16>,
 }

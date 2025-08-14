@@ -107,7 +107,12 @@ mod ble_bas_peripheral {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
-        let mut hap_context = micro_hap::ble::HapPeripheralContext::new(buffer);
+        let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
+            buffer,
+            &server.accessory_information,
+            &server.protocol,
+        )
+        .unwrap();
 
         let _ = join(ble_task(runner), async {
             loop {

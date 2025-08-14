@@ -4,7 +4,8 @@ use super::HapBleError;
 use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-use super::{CharId, SvcId, TId};
+use super::TId;
+use crate::{CharId, SvcId};
 
 // PDU? Protocol Data Unit?
 

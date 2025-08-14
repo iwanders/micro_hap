@@ -5,7 +5,9 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
-use bitfield_struct::bitfield;
+use crate::ServiceProperties;
+
+use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // Todo, we should probably detach this completely from the HapServices struct
@@ -17,10 +19,16 @@ pub struct TId(pub u8);
 
 #[derive(Debug, Copy, Clone)]
 pub enum HapBleError {
-    UnexpectedDataLength { expected: usize, actual: usize },
+    UnexpectedDataLength {
+        expected: usize,
+        actual: usize,
+    },
     UnexpectedRequest,
     InvalidValue,
+    /// Runtime buffer overrun.
     BufferOverrun,
+    /// Overrun on allocation space
+    AllocationOverrun,
 }
 
 impl From<HapBleError> for trouble_host::Error {
@@ -32,10 +40,12 @@ impl From<HapBleError> for trouble_host::Error {
             HapBleError::UnexpectedRequest => trouble_host::Error::Other,
             HapBleError::InvalidValue => trouble_host::Error::InvalidValue,
             HapBleError::BufferOverrun => trouble_host::Error::OutOfMemory,
+            HapBleError::AllocationOverrun => trouble_host::Error::OutOfMemory,
         }
     }
 }
 
+// MUST have an instance id of 1
 #[gatt_service(uuid = service::ACCESSORY_INFORMATION)]
 pub struct AccessoryInformationService {
     /// Describes hardware revision string; "<major>.<minor>.<revision>"
@@ -78,6 +88,93 @@ pub struct AccessoryInformationService {
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x08])]
     #[characteristic(uuid=characteristic::IDENTIFY, read, write)]
     pub identify: bool,
+}
+
+impl AccessoryInformationService {
+    fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        let mut service = crate::Service {
+            ble_handle: Some(self.handle),
+            uuid: service::ACCESSORY_INFORMATION.into(),
+            iid: SvcId(1),
+            attributes: Default::default(),
+            properties: Default::default(),
+        };
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::HARDWARE_REVISION.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x01])),
+                user_description: None,
+                ble_handle: Some(self.hardware_revision.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERIAL_NUMBER.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x02])),
+                user_description: None,
+                ble_handle: Some(self.serial_number.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_INSTANCE.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x03])),
+                user_description: None,
+                ble_handle: Some(self.service_instance.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::MODEL.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x04])),
+                user_description: None,
+                ble_handle: Some(self.model.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::NAME.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x05])),
+                user_description: None,
+                ble_handle: Some(self.name.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::MANUFACTURER.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x06])),
+                user_description: None,
+                ble_handle: Some(self.manufacturer.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::FIRMWARE_REVISION.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x06])),
+                user_description: None,
+                ble_handle: Some(self.firmware_revision.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::IDENTIFY.into(),
+                iid: CharId(u16::from_le_bytes([0x01, 0x07])),
+                user_description: None,
+                ble_handle: Some(self.identify.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        Ok(service)
+    }
 }
 
 fn make_table() {
@@ -166,7 +263,49 @@ pub struct ProtocolInformationService {
     #[characteristic(uuid=characteristic::VERSION, value="2.2.0".try_into().unwrap(), read)]
     version: GattString<16>,
 }
+impl ProtocolInformationService {
+    fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        let mut service = crate::Service {
+            ble_handle: Some(self.handle),
+            uuid: service::PROTOCOL_INFORMATION.into(),
+            iid: SvcId(2),
+            attributes: Default::default(),
+            properties: Default::default(),
+        };
 
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_INSTANCE.into(),
+                iid: CharId(u16::from_le_bytes([0x02, 0x01])),
+                user_description: None,
+                ble_handle: Some(self.service_instance.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_SIGNATURE.into(),
+                iid: CharId(u16::from_le_bytes([0x02, 0x02])),
+                user_description: None,
+                ble_handle: Some(self.service_signature.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::VERSION.into(),
+                iid: CharId(u16::from_le_bytes([0x02, 0x03])),
+                user_description: None,
+                ble_handle: Some(self.version.handle),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        Ok(service)
+    }
+}
 #[gatt_service(uuid = service::PAIRING)]
 pub struct PairingService {
     /// Service instance ID, must be a 16 bit unsigned integer.
@@ -194,20 +333,6 @@ pub struct PairingService {
     pairings: FacadeDummyType,
 }
 
-#[bitfield(u16)]
-#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
-pub struct ServiceProperties {
-    #[bits(1)]
-    primary: bool,
-    #[bits(1)]
-    hidden: bool,
-    #[bits(1)]
-    configurable: bool,
-
-    #[bits(13)]
-    __: u16,
-}
-
 /// Simple helper struct that's used to capture input to the gatt event handler.
 pub struct HapServices<'a> {
     pub information: &'a AccessoryInformationService,
@@ -223,21 +348,49 @@ struct Reply {
 }
 
 pub struct HapPeripheralContext {
-    protocol_service_properties: ServiceProperties,
-    buffer: &'static mut [u8],
+    //protocol_service_properties: ServiceProperties,
+    buffer: core::cell::RefCell<&'static mut [u8]>,
     prepared_reply: Option<Reply>,
+    information_service: crate::Service,
+    protocol_service: crate::Service,
+}
+impl HapPeripheralContext {
+    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&crate::Attribute> {
+        if let Some(a) = self.information_service.get_attribute_by_iid(chr) {
+            Some(a)
+        } else if let Some(b) = self.protocol_service.get_attribute_by_iid(chr) {
+            Some(b)
+        } else {
+            None
+        }
+    }
+    pub fn get_service_by_iid(&self, srv: SvcId) -> Option<&crate::Service> {
+        if self.information_service.iid == srv {
+            Some(&self.information_service)
+        } else if self.protocol_service.iid == srv {
+            Some(&self.protocol_service)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct BufferResponse(pub usize);
 
 impl HapPeripheralContext {
-    pub fn new(buffer: &'static mut [u8]) -> Self {
-        Self {
-            protocol_service_properties: Default::default(),
-            buffer,
+    pub fn new(
+        buffer: &'static mut [u8],
+        information_service: &AccessoryInformationService,
+        protocol_service: &ProtocolInformationService,
+    ) -> Result<Self, HapBleError> {
+        Ok(Self {
+            //protocol_service_properties: Default::default(),
+            buffer: buffer.into(),
             prepared_reply: None,
-        }
+            information_service: information_service.populate_support()?,
+            protocol_service: protocol_service.populate_support()?,
+        })
     }
 
     pub async fn service_signature_request(
@@ -248,34 +401,40 @@ impl HapPeripheralContext {
 
         let resp = req.header.to_success();
 
-        let len = resp.write_into_length(&mut self.buffer)?;
-        // WHat is the actual output?
-        // Something something TLV...
-        //
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEService%2BSignature.c#L10
-        // which then goes into
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L600
-        // and linked services in
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L640
+        let mut buffer = self.buffer.borrow_mut();
 
-        // NONCOMPLIANCE: Ignoring linked services.
-        // I have no idea what a linked service is yet... so lets ehm, just ignore that?
-        // read was:
-        // 00 06 93 10 00
-        // Reply was
-        //    02 93 00 06 00 0f 02 04 00 10 00
-        // So Payload is 6 body length, then 0f 02 04 and no linked svc.
-        // What does this service property do!?
-        //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
-        let len = BodyBuilder::new_at(&mut self.buffer, len)
-            .add_u16(
-                BleTLVType::HAPServiceProperties,
-                ServiceProperties::new().with_configurable(true).0,
-            )
-            .add_u16s(BleTLVType::HAPLinkedServices, &[])
-            .end();
+        let len = resp.write_into_length(*buffer)?;
 
-        Ok(BufferResponse(len))
+        let svc = self.get_service_by_iid(req.svc_id);
+
+        if let Some(svc) = svc {
+            // WHat is the actual output?
+            // Something something TLV...
+            //
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEService%2BSignature.c#L10
+            // which then goes into
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L600
+            // and linked services in
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L640
+            // NONCOMPLIANCE: Ignoring linked services.
+            // I have no idea what a linked service is yet... so lets ehm, just ignore that?
+            // read was:
+            // 00 06 93 10 00
+            // Reply was
+            //    02 93 00 06 00 0f 02 04 00 10 00
+            // So Payload is 6 body length, then 0f 02 04 and no linked svc.
+            // What does this service property do!?
+            //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
+            let len = BodyBuilder::new_at(*buffer, len)
+                .add_u16(BleTLVType::HAPServiceProperties, svc.properties.0)
+                .add_u16s(BleTLVType::HAPLinkedServices, &[])
+                .end();
+
+            Ok(BufferResponse(len))
+        } else {
+            // What do we return if the id is not known??
+            todo!()
+        }
     }
     pub async fn characteristic_signature_request(
         &mut self,
@@ -283,24 +442,47 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
 
-        // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
+        if let Some(chr) = self.get_attribute_by_iid(req.char_id) {
+            let mut buffer = self.buffer.borrow_mut();
+            // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
 
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
-        let reply = req.header.to_success();
-        let len = reply.write_into_length(&mut self.buffer)?;
-        let len = BodyBuilder::new_at(&mut self.buffer, len)
-            .add_u16(
-                BleTLVType::HAPServiceProperties,
-                ServiceProperties::new().with_configurable(true).0,
-            )
-            .add_u16s(BleTLVType::HAPLinkedServices, &[])
-            .end();
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
+            let reply = req.header.to_success();
+            let len = reply.write_into_length(*buffer)?;
+            let len = BodyBuilder::new_at(*buffer, len)
+                .add_u16(
+                    BleTLVType::HAPServiceProperties,
+                    ServiceProperties::new().with_configurable(true).0,
+                )
+                .add_u16s(BleTLVType::HAPLinkedServices, &[])
+                .end();
 
-        Ok(BufferResponse(len))
+            Ok(BufferResponse(len))
+        } else {
+            todo!()
+        }
     }
 
-    fn get_response(&self, v: BufferResponse) -> &[u8] {
-        &self.buffer[0..v.0]
+    async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
+        &self,
+        event: ReadEvent<'stack, '_, P>,
+        reply: Reply,
+    ) -> Result<(), trouble_host::Error> {
+        // let buffer = self.buffer.borrow();
+
+        let data = self.get_response(reply.payload);
+        let reply = trouble_host::att::AttRsp::Read { data: &data };
+        warn!("Replying with: {:x?}", reply);
+        // We see this print,
+        //
+        // but nothing ever ends up in the aether
+        event.into_payload().reply(reply).await?;
+        Ok(())
+    }
+
+    fn get_response(&self, reply: BufferResponse) -> core::cell::Ref<'_, [u8]> {
+        // self.buffer.borrow().map(|z| &z[0..reply.payload.0])
+        core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, P: PacketPool>(
@@ -336,14 +518,8 @@ impl HapPeripheralContext {
                     if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
                         let reply = self.prepared_reply.take().unwrap();
 
-                        let reply = trouble_host::att::AttRsp::Read {
-                            data: &self.get_response(reply.payload),
-                        };
-                        warn!("Replying with: {:x?}", reply);
-                        // We see this print,
-                        //
-                        // but nothing ever ends up in the aether
-                        event.into_payload().reply(reply).await?;
+                        self.reply_read_payload(event, reply).await?;
+
                         return Ok(None);
                     }
                 } else if event.handle() == hap.protocol.version.handle {
@@ -488,7 +664,7 @@ mod test {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
-        let mut ctx = HapPeripheralContext::new(buffer);
+        let mut ctx = HapPeripheralContext::new(buffer, &server.accessory_information)?;
 
         let service_signature_req = [0, 6, 0x3a, 2, 0];
         let service_signature_req =
@@ -496,11 +672,13 @@ mod test {
         let resp = ctx
             .service_signature_request(&service_signature_req)
             .await?;
-        let reply = ctx.get_response(resp);
-        warn!("reply: {:?}", reply);
+        {
+            let reply = ctx.get_response(resp);
+            warn!("reply: {:?}", reply);
 
-        let expected_req = [2, 0x3a, 0, 6, 0, 0xf, 2, 4, 0, 0x10, 0];
-        assert_eq!(reply, expected_req);
+            let expected_req = [2, 0x3a, 0, 6, 0, 0xf, 2, 4, 0, 0x10, 0];
+            assert_eq!(&*reply, expected_req);
+        }
 
         // and then it sends... which we have no clue what it is yet.
         let payload = [0x00, 0x01, 0xae, 0x02, 0x02];
