@@ -136,6 +136,20 @@ impl Service {
 }
 
 #[derive(Clone, Debug)]
+pub struct BleProperties {
+    pub handle: u16,
+    pub format: Option<ble::sig::Format>,
+}
+impl BleProperties {
+    pub fn from_handle(handle: u16) -> Self {
+        Self {
+            handle,
+            format: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Attribute {
     pub uuid: uuid::Uuid,
     pub iid: CharId,
@@ -144,6 +158,5 @@ pub struct Attribute {
     pub user_description: Option<heapless::String<32>>,
     // valid_range: Option<(u16, u16)>,
     // step_value: Option<u16>,
-    pub ble_handle: Option<u16>,
-    pub gatt_format: Option<u16>,
+    pub ble: Option<BleProperties>,
 }

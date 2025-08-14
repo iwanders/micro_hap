@@ -5,13 +5,107 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
-use crate::ServiceProperties;
+use crate::{BleProperties, ServiceProperties};
 
 use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // Todo, we should probably detach this completely from the HapServices struct
 // because it would be really nice if we can keep properties per service, characteristic and property.
+//
+
+pub mod sig {
+    use super::*;
+    // https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/core/formattypes.yaml
+    #[derive(
+        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
+    )]
+    #[repr(u8)]
+    pub enum Format {
+        Boolean = 0x01,
+
+        U8 = 0x04,
+        U16 = 0x06,
+        U32 = 0x08,
+        U64 = 0x0a,
+        I8 = 0x0c,
+        I16 = 0x0E,
+        I32 = 0x10,
+        I64 = 0x13,
+        F32 = 0x14,
+        F64 = 0x15,
+        StringUtf8 = 0x19,
+        Opaque = 0x1B,
+        // Other(u8),
+    }
+    // Integers have exponent True
+
+    // https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/units.yaml
+    #[derive(
+        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
+    )]
+    #[repr(u16)]
+    pub enum Unit {
+        UnitLess = 0x2700,
+        Meter = 0x2701,
+        Kilogram = 0x2702,
+        Second = 0x2703,
+        Kelvin = 0x2705,
+        Celsius = 0x272f,
+        PressurePascal = 0x2724,
+        Percentage = 0x27AD,
+        Decibel = 0x27C3,
+        PressureBar = 0x2780,
+        // Other(u16),
+    }
+
+    #[derive(
+        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
+    )]
+    #[repr(u8)]
+    pub enum Namespace {
+        Bluetooth = 0x01,
+    }
+
+    #[derive(
+        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
+    )]
+    #[repr(C, packed)]
+    pub struct CharacteristicRepresentation {
+        pub format: Format,
+        pub exponent: i8,
+        pub unit: Unit,
+        pub namespace: Namespace,
+        pub description: u16,
+    }
+    impl Default for CharacteristicRepresentation {
+        fn default() -> Self {
+            Self {
+                format: Format::U8,
+                exponent: 0,
+                unit: Unit::UnitLess,
+                namespace: Namespace::Bluetooth,
+                description: 0,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+        #[test]
+        fn test_sigformat() {
+            let temperature = CharacteristicRepresentation {
+                unit: Unit::Celsius,
+                format: Format::F64,
+                ..Default::default()
+            };
+
+            let b = temperature.as_bytes();
+            assert_eq!(b.len(), 7);
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -106,8 +200,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::HARDWARE_REVISION.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x01])),
                 user_description: None,
-                ble_handle: Some(self.hardware_revision.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.hardware_revision.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -116,8 +209,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::SERIAL_NUMBER.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x02])),
                 user_description: None,
-                ble_handle: Some(self.serial_number.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.serial_number.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -126,8 +218,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x03])),
                 user_description: None,
-                ble_handle: Some(self.service_instance.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.service_instance.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -136,8 +227,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::MODEL.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x04])),
                 user_description: None,
-                ble_handle: Some(self.model.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.model.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -146,8 +236,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::NAME.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x05])),
                 user_description: None,
-                ble_handle: Some(self.name.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.name.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -156,8 +245,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::MANUFACTURER.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x06])),
                 user_description: None,
-                ble_handle: Some(self.manufacturer.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.manufacturer.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -166,8 +254,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::FIRMWARE_REVISION.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x06])),
                 user_description: None,
-                ble_handle: Some(self.firmware_revision.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.firmware_revision.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -176,8 +263,7 @@ impl AccessoryInformationService {
                 uuid: characteristic::IDENTIFY.into(),
                 iid: CharId(u16::from_le_bytes([0x01, 0x07])),
                 user_description: None,
-                ble_handle: Some(self.identify.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.identify.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -287,8 +373,7 @@ impl ProtocolInformationService {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x01])),
                 user_description: None,
-                ble_handle: Some(self.service_instance.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.service_instance.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -298,8 +383,7 @@ impl ProtocolInformationService {
                 uuid: characteristic::SERVICE_SIGNATURE.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x02])),
                 user_description: None,
-                ble_handle: Some(self.service_signature.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.service_signature.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -309,8 +393,7 @@ impl ProtocolInformationService {
                 uuid: characteristic::VERSION.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x03])),
                 user_description: None,
-                ble_handle: Some(self.version.handle),
-                gatt_format: Default::default(),
+                ble: Some(BleProperties::from_handle(self.version.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 

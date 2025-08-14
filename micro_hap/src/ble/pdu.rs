@@ -4,7 +4,7 @@ use super::HapBleError;
 use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-use super::TId;
+use super::{TId, sig};
 use crate::{CharId, SvcId};
 
 // PDU? Protocol Data Unit?
@@ -337,6 +337,13 @@ impl<'a> BodyBuilder<'a> {
         self.push_slice(&[properties.0]);
         self
     }
+
+    pub fn add_format(mut self, format: sig::Format) -> Self {
+        self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
+        self.push_slice(format.as_bytes());
+        self
+    }
+
     pub fn add_optional_user_description<const N: usize>(
         mut self,
         user_description: &Option<heapless::String<N>>,
