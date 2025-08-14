@@ -138,13 +138,15 @@ impl Service {
 #[derive(Clone, Debug)]
 pub struct BleProperties {
     pub handle: u16,
-    pub format: Option<ble::sig::Format>,
+    pub format: Option<ble::sig::CharacteristicRepresentation>,
+    pub properties: ble::CharacteristicProperties,
 }
 impl BleProperties {
     pub fn from_handle(handle: u16) -> Self {
         Self {
             handle,
             format: None,
+            properties: ble::CharacteristicProperties::new(),
         }
     }
 }
@@ -159,4 +161,12 @@ pub struct Attribute {
     // valid_range: Option<(u16, u16)>,
     // step_value: Option<u16>,
     pub ble: Option<BleProperties>,
+}
+impl Attribute {
+    pub fn ble_ref(&self) -> &BleProperties {
+        self.ble.as_ref().unwrap()
+    }
+    pub fn ble_mut(&mut self) -> &mut BleProperties {
+        self.ble.as_mut().unwrap()
+    }
 }

@@ -4,7 +4,7 @@ use super::HapBleError;
 use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-use super::{TId, sig};
+use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
 
 // PDU? Protocol Data Unit?
@@ -129,40 +129,6 @@ impl ControlField {
         v.set_pdu_type(PduType::Response);
         v
     }
-}
-
-// HAPBLEPDUTLVSerializeHAPCharacteristicPropertiesDescriptor
-// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L84
-#[bitfield(u16)]
-#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
-pub struct CharacteristicProperties {
-    // Bit 0
-    #[bits(1)]
-    readable_without_security: bool,
-
-    #[bits(1)]
-    writable_without_security: bool,
-
-    #[bits(1)]
-    supports_authorization_data: bool,
-    #[bits(1)]
-    requires_timed_write: bool,
-    #[bits(1)]
-    readable: bool,
-    #[bits(1)]
-    writable: bool,
-    #[bits(1)]
-    hidden: bool,
-    #[bits(1)]
-    supports_event_notification: bool,
-    #[bits(1)]
-    supports_disconnect_notification: bool,
-    #[bits(1)]
-    supports_broadcast_notification: bool,
-
-    // remainder, reserved
-    #[bits(6)]
-    __: u8,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
@@ -338,9 +304,14 @@ impl<'a> BodyBuilder<'a> {
         self
     }
 
-    pub fn add_format(mut self, format: sig::Format) -> Self {
-        self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
-        self.push_slice(format.as_bytes());
+    pub fn add_optional_format(
+        mut self,
+        format: &Option<sig::CharacteristicRepresentation>,
+    ) -> Self {
+        if let Some(format) = format {
+            self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
+            self.push_slice(format.as_bytes());
+        }
         self
     }
 

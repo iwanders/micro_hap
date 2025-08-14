@@ -6,6 +6,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
 use crate::{BleProperties, ServiceProperties};
+use bitfield_struct::bitfield;
 
 use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
@@ -14,98 +15,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // because it would be really nice if we can keep properties per service, characteristic and property.
 //
 
-pub mod sig {
-    use super::*;
-    // https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/core/formattypes.yaml
-    #[derive(
-        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
-    )]
-    #[repr(u8)]
-    pub enum Format {
-        Boolean = 0x01,
-
-        U8 = 0x04,
-        U16 = 0x06,
-        U32 = 0x08,
-        U64 = 0x0a,
-        I8 = 0x0c,
-        I16 = 0x0E,
-        I32 = 0x10,
-        I64 = 0x13,
-        F32 = 0x14,
-        F64 = 0x15,
-        StringUtf8 = 0x19,
-        Opaque = 0x1B,
-        // Other(u8),
-    }
-    // Integers have exponent True
-
-    // https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/units.yaml
-    #[derive(
-        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
-    )]
-    #[repr(u16)]
-    pub enum Unit {
-        UnitLess = 0x2700,
-        Meter = 0x2701,
-        Kilogram = 0x2702,
-        Second = 0x2703,
-        Kelvin = 0x2705,
-        Celsius = 0x272f,
-        PressurePascal = 0x2724,
-        Percentage = 0x27AD,
-        Decibel = 0x27C3,
-        PressureBar = 0x2780,
-        // Other(u16),
-    }
-
-    #[derive(
-        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
-    )]
-    #[repr(u8)]
-    pub enum Namespace {
-        Bluetooth = 0x01,
-    }
-
-    #[derive(
-        PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone,
-    )]
-    #[repr(C, packed)]
-    pub struct CharacteristicRepresentation {
-        pub format: Format,
-        pub exponent: i8,
-        pub unit: Unit,
-        pub namespace: Namespace,
-        pub description: u16,
-    }
-    impl Default for CharacteristicRepresentation {
-        fn default() -> Self {
-            Self {
-                format: Format::U8,
-                exponent: 0,
-                unit: Unit::UnitLess,
-                namespace: Namespace::Bluetooth,
-                description: 0,
-            }
-        }
-    }
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-        #[test]
-        fn test_sigformat() {
-            let temperature = CharacteristicRepresentation {
-                unit: Unit::Celsius,
-                format: Format::F64,
-                ..Default::default()
-            };
-
-            let b = temperature.as_bytes();
-            assert_eq!(b.len(), 7);
-        }
-    }
-}
+pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -427,6 +337,42 @@ pub struct PairingService {
     pairings: FacadeDummyType,
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
+/// Properties for a characteristic
+#[bitfield(u16)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
+pub struct CharacteristicProperties {
+    #[bits(1)]
+    read_open: bool, // readableWithoutSecurity
+    #[bits(1)]
+    write_open: bool,
+    #[bits(1)]
+    supports_authorization: bool,
+    #[bits(1)]
+    requires_timed_write: bool,
+
+    #[bits(1)]
+    read: bool,
+
+    #[bits(1)]
+    write: bool,
+
+    #[bits(1)]
+    hidden: bool,
+
+    #[bits(1)]
+    supports_event_notification: bool,
+
+    #[bits(1)]
+    supports_disconnect_notification: bool,
+
+    #[bits(1)]
+    supports_broadcast_notification: bool,
+
+    #[bits(6)]
+    __: u16,
+}
+
 /// Simple helper struct that's used to capture input to the gatt event handler.
 pub struct HapServices<'a> {
     pub information: &'a AccessoryInformationService,
@@ -558,10 +504,10 @@ impl HapPeripheralContext {
             let len = BodyBuilder::new_at(*buffer, len)
                 .add_characteristic_uuid(&chr.uuid)
                 .add_service(srv.iid)
-                //.add_characteristic_properties(0)
+                .add_characteristic_properties(chr.ble_ref().properties)
                 .add_u16(BleTLVType::HAPCharacteristicPropertiesDescriptor, 0)
                 .add_optional_user_description(&chr.user_description)
-                //.add_gatt_format(&chr.gatt_format)
+                .add_optional_format(&chr.ble_ref().format)
                 .end();
             // Characteristic Presentation Format, p1492 of the Bluetooth core spec, v5.3; section 3.3.3.5
 
@@ -688,10 +634,18 @@ impl HapPeripheralContext {
                         }
                         pdu::OpCode::CharacteristicSignatureRead => {
                             // second one is on [0, 1, 44, 2, 2]
-                            let char_sign_req =
+                            let req =
                                 pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
-                            warn!("Got req: {:?}", char_sign_req);
-                            todo!();
+                            warn!("Got req: {:?}", req);
+                            let resp = self.characteristic_signature_request(&req).await?;
+                            self.prepared_reply = Some(Reply {
+                                payload: resp,
+                                handle: hap.protocol.service_signature.handle,
+                            });
+
+                            let reply = trouble_host::att::AttRsp::Write;
+                            event.into_payload().reply(reply).await?;
+                            return Ok(None);
                         }
                         _ => return Err(HapBleError::UnexpectedRequest.into()),
                     }
@@ -800,5 +754,14 @@ mod test {
         // we need the PDU types, and interpret based on that.
 
         Ok(())
+    }
+
+    #[test]
+    fn test_characteristics() {
+        let v = CharacteristicProperties::new()
+            .with_read(true)
+            .with_read_open(true)
+            .with_hidden(true);
+        assert_eq!(v.0, 0x0001 | 0x0010 | 0x0040);
     }
 }
