@@ -45,6 +45,7 @@ pub enum Namespace {
     Bluetooth = 0x01,
 }
 
+// Characteristic Presentation Format, p1492 of the Bluetooth core spec, v5.3; section 3.3.3.5
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(C, packed)]
 pub struct CharacteristicRepresentation {

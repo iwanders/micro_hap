@@ -258,7 +258,7 @@ pub struct ProtocolInformationService {
     service_instance: u16,
 
     /// Service signature, only two bytes.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x02, 0x02])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x02, 0x52])]
     #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
     service_signature: FacadeDummyType,
 
@@ -293,7 +293,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_SIGNATURE.into(),
-                iid: CharId(u16::from_le_bytes([0x02, 0x02])),
+                iid: CharId(u16::from_le_bytes([0x02, 0x52])),
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
@@ -497,7 +497,7 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
 
-        // To hdump 00 01  c8  11  00
+        // To hdump  00 01  c8  11  00
         // reply:       02  c8  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
         //          00, 01, 05, 02, 02
         //              02, 05, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
@@ -521,7 +521,6 @@ impl HapPeripheralContext {
                 .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
                 .end();
-            // Characteristic Presentation Format, p1492 of the Bluetooth core spec, v5.3; section 3.3.3.5
 
             Ok(BufferResponse(len))
         } else {

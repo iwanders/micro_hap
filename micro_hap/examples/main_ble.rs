@@ -49,6 +49,7 @@ mod ble_bas_peripheral {
     //     status: bool,
     // }
 
+    const DEVICE_ADDRESS: [u8; 6] = [0xA8, 0x41, 0xf4, 0xd3, 0xd0, 0x4f];
     /// Run the BLE stack.
     pub async fn run<C>(controller: C)
     where
@@ -57,6 +58,7 @@ mod ble_bas_peripheral {
         // Using a fixed "random" address can be useful for testing. In real scenarios, one would
         // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
         const ACTUAL_RANDOM_ADDRESS: bool = false;
+        const USE_DEVICE_ADDRESS: bool = true;
         let address: Address = if ACTUAL_RANDOM_ADDRESS {
             // So it was caching my services, and it cost me a while to figure that out, make a true random address here
             // here.
@@ -71,6 +73,8 @@ mod ble_bas_peripheral {
                 rng.random::<u8>(),
                 rng.random::<u8>() | 0b11, // ensure its considered a static device address.
             ])
+        } else if USE_DEVICE_ADDRESS {
+            Address::random(DEVICE_ADDRESS)
         } else {
             Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff])
         };
@@ -260,7 +264,6 @@ mod ble_bas_peripheral {
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
         server: &'server Server<'values>,
     ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
-        const DEVICE_ADDRESS: [u8; 6] = [0xA8, 0x41, 0xf4, 0xd3, 0xd0, 0x4d];
         let adv_config = micro_hap::adv::AdvertisementConfig {
             device_id: micro_hap::adv::DeviceId([
                 DEVICE_ADDRESS[0],
