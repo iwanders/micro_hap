@@ -138,16 +138,21 @@ impl Service {
 #[derive(Clone, Debug)]
 pub struct BleProperties {
     pub handle: u16,
-    pub format: Option<ble::sig::CharacteristicRepresentation>,
+    pub format: ble::sig::CharacteristicRepresentation,
     pub properties: ble::CharacteristicProperties,
 }
 impl BleProperties {
     pub fn from_handle(handle: u16) -> Self {
         Self {
             handle,
-            format: None,
-            properties: ble::CharacteristicProperties::new(),
+            format: Default::default(),
+            properties: ble::CharacteristicProperties::new().with_read(true),
         }
+    }
+    pub fn with_format_opaque(mut self) -> Self {
+        let mut format = self.format;
+        format.format = ble::sig::Format::Opaque;
+        Self { format, ..self }
     }
 }
 

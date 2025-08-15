@@ -283,7 +283,9 @@ impl ProtocolInformationService {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x01])),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.service_instance.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -293,7 +295,9 @@ impl ProtocolInformationService {
                 uuid: characteristic::SERVICE_SIGNATURE.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x02])),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.service_signature.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -303,7 +307,7 @@ impl ProtocolInformationService {
                 uuid: characteristic::VERSION.into(),
                 iid: CharId(u16::from_le_bytes([0x02, 0x03])),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.version.handle)),
+                ble: Some(BleProperties::from_handle(self.version.handle).with_format_opaque()),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -343,31 +347,31 @@ pub struct PairingService {
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
 pub struct CharacteristicProperties {
     #[bits(1)]
-    read_open: bool, // readableWithoutSecurity
+    pub read_open: bool, // readableWithoutSecurity
     #[bits(1)]
-    write_open: bool,
+    pub write_open: bool,
     #[bits(1)]
-    supports_authorization: bool,
+    pub supports_authorization: bool,
     #[bits(1)]
-    requires_timed_write: bool,
+    pub requires_timed_write: bool,
 
     #[bits(1)]
-    read: bool,
+    pub read: bool,
 
     #[bits(1)]
-    write: bool,
+    pub write: bool,
 
     #[bits(1)]
-    hidden: bool,
+    pub hidden: bool,
 
     #[bits(1)]
-    supports_event_notification: bool,
+    pub supports_event_notification: bool,
 
     #[bits(1)]
-    supports_disconnect_notification: bool,
+    pub supports_disconnect_notification: bool,
 
     #[bits(1)]
-    supports_broadcast_notification: bool,
+    pub supports_broadcast_notification: bool,
 
     #[bits(6)]
     __: u16,
@@ -493,6 +497,14 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
 
+        // To hdump 00 01  c8  11  00
+        // reply:       02  c8  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
+        //          00, 01, 05, 02, 02
+        //              02, 05, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+        //                  tid st <len  >
+        //                                 <chr                                                                 > <svcid         ><svctype                                                               ><properties    >
+        //
+
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
             // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
@@ -504,10 +516,10 @@ impl HapPeripheralContext {
             let len = BodyBuilder::new_at(*buffer, len)
                 .add_characteristic_uuid(&chr.uuid)
                 .add_service(srv.iid)
+                .add_service_uuid(&srv.uuid)
                 .add_characteristic_properties(chr.ble_ref().properties)
-                .add_u16(BleTLVType::HAPCharacteristicPropertiesDescriptor, 0)
                 .add_optional_user_description(&chr.user_description)
-                .add_optional_format(&chr.ble_ref().format)
+                .add_format(&chr.ble_ref().format)
                 .end();
             // Characteristic Presentation Format, p1492 of the Bluetooth core spec, v5.3; section 3.3.3.5
 
@@ -526,7 +538,7 @@ impl HapPeripheralContext {
 
         let data = self.get_response(reply.payload);
         let reply = trouble_host::att::AttRsp::Read { data: &data };
-        warn!("Replying with: {:x?}", reply);
+        warn!("Replying with: {:02x?}", reply);
         // We see this print,
         //
         // but nothing ever ends up in the aether
@@ -614,7 +626,7 @@ impl HapPeripheralContext {
                 if event.handle() == hap.protocol.service_instance.handle {
                     warn!("Writing protocol.service_instance  {:?}", event.data());
                 } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!("Writing protocol.service_signature  {:x?}", event.data());
+                    warn!("Writing protocol.service_signature  {:02x?}", event.data());
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 

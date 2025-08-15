@@ -304,14 +304,10 @@ impl<'a> BodyBuilder<'a> {
         self
     }
 
-    pub fn add_optional_format(
-        mut self,
-        format: &Option<sig::CharacteristicRepresentation>,
-    ) -> Self {
-        if let Some(format) = format {
-            self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
-            self.push_slice(format.as_bytes());
-        }
+    pub fn add_format(mut self, format: &sig::CharacteristicRepresentation) -> Self {
+        self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
+        self.push_slice(format.as_bytes());
+
         self
     }
 
