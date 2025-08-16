@@ -29,6 +29,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // Pair verify is ONLY 'read' not open_read... so we probably need to implement a security reject, after which a pairing
 // is triggered?
 //
+//
+// For the permissions;
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L48
+// seems to have the best overview?
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -320,7 +324,7 @@ impl ProtocolInformationService {
             uuid: service::PROTOCOL_INFORMATION.into(),
             iid: SvcId(0x10),
             attributes: Default::default(),
-            properties: Default::default(),
+            properties: crate::ServiceProperties::new().with_configurable(true),
         };
 
         /*
@@ -344,7 +348,9 @@ impl ProtocolInformationService {
                 iid: CharId(0x11),
                 user_description: None,
                 ble: Some(
-                    BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
+                    BleProperties::from_handle(self.service_signature.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_read(true)),
                 ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -355,7 +361,11 @@ impl ProtocolInformationService {
                 uuid: characteristic::VERSION.into(),
                 iid: CharId(0x12),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.version.handle).with_format_opaque()),
+                ble: Some(
+                    BleProperties::from_handle(self.version.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_read(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -381,7 +391,7 @@ pub struct PairingService {
 
     // Software authentication is 0x2, this is non-const in the reference implementation though.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x24u16.to_le_bytes())]
-    #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, value=0x02)]
+    #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, write, value=0x02)]
     features: u8,
 
     // Paired read and write only.
@@ -447,7 +457,11 @@ impl PairingService {
                 uuid: characteristic::PAIRING_FEATURES.into(),
                 iid: CharId(0x24),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.features.handle).with_format_opaque()),
+                ble: Some(
+                    BleProperties::from_handle(self.features.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_read_open(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -456,7 +470,11 @@ impl PairingService {
                 uuid: characteristic::PAIRING_PAIRINGS.into(),
                 iid: CharId(0x25),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.pairings.handle).with_format_opaque()),
+                ble: Some(
+                    BleProperties::from_handle(self.pairings.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_rw(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         Ok(service)
@@ -524,6 +542,9 @@ impl CharacteristicProperties {
     pub fn with_open_rw(mut self, state: bool) -> Self {
         self.with_read_open(state).with_write_open(state)
     }
+    pub fn with_rw(mut self, state: bool) -> Self {
+        self.with_read(state).with_write(state)
+    }
 }
 
 /// Simple helper struct that's used to capture input to the gatt event handler.
@@ -579,7 +600,7 @@ impl HapPeripheralContext {
     pub fn get_service_by_svc(&self, srv: SvcId) -> Option<&crate::Service> {
         for s in self.services() {
             if s.iid == srv {
-                return Some(&self.information_service);
+                return Some(s);
             }
         }
         None
@@ -612,6 +633,7 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
 
+        info!("service signature req: {:?}", req);
         let resp = req.header.to_success();
 
         let mut buffer = self.buffer.borrow_mut();
@@ -638,6 +660,14 @@ impl HapPeripheralContext {
             // So Payload is 6 body length, then 0f 02 04 and no linked svc.
             // What does this service property do!?
             //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
+            //
+            // protocol.service signature;
+            // good: 02  5b  00  06  00  0f  02  04  00  10  00
+            // ours: 02, cd, 00, 06, 00, 0f, 02, 00, 00, 10, 00
+            // now   02, 43, 00, 06, 00, 0f, 02, 00, 00, 10, 00
+            //       02, 69, 00, 06, 00, 0f, 02, 00, 00, 10, 00
+            // now   02, 4d, 00, 06, 00, 0f, 02, 04, 00, 10, 00
+            // check!
             let len = BodyBuilder::new_at(*buffer, len)
                 .add_u16(BleTLVType::HAPServiceProperties, svc.properties.0)
                 .add_u16s(BleTLVType::HAPLinkedServices, &[])
@@ -709,11 +739,52 @@ impl HapPeripheralContext {
         // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[00, 01, 80, 11, 00]
         // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Replying with: Read { data: [
         // 02, 80, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        //
+        // 02, 80, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
         // Actual:
         //    00 01 b4 11 00
         // 02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
         // --                                                                                                                                                                                          ^^
+        // That one is good now.
+        //
+        //
+        // ==== With fixed service permissions
+        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[00, 01, 2a, 11, 00]
+        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Replying with: Read { data:
+        // [02, 2a, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        // truth:
+        //                                                                                    00  01  b4  11  00
+        //  02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
+        // Checks out.
+        //
+        // Writing protocol.version  [0, 1, 174, 18, 0]
+        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Replying with: Read { data: [
+        //  02, ae, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 37, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        // truth:
+        //  02  39  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  37  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  19  00  00  27  01  00  00
+        // -->                                                                                                                                                                                          ^^
+        // now:
+        // [02, 94, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 37, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
+        // Checks out.
+        //
+        //
+        //
+        //
+        // Writing pairing.pair_setup  [0, 1, 21, 34, 0]
+        // [2025-08-16T23:10:08Z WARN  micro_hap::ble] Replying with: Read { data:
+        // [02, 15, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        // truth:
+        // Does pair verify first! Not pair setup??
+        //  02  de  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4c  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
+        // Checks out though.
+        //
+        // Writing pairing.pair_verify  [0, 1, 62, 35, 0]
+        //
+        // [2025-08-16T23:10:08Z WARN  micro_hap::ble] Replying with: Read { data:
+        // [02, 3e, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        // Truth:
+        //  02  6d  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4e  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
+        // checks out.
+        //
 
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
@@ -818,6 +889,9 @@ impl HapPeripheralContext {
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
+                let header = pdu::RequestHeader::parse_pdu(event.data())?;
+                warn!("Write header {:x?}", header);
+
                 if event.handle() == hap.information.hardware_revision.handle {
                     warn!("Writing information.hardware_revision {:?}", event.data());
                 } else if event.handle() == hap.information.serial_number.handle {
@@ -862,7 +936,6 @@ impl HapPeripheralContext {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
 
-                let header = pdu::RequestHeader::parse_pdu(event.data())?;
                 match header.opcode {
                     pdu::OpCode::ServiceSignatureRead => {
                         let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
