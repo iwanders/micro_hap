@@ -668,6 +668,13 @@ impl HapPeripheralContext {
                     }
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Reading protocol.version ");
+                    if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
+                        let reply = self.prepared_reply.take().unwrap();
+
+                        self.reply_read_payload(event, reply).await?;
+
+                        return Ok(None);
+                    }
                 }
 
                 if event.handle() == hap.pairing.service_instance.handle {
@@ -743,12 +750,32 @@ impl HapPeripheralContext {
                     // Maybe the write request has to go through and it is followed by a read?
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
+                    let header = pdu::RequestHeader::parse_pdu(event.data())?;
+                    match header.opcode {
+                        pdu::OpCode::CharacteristicSignatureRead => {
+                            // second one is on [0, 1, 44, 2, 2]
+                            let req =
+                                pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
+                            warn!("Got req: {:?}", req);
+                            let resp = self.characteristic_signature_request(&req).await?;
+                            self.prepared_reply = Some(Reply {
+                                payload: resp,
+                                handle: hap.protocol.version.handle,
+                            });
+
+                            let reply = trouble_host::att::AttRsp::Write;
+                            event.into_payload().reply(reply).await?;
+                            return Ok(None);
+                        }
+                        _ => return Err(HapBleError::UnexpectedRequest.into()),
+                    }
                 }
 
                 if event.handle() == hap.pairing.service_instance.handle {
                     warn!("Writing pairing.service_instance");
                 } else if event.handle() == hap.pairing.pair_setup.handle {
                     warn!("Writing pairing.pair_setup  {:?}", event.data());
+                    // [0, 1, 62, 0, 34]
                 } else if event.handle() == hap.pairing.pair_verify.handle {
                     warn!("Writing pairing.pair_verify  {:?}", event.data());
                 } else if event.handle() == hap.pairing.features.handle {

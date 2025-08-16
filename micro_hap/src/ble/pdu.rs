@@ -384,6 +384,17 @@ mod test {
         let parsed = ServiceSignatureReadRequest::parse_pdu(&payload);
         info!("parsed: {parsed:?}");
         assert!(parsed.is_ok());
+
+        // Write to protocol version;
+        let payload = [0, 1, 140, 18, 0];
+        let header = RequestHeader::parse_pdu(&payload);
+        info!("header: {payload:0>2x?} {header:?}");
+
+        // On pair setup; [0, 1, 62, 0, 34]
+        let payload = [0, 1, 62, 0, 34];
+        let header = RequestHeader::parse_pdu(&payload);
+        info!("header: {payload:0>2x?} {header:?}");
+        //
     }
     #[test]
     fn test_body_builder() {
