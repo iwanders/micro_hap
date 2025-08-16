@@ -312,7 +312,7 @@ impl ProtocolInformationService {
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
             uuid: service::PROTOCOL_INFORMATION.into(),
-            iid: SvcId(0x13),
+            iid: SvcId(0x10),
             attributes: Default::default(),
             properties: Default::default(),
         };
@@ -333,7 +333,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_SIGNATURE.into(),
-                iid: CharId(0x15),
+                iid: CharId(0x11),
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
