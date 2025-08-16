@@ -17,6 +17,11 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // add a lightbulb service such that we have at least one service.
 // accessory information service must have instance id 1.
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L3245-L3249
+// Okay, the disconnect doesn't happen because of fragmentation now, the response on the first characteristic read
+// is actually in a single packet.
+
+// Maybe the instance ids and the like need to be monotonically increasing? Which is not explicitly stated.
 
 pub mod sig;
 
@@ -67,7 +72,8 @@ pub struct AccessoryInformationService {
 
     /// Service instance ID, must be a 16 bit unsigned integer.
     // Service instance id for accessory information must be 1, 0 is invalid.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x03])]
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L3245-L3249
+    //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=1u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
     pub service_instance: u16,
 
@@ -256,7 +262,7 @@ type FacadeDummyType = [u8; 0];
 pub struct ProtocolInformationService {
     /// Service instance ID, must be a 16 bit unsigned integer.
     // May not be 1, value 1 is for accessory information.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x02, 0x01])]
+    //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x02u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x02)]
     service_instance: u16,
 
@@ -284,7 +290,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(u16::from_le_bytes([0x02, 0x01])),
+                iid: CharId(0x02u16),
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
@@ -321,7 +327,7 @@ impl ProtocolInformationService {
 pub struct PairingService {
     /// Service instance ID, must be a 16 bit unsigned integer.
     // May not be 1, value 1 is for accessory information.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x01])]
+    //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x01])]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 3)]
     service_instance: u16,
 
@@ -346,7 +352,7 @@ pub struct PairingService {
 
 #[gatt_service(uuid = service::LIGHTBULB)]
 pub struct LightbulbService {
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
+    //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x04)]
     service_instance: u16,
 
@@ -523,6 +529,22 @@ impl HapPeripheralContext {
         //                  tid st <len  >
         //                                 <chr                                                                 > <svcid         ><svctype                                                               ><properties    >
         //
+        // Bad:       00 01 d2 02 52
+        //              02  d2  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  02  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
+        // from 2025_08_15_1817_homekitadk_pair_success;
+        // Good:      00 01 b4 11 00
+        //              02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
+        //                                                                                                                  ^^
+        // good;
+        // 07  02  10  00
+        //         ^^^^^^  is the SVC id.
+        //
+        //
+        //
+        // more bad
+        //              02, 21, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+
+        //
 
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
@@ -534,7 +556,8 @@ impl HapPeripheralContext {
 
             let len = BodyBuilder::new_at(*buffer, len)
                 .add_characteristic_uuid(&chr.uuid)
-                .add_service(srv.iid)
+                // .add_service(SvcId(0x10)) // what is this set to?
+                .add_service(srv.iid) // what is this set to?
                 .add_service_uuid(&srv.uuid)
                 .add_characteristic_properties(chr.ble_ref().properties)
                 .add_optional_user_description(&chr.user_description)
