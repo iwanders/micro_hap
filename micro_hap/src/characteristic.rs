@@ -51,3 +51,11 @@ pub const HARDWARE_REVISION: HomekitUuid16 = HomekitUuid16::new(0x0053);
 
 /// Service Signature.
 pub const SERVICE_SIGNATURE: HomekitUuid16 = HomekitUuid16::new(0x00A5);
+
+// ADK version...
+// 34ab8811-ac7f-4340-bac3-fd6a85f9943b
+const ADK_VERSION_BYTES: [u8; 16] = [
+    0x3b, 0x94, 0xf9, 0x85, 0x6a, 0xfd, 0xc3, 0xba, 0x40, 0x43, 0x7f, 0xac, 0x11, 0x88, 0xab, 0x34,
+];
+/// ADK version uuid
+pub const ADK_VERSION: Uuid = Uuid::new_long(ADK_VERSION_BYTES);

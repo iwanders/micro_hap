@@ -57,19 +57,9 @@ impl From<HapBleError> for trouble_host::Error {
     }
 }
 
-// MUST have an instance id of 1
+// MUST have an instance id of 1, service 3e
 #[gatt_service(uuid = service::ACCESSORY_INFORMATION)]
 pub struct AccessoryInformationService {
-    /// Describes hardware revision string; "<major>.<minor>.<revision>"
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x01])]
-    #[characteristic(uuid=characteristic::HARDWARE_REVISION, read, write)]
-    pub hardware_revision: GattString<16>,
-
-    /// Manufacturer serial number, length must be greater than one.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x02])]
-    #[characteristic(uuid=characteristic::SERIAL_NUMBER, read, write)]
-    pub serial_number: GattString<64>,
-
     /// Service instance ID, must be a 16 bit unsigned integer.
     // Service instance id for accessory information must be 1, 0 is invalid.
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L3245-L3249
@@ -77,30 +67,53 @@ pub struct AccessoryInformationService {
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
     pub service_instance: u16,
 
+    // 0x14
+    /// Identify routine, triggers something, it does not contain data.
+    #[characteristic(uuid=characteristic::IDENTIFY, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=2u16.to_le_bytes())]
+    pub identify: bool,
+
+    // 0x20
+    /// Manufacturer name that created the device.
+    #[characteristic(uuid=characteristic::MANUFACTURER, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=3u16.to_le_bytes())]
+    pub manufacturer: GattString<64>,
+
+    // 0x21
     /// Manufacturer specific model, length must be greater than one.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x04])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=4u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::MODEL, read, write)]
     pub model: GattString<64>,
 
+    // 0x0023
     /// Name for the device.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x05])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=5u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::NAME, read, write)]
     pub name: GattString<64>,
 
-    /// Manufacturer name that created the device.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x06])]
-    #[characteristic(uuid=characteristic::MANUFACTURER, read, write)]
-    pub manufacturer: GattString<64>,
+    //0x0030
+    /// Manufacturer serial number, length must be greater than one.
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=6u16.to_le_bytes())]
+    #[characteristic(uuid=characteristic::SERIAL_NUMBER, read, write)]
+    pub serial_number: GattString<64>,
 
+    //0x0052
     /// Firmware revision string; "<major>.<minor>.<revision>"
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x07])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=7u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::FIRMWARE_REVISION, read, write)]
     pub firmware_revision: GattString<16>,
 
-    /// Identify routine, triggers something, it does not contain data.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x01, 0x08])]
-    #[characteristic(uuid=characteristic::IDENTIFY, read, write)]
-    pub identify: bool,
+    //0x0053
+    /// Describes hardware revision string; "<major>.<minor>.<revision>"
+    #[characteristic(uuid=characteristic::HARDWARE_REVISION, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=8u16.to_le_bytes())]
+    pub hardware_revision: GattString<16>,
+
+    // 4ab8811-ac7f-4340-bac3-fd6a85f9943b
+    /// ADK version thing from the example,
+    #[characteristic(uuid=characteristic::ADK_VERSION, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=9u16.to_le_bytes())]
+    pub adk_version: GattString<16>,
 }
 
 impl AccessoryInformationService {
@@ -116,73 +129,90 @@ impl AccessoryInformationService {
         service
             .attributes
             .push(crate::Attribute {
-                uuid: characteristic::HARDWARE_REVISION.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x01])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.hardware_revision.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERIAL_NUMBER.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x02])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.serial_number.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x03])),
+                iid: CharId(2),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.service_instance.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::MODEL.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x04])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.model.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::NAME.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x05])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.name.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::MANUFACTURER.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x06])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.manufacturer.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::FIRMWARE_REVISION.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x06])),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.firmware_revision.handle)),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
+
         service
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::IDENTIFY.into(),
-                iid: CharId(u16::from_le_bytes([0x01, 0x07])),
+                iid: CharId(4),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.identify.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::MANUFACTURER.into(),
+                iid: CharId(6),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.manufacturer.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::MODEL.into(),
+                iid: CharId(8),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.model.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::NAME.into(),
+                iid: CharId(0x0a),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.name.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERIAL_NUMBER.into(),
+                iid: CharId(0x0c),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.serial_number.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::FIRMWARE_REVISION.into(),
+                iid: CharId(0x0e),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.firmware_revision.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::HARDWARE_REVISION.into(),
+                iid: CharId(0x10),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.hardware_revision.handle)),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::ADK_VERSION.into(),
+                iid: CharId(0x12),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.adk_version.handle)),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -258,22 +288,23 @@ impl AccessoryInformationService {
 
 type FacadeDummyType = [u8; 0];
 
+// 0xA2
 #[gatt_service(uuid = service::PROTOCOL_INFORMATION)]
 pub struct ProtocolInformationService {
     /// Service instance ID, must be a 16 bit unsigned integer.
     // May not be 1, value 1 is for accessory information.
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x02u16.to_le_bytes())]
-    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x02)]
+    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x10)]
     service_instance: u16,
 
     /// Service signature, only two bytes.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x02, 0x52])]
     #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=0x11u16.to_le_bytes())]
     service_signature: FacadeDummyType,
 
     /// Version string.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x02, 0x03])]
-    #[characteristic(uuid=characteristic::VERSION, value="2.2.0".try_into().unwrap(), read)]
+    #[characteristic(uuid=characteristic::VERSION, value="2.2.0".try_into().unwrap(), read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x12u16.to_le_bytes())]
     version: GattString<16>,
 }
 impl ProtocolInformationService {
@@ -281,7 +312,7 @@ impl ProtocolInformationService {
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
             uuid: service::PROTOCOL_INFORMATION.into(),
-            iid: SvcId(2),
+            iid: SvcId(0x13),
             attributes: Default::default(),
             properties: Default::default(),
         };
@@ -290,7 +321,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(0x02u16),
+                iid: CharId(0x14),
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
@@ -302,7 +333,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_SIGNATURE.into(),
-                iid: CharId(u16::from_le_bytes([0x02, 0x52])),
+                iid: CharId(0x15),
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
@@ -314,7 +345,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::VERSION.into(),
-                iid: CharId(u16::from_le_bytes([0x02, 0x03])),
+                iid: CharId(0x17),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.version.handle).with_format_opaque()),
             })
@@ -328,24 +359,24 @@ pub struct PairingService {
     /// Service instance ID, must be a 16 bit unsigned integer.
     // May not be 1, value 1 is for accessory information.
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x01])]
-    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 3)]
+    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x20)]
     service_instance: u16,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x02])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x22u16.to_be_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIR_SETUP, read, write)]
     pair_setup: FacadeDummyType,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x03])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x23u16.to_be_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIR_VERIFY, read, write)]
     pair_verify: FacadeDummyType,
 
-    // Software authentication is 0x2.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x04])]
+    // Software authentication is 0x2, this is non-const in the reference implementation though.
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x24u16.to_be_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, value=0x02)]
     features: u8,
 
     // Paired read and write only.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x05])]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x25u16.to_be_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pairings: FacadeDummyType,
 }
@@ -353,17 +384,23 @@ pub struct PairingService {
 #[gatt_service(uuid = service::LIGHTBULB)]
 pub struct LightbulbService {
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
-    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x04)]
+    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x30)]
     service_instance: u16,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
+    /// Service signature, only two bytes.
+    #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=0x31u16.to_le_bytes())]
+    service_signature: FacadeDummyType,
+
+    // 0x0023
+    /// Name for the device.
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x32u16.to_le_bytes())]
+    #[characteristic(uuid=characteristic::NAME, read, write )]
+    pub name: GattString<64>,
+
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x33u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::ON, read, write )]
     on: bool,
-
-    /// Service signature, only two bytes.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x02])]
-    #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write, notify)]
-    service_signature: FacadeDummyType,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93

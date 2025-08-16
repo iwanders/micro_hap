@@ -119,7 +119,7 @@ pub struct Service {
     pub uuid: uuid::Uuid,
     pub iid: SvcId,
     // 8 = accessory information service, its the one with the most attributes.
-    pub attributes: heapless::Vec<Attribute, 8>,
+    pub attributes: heapless::Vec<Attribute, 12>,
     pub ble_handle: Option<u16>,
 
     pub properties: ServiceProperties,
