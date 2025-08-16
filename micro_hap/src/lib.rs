@@ -146,13 +146,18 @@ impl BleProperties {
         Self {
             handle,
             format: Default::default(),
-            properties: ble::CharacteristicProperties::new().with_read(true),
+            properties: ble::CharacteristicProperties::new(),
         }
     }
     pub fn with_format_opaque(mut self) -> Self {
         let mut format = self.format;
         format.format = ble::sig::Format::Opaque;
         Self { format, ..self }
+    }
+    pub fn with_properties(mut self, properties: ble::CharacteristicProperties) -> Self {
+        let x = Self { properties, ..self };
+        info!("x: {:#?}", x);
+        x
     }
 }
 

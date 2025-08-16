@@ -25,7 +25,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // changing ids definitely fixed things.
 //
 // We're now on the pair verify characteristic response not being accepted.
-
+//
+// Pair verify is ONLY 'read' not open_read... so we probably need to implement a security reject, after which a pairing
+// is triggered?
+//
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -422,7 +425,11 @@ impl PairingService {
                 uuid: characteristic::PAIRING_PAIR_VERIFY.into(),
                 iid: CharId(0x23),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.pair_verify.handle).with_format_opaque()),
+                ble: Some(
+                    BleProperties::from_handle(self.pair_verify.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -504,6 +511,11 @@ pub struct CharacteristicProperties {
 
     #[bits(6)]
     __: u16,
+}
+impl CharacteristicProperties {
+    pub fn with_open_rw(mut self, state: bool) -> Self {
+        self.with_read_open(state).with_write_open(state)
+    }
 }
 
 /// Simple helper struct that's used to capture input to the gatt event handler.
@@ -658,6 +670,12 @@ impl HapPeripheralContext {
         //              02, 21, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
 
         //
+        // On pair-verify;
+        // good: 02  6d  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4e  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
+        // bad:  02, f8, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+        //       02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+        //
+        //                                                                                                                                                                                                ^^^^^^
 
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
@@ -898,8 +916,12 @@ mod test {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
-        let mut ctx =
-            HapPeripheralContext::new(buffer, &server.accessory_information, &server.protocol)?;
+        let mut ctx = HapPeripheralContext::new(
+            buffer,
+            &server.accessory_information,
+            &server.protocol,
+            &server.pairing,
+        )?;
 
         let service_signature_req = [0, 6, 0x3a, 2, 0];
         let service_signature_req =
@@ -930,10 +952,16 @@ mod test {
 
     #[test]
     fn test_characteristics() {
+        init();
         let v = CharacteristicProperties::new()
             .with_read(true)
             .with_read_open(true)
             .with_hidden(true);
         assert_eq!(v.0, 0x0001 | 0x0010 | 0x0040);
+
+        let z = CharacteristicProperties::from_bits(0x03);
+        info!("0x03: {z:#?}");
+        let z = CharacteristicProperties::from_bits(0x10);
+        info!("0x10: {z:#?}");
     }
 }

@@ -394,6 +394,14 @@ mod test {
         let payload = [0, 1, 62, 0, 34];
         let header = RequestHeader::parse_pdu(&payload);
         info!("header: {payload:0>2x?} {header:?}");
+
+        let payload = [0, 1, 248, 35, 0];
+        let header = RequestHeader::parse_pdu(&payload);
+        info!("header: {payload:0>2x?} {header:?}");
+
+        let parsed = CharacteristicSignatureReadRequest::parse_pdu(&payload);
+        info!("parsed: {parsed:?}");
+
         //
     }
     #[test]
