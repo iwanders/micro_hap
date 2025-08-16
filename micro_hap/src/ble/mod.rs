@@ -22,6 +22,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // is actually in a single packet.
 
 // Maybe the instance ids and the like need to be monotonically increasing? Which is not explicitly stated.
+// changing ids definitely fixed things.
+//
+// We're now on the pair verify characteristic response not being accepted.
 
 pub mod sig;
 
@@ -354,6 +357,7 @@ impl ProtocolInformationService {
         Ok(service)
     }
 }
+
 #[gatt_service(uuid = service::PAIRING)]
 pub struct PairingService {
     /// Service instance ID, must be a 16 bit unsigned integer.
@@ -362,23 +366,86 @@ pub struct PairingService {
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x20)]
     service_instance: u16,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x22u16.to_be_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x22u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIR_SETUP, read, write)]
     pair_setup: FacadeDummyType,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x23u16.to_be_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x23u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIR_VERIFY, read, write)]
     pair_verify: FacadeDummyType,
 
     // Software authentication is 0x2, this is non-const in the reference implementation though.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x24u16.to_be_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x24u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, value=0x02)]
     features: u8,
 
     // Paired read and write only.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x25u16.to_be_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x25u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pairings: FacadeDummyType,
+}
+
+impl PairingService {
+    fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        let mut service = crate::Service {
+            ble_handle: Some(self.handle),
+            uuid: service::PAIRING.into(),
+            iid: SvcId(0x20),
+            attributes: Default::default(),
+            properties: Default::default(),
+        };
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_INSTANCE.into(),
+                iid: CharId(0x20),
+                user_description: None,
+                ble: Some(
+                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
+                ),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::PAIRING_PAIR_SETUP.into(),
+                iid: CharId(0x22),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.pair_setup.handle).with_format_opaque()),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::PAIRING_PAIR_VERIFY.into(),
+                iid: CharId(0x23),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.pair_verify.handle).with_format_opaque()),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::PAIRING_FEATURES.into(),
+                iid: CharId(0x24),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.features.handle).with_format_opaque()),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::PAIRING_PAIRINGS.into(),
+                iid: CharId(0x25),
+                user_description: None,
+                ble: Some(BleProperties::from_handle(self.pairings.handle).with_format_opaque()),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        Ok(service)
+    }
 }
 
 #[gatt_service(uuid = service::LIGHTBULB)]
@@ -459,36 +526,43 @@ pub struct HapPeripheralContext {
     prepared_reply: Option<Reply>,
     information_service: crate::Service,
     protocol_service: crate::Service,
+
+    pairing_service: crate::Service,
 }
 impl HapPeripheralContext {
+    fn services(&self) -> [&crate::Service; 3] {
+        [
+            &self.information_service,
+            &self.protocol_service,
+            &self.pairing_service,
+        ]
+    }
+
     pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Attribute> {
-        if let Some(a) = self.information_service.get_attribute_by_iid(chr) {
-            Some(a)
-        } else if let Some(b) = self.protocol_service.get_attribute_by_iid(chr) {
-            Some(b)
-        } else {
-            None
+        for s in self.services() {
+            if let Some(a) = s.get_attribute_by_iid(chr) {
+                return Some(a);
+            }
         }
+        None
     }
 
     pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
-        if self.information_service.get_attribute_by_iid(chr).is_some() {
-            Some(&self.information_service)
-        } else if self.protocol_service.get_attribute_by_iid(chr).is_some() {
-            Some(&self.protocol_service)
-        } else {
-            None
+        for s in self.services() {
+            if let Some(a) = s.get_attribute_by_iid(chr) {
+                return Some(s);
+            }
         }
+        None
     }
 
     pub fn get_service_by_svc(&self, srv: SvcId) -> Option<&crate::Service> {
-        if self.information_service.iid == srv {
-            Some(&self.information_service)
-        } else if self.protocol_service.iid == srv {
-            Some(&self.protocol_service)
-        } else {
-            None
+        for s in self.services() {
+            if s.iid == srv {
+                return Some(&self.information_service);
+            }
         }
+        None
     }
 }
 
@@ -500,6 +574,7 @@ impl HapPeripheralContext {
         buffer: &'static mut [u8],
         information_service: &AccessoryInformationService,
         protocol_service: &ProtocolInformationService,
+        pairing_service: &PairingService,
     ) -> Result<Self, HapBleError> {
         Ok(Self {
             //protocol_service_properties: Default::default(),
@@ -507,6 +582,7 @@ impl HapPeripheralContext {
             prepared_reply: None,
             information_service: information_service.populate_support()?,
             protocol_service: protocol_service.populate_support()?,
+            pairing_service: pairing_service.populate_support()?,
         })
     }
 
@@ -659,22 +735,8 @@ impl HapPeripheralContext {
                     warn!("Reading protocol.service_instance");
                 } else if event.handle() == hap.protocol.service_signature.handle {
                     warn!("Reading protocol.service_signature ");
-                    if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
-                        let reply = self.prepared_reply.take().unwrap();
-
-                        self.reply_read_payload(event, reply).await?;
-
-                        return Ok(None);
-                    }
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Reading protocol.version ");
-                    if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
-                        let reply = self.prepared_reply.take().unwrap();
-
-                        self.reply_read_payload(event, reply).await?;
-
-                        return Ok(None);
-                    }
                 }
 
                 if event.handle() == hap.pairing.service_instance.handle {
@@ -689,6 +751,13 @@ impl HapPeripheralContext {
                     warn!("Reading pairing.pairings ");
                 }
 
+                if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
+                    let reply = self.prepared_reply.take().unwrap();
+
+                    self.reply_read_payload(event, reply).await?;
+
+                    return Ok(None);
+                }
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
@@ -715,60 +784,9 @@ impl HapPeripheralContext {
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 
-                    let header = pdu::RequestHeader::parse_pdu(event.data())?;
-                    match header.opcode {
-                        pdu::OpCode::ServiceSignatureRead => {
-                            let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
-                            let resp = self.service_signature_request(&req).await?;
-                            self.prepared_reply = Some(Reply {
-                                payload: resp,
-                                handle: hap.protocol.service_signature.handle,
-                            });
-
-                            let reply = trouble_host::att::AttRsp::Write;
-                            event.into_payload().reply(reply).await?;
-                            return Ok(None);
-                        }
-                        pdu::OpCode::CharacteristicSignatureRead => {
-                            // second one is on [0, 1, 44, 2, 2]
-                            let req =
-                                pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
-                            warn!("Got req: {:?}", req);
-                            let resp = self.characteristic_signature_request(&req).await?;
-                            self.prepared_reply = Some(Reply {
-                                payload: resp,
-                                handle: hap.protocol.service_signature.handle,
-                            });
-
-                            let reply = trouble_host::att::AttRsp::Write;
-                            event.into_payload().reply(reply).await?;
-                            return Ok(None);
-                        }
-                        _ => return Err(HapBleError::UnexpectedRequest.into()),
-                    }
-
                     // Maybe the write request has to go through and it is followed by a read?
                 } else if event.handle() == hap.protocol.version.handle {
                     warn!("Writing protocol.version  {:?}", event.data());
-                    let header = pdu::RequestHeader::parse_pdu(event.data())?;
-                    match header.opcode {
-                        pdu::OpCode::CharacteristicSignatureRead => {
-                            // second one is on [0, 1, 44, 2, 2]
-                            let req =
-                                pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
-                            warn!("Got req: {:?}", req);
-                            let resp = self.characteristic_signature_request(&req).await?;
-                            self.prepared_reply = Some(Reply {
-                                payload: resp,
-                                handle: hap.protocol.version.handle,
-                            });
-
-                            let reply = trouble_host::att::AttRsp::Write;
-                            event.into_payload().reply(reply).await?;
-                            return Ok(None);
-                        }
-                        _ => return Err(HapBleError::UnexpectedRequest.into()),
-                    }
                 }
 
                 if event.handle() == hap.pairing.service_instance.handle {
@@ -783,7 +801,44 @@ impl HapPeripheralContext {
                 } else if event.handle() == hap.pairing.pairings.handle {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
-                Ok(Some(GattEvent::Write(event)))
+
+                let header = pdu::RequestHeader::parse_pdu(event.data())?;
+                match header.opcode {
+                    pdu::OpCode::ServiceSignatureRead => {
+                        let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
+                        let resp = self.service_signature_request(&req).await?;
+                        self.prepared_reply = Some(Reply {
+                            payload: resp,
+                            handle: event.handle(),
+                        });
+
+                        let reply = trouble_host::att::AttRsp::Write;
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                    }
+                    pdu::OpCode::CharacteristicSignatureRead => {
+                        // second one is on [0, 1, 44, 2, 2]
+                        let req = pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
+                        warn!("Got req: {:?}", req);
+                        let resp = self.characteristic_signature_request(&req).await?;
+                        self.prepared_reply = Some(Reply {
+                            payload: resp,
+                            handle: event.handle(),
+                        });
+
+                        let reply = trouble_host::att::AttRsp::Write;
+                        event.into_payload().reply(reply).await?;
+                        return Ok(None);
+                    }
+                    _ => {
+                        return {
+                            warn!("Failed to handle: {:?}", header);
+                            Err(HapBleError::UnexpectedRequest.into())
+                        };
+                    }
+                }
+
+                //Ok(Some(GattEvent::Write(event)))
             }
             remainder => Ok(Some(remainder)),
         }

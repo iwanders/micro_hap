@@ -119,6 +119,7 @@ mod ble_bas_peripheral {
             buffer,
             &server.accessory_information,
             &server.protocol,
+            &server.pairing,
         )
         .unwrap();
 
@@ -300,9 +301,14 @@ mod ble_bas_peripheral {
             ],
             &mut advertiser_data[..],
         )?;
+        let params = AdvertisementParameters {
+            interval_min: embassy_time::Duration::from_millis(1000),
+            interval_max: embassy_time::Duration::from_millis(5000),
+            ..Default::default()
+        };
         let advertiser = peripheral
             .advertise(
-                &Default::default(),
+                &params,
                 Advertisement::ConnectableScannableUndirected {
                     adv_data: &advertiser_data[..len],
                     scan_data: &[],
