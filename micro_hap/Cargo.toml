@@ -9,10 +9,12 @@ edition = "2024"
 # Switching to devel, be sure to modify both trouble-host as well as the linux examples in dev-dependencies.
 
 [dependencies]
-# ble deps
-trouble-host = { git = "https://github.com/embassy-rs/trouble", features = [
+trouble-host = { features = [
     "peripheral",
-], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+    "default-packet-pool-mtu-1024",
+], git = "https://github.com/embassy-rs/trouble", rev = "a2cdd1444370185b2a5b118b446a8947b200b602" }
+# ], path = "../../trouble/host" }
+# ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",
 # ], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }

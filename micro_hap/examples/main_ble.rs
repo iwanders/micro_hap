@@ -11,12 +11,10 @@ mod ble_bas_peripheral {
     use trouble_host::prelude::*;
 
     /// Max number of connections
-
-    /// Max number of connections
-    const CONNECTIONS_MAX: usize = 1;
+    const CONNECTIONS_MAX: usize = 3;
 
     /// Max number of L2CAP channels.
-    const L2CAP_CHANNELS_MAX: usize = 2; // Signal + att
+    const L2CAP_CHANNELS_MAX: usize = 4; // Signal + att
 
     // GATT Server definition
     #[gatt_server]
@@ -26,6 +24,7 @@ mod ble_bas_peripheral {
         accessory_information: micro_hap::ble::AccessoryInformationService,
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
+        lightbulb: micro_hap::ble::LightbulbService,
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
@@ -48,12 +47,16 @@ mod ble_bas_peripheral {
     //     #[characteristic(uuid = "408813df-5dd4-1f87-ec11-cdb001100000", write, read, notify)]
     //     status: bool,
     // }
-
+    use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
+    use bt_hci::cmd::le::LeSetDataLength;
+    use bt_hci::controller::ControllerCmdSync;
     const DEVICE_ADDRESS: [u8; 6] = [0xA8, 0x41, 0xf4, 0xd3, 0xd0, 0x4f];
     /// Run the BLE stack.
     pub async fn run<C>(controller: C)
     where
-        C: Controller,
+        C: Controller
+            + ControllerCmdSync<LeReadLocalSupportedFeatures>
+            + ControllerCmdSync<LeSetDataLength>,
     {
         // Using a fixed "random" address can be useful for testing. In real scenarios, one would
         // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
@@ -82,6 +85,7 @@ mod ble_bas_peripheral {
 
         let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
             HostResources::new();
+
         let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
         let Host {
             mut peripheral,
@@ -122,6 +126,12 @@ mod ble_bas_peripheral {
             loop {
                 match advertise(name, &mut peripheral, &server).await {
                     Ok(conn) => {
+                        conn.update_data_length(&stack, 251, 2120)
+                            .await
+                            .expect("fialed to set data length");
+                        let conn = conn
+                            .with_attribute_server(&server)
+                            .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                         let a = gatt_events_task(&mut hap_context, &server, &conn);
                         let b = custom_task(&server, &conn, &stack);
@@ -263,7 +273,8 @@ mod ble_bas_peripheral {
         name: &'values str,
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
         server: &'server Server<'values>,
-    ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
+    ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
+        // ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
         let adv_config = micro_hap::adv::AdvertisementConfig {
             device_id: micro_hap::adv::DeviceId([
                 DEVICE_ADDRESS[0],
@@ -299,7 +310,7 @@ mod ble_bas_peripheral {
             )
             .await?;
         info!("[adv] advertising");
-        let conn = advertiser.accept().await?.with_attribute_server(server)?;
+        let conn = advertiser.accept().await?;
         info!("[adv] connection established");
         Ok(conn)
     }
