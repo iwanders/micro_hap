@@ -146,7 +146,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::IDENTIFY.into(),
-                iid: CharId(4),
+                iid: CharId(2),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.identify.handle)),
             })
@@ -156,7 +156,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::MANUFACTURER.into(),
-                iid: CharId(6),
+                iid: CharId(3),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.manufacturer.handle)),
             })
@@ -166,7 +166,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::MODEL.into(),
-                iid: CharId(8),
+                iid: CharId(4),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.model.handle)),
             })
@@ -176,7 +176,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::NAME.into(),
-                iid: CharId(0x0a),
+                iid: CharId(5),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.name.handle)),
             })
@@ -186,7 +186,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERIAL_NUMBER.into(),
-                iid: CharId(0x0c),
+                iid: CharId(6),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.serial_number.handle)),
             })
@@ -196,7 +196,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::FIRMWARE_REVISION.into(),
-                iid: CharId(0x0e),
+                iid: CharId(7),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.firmware_revision.handle)),
             })
@@ -206,7 +206,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::HARDWARE_REVISION.into(),
-                iid: CharId(0x10),
+                iid: CharId(8),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.hardware_revision.handle)),
             })
@@ -216,7 +216,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::ADK_VERSION.into(),
-                iid: CharId(0x12),
+                iid: CharId(9),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.adk_version.handle)),
             })
@@ -225,7 +225,7 @@ impl AccessoryInformationService {
         Ok(service)
     }
 }
-
+/*
 fn make_table() {
     // from https://github.com/embassy-rs/trouble/blame/404b0f77345522764582747e0acd50a22236b59e/examples/apps/src/ble_bas_peripheral.rs
     const MAX_ATTRIBUTES: usize = 10;
@@ -246,7 +246,7 @@ fn make_table() {
     let handle = v.handle;
 
     // let server = GattServer::<C, NoopRawMutex, MAX_ATTRIBUTES, L2CAP_MTU>::new(stack, &table);
-}
+}*/
 
 impl AccessoryInformationService {
     pub fn set_information_static<
@@ -323,6 +323,7 @@ impl ProtocolInformationService {
             properties: Default::default(),
         };
 
+        /*
         service
             .attributes
             .push(crate::Attribute {
@@ -334,6 +335,7 @@ impl ProtocolInformationService {
                 ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
+            */
 
         service
             .attributes
@@ -351,7 +353,7 @@ impl ProtocolInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::VERSION.into(),
-                iid: CharId(0x17),
+                iid: CharId(0x12),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.version.handle).with_format_opaque()),
             })
@@ -398,6 +400,7 @@ impl PairingService {
             properties: Default::default(),
         };
 
+        /*
         service
             .attributes
             .push(crate::Attribute {
@@ -409,6 +412,7 @@ impl PairingService {
                 ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
+            */
 
         service
             .attributes
@@ -416,7 +420,11 @@ impl PairingService {
                 uuid: characteristic::PAIRING_PAIR_SETUP.into(),
                 iid: CharId(0x22),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.pair_setup.handle).with_format_opaque()),
+                ble: Some(
+                    BleProperties::from_handle(self.pair_setup.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -668,14 +676,44 @@ impl HapPeripheralContext {
         //
         // more bad
         //              02, 21, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-
+        //
         //
         // On pair-verify;
         // good: 02  6d  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4e  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
         // bad:  02, f8, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
         //       02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+        //      [02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
+        //       02, ed, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
+        // bad:
+        //  [2025-08-16T20:50:24Z WARN  micro_hap::ble] Writing pairing.pair_verify  [0, 1, 132, 35, 0] 0x:  00 01 84 23 00
+        //  [2025-08-16T20:50:24Z WARN  micro_hap::ble] Replying with: Read { data: [02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        // good:
         //
-        //                                                                                                                                                                                                ^^^^^^
+        //
+        // Pair setup reply good is:
+        //
+        // 02  de  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4c  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
+        // Our pair setup reply is:
+        //[02, c6, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
+        //[02, 5e, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
+        //                                                                                                                                                                                         ^^^^^^
+        //
+        // Version ours:
+        //  02, 96, 00, 35, 00, 04, 10, 3b, 94, f9, 85, 6a, fd, c3, ba, 40, 43, 7f, ac, 11, 88, ab, 34, 07, 02, 01, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 3e, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 04, 00, 00, 27, 01, 00, 00
+        // version theirs
+        //  02  39  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  37  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  19  00  00  27  01  00  00
+        //
+        //
+        // --
+        // protocol.service signature.
+        // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[00, 01, 80, 11, 00]
+        // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Replying with: Read { data: [
+        // 02, 80, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
+        //
+        // Actual:
+        //    00 01 b4 11 00
+        // 02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
+        // --                                                                                                                                                                                          ^^
 
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
@@ -770,6 +808,7 @@ impl HapPeripheralContext {
                 }
 
                 if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
+                    info!("Replying with prepared reply");
                     let reply = self.prepared_reply.take().unwrap();
 
                     self.reply_read_payload(event, reply).await?;
@@ -798,7 +837,10 @@ impl HapPeripheralContext {
                 if event.handle() == hap.protocol.service_instance.handle {
                     warn!("Writing protocol.service_instance  {:?}", event.data());
                 } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!("Writing protocol.service_signature  {:02x?}", event.data());
+                    warn!(
+                        "Writing protocol.service_signature  0x{:02x?}",
+                        event.data()
+                    );
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 
@@ -916,6 +958,7 @@ mod test {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
+
         let mut ctx = HapPeripheralContext::new(
             buffer,
             &server.accessory_information,
