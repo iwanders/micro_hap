@@ -9,11 +9,11 @@ const SERVICE_INSTANCE_BYTES: [u8; 16] = [
 /// Service Instance ID
 pub const SERVICE_INSTANCE: Uuid = Uuid::new_long(SERVICE_INSTANCE_BYTES);
 
-/// Hardware revision (semver).
-pub const HARDWARE_REVISION: HomekitUuid16 = HomekitUuid16::new(0x0053);
+/// Identify trigger.
+pub const IDENTIFY: HomekitUuid16 = HomekitUuid16::new(0x0014);
 
-/// Manufacturer specific serial number, length must be greater than 1.
-pub const SERIAL_NUMBER: HomekitUuid16 = HomekitUuid16::new(0x0030);
+/// Manufacturer name, length greater than 1?
+pub const MANUFACTURER: HomekitUuid16 = HomekitUuid16::new(0x0020);
 
 /// Manufacturer specific model, length must be greater than 1.
 pub const MODEL: HomekitUuid16 = HomekitUuid16::new(0x0021);
@@ -21,17 +21,11 @@ pub const MODEL: HomekitUuid16 = HomekitUuid16::new(0x0021);
 /// Describes a name, length greater than 1?
 pub const NAME: HomekitUuid16 = HomekitUuid16::new(0x0023);
 
-/// Manufacturer name, length greater than 1?
-pub const MANUFACTURER: HomekitUuid16 = HomekitUuid16::new(0x0020);
+/// On/Off characteristic, for lightbulb
+pub const ON: HomekitUuid16 = HomekitUuid16::new(0x0025);
 
-/// Firmware revision (semver).
-pub const FIRMWARE_REVISION: HomekitUuid16 = HomekitUuid16::new(0x0052);
-
-/// Identify trigger.
-pub const IDENTIFY: HomekitUuid16 = HomekitUuid16::new(0x0014);
-
-/// Service Signature.
-pub const SERVICE_SIGNATURE: HomekitUuid16 = HomekitUuid16::new(0x00A5);
+/// Manufacturer specific serial number, length must be greater than 1.
+pub const SERIAL_NUMBER: HomekitUuid16 = HomekitUuid16::new(0x0030);
 
 /// Version string
 pub const VERSION: HomekitUuid16 = HomekitUuid16::new(0x0037);
@@ -48,3 +42,12 @@ pub const PAIRING_FEATURES: HomekitUuid16 = HomekitUuid16::new(0x004f);
 
 /// Pairing pairings to remove, add and list pairings.
 pub const PAIRING_PAIRINGS: HomekitUuid16 = HomekitUuid16::new(0x0050);
+
+/// Firmware revision (semver).
+pub const FIRMWARE_REVISION: HomekitUuid16 = HomekitUuid16::new(0x0052);
+
+/// Hardware revision (semver).
+pub const HARDWARE_REVISION: HomekitUuid16 = HomekitUuid16::new(0x0053);
+
+/// Service Signature.
+pub const SERVICE_SIGNATURE: HomekitUuid16 = HomekitUuid16::new(0x00A5);

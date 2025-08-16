@@ -15,6 +15,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // because it would be really nice if we can keep properties per service, characteristic and property.
 //
 
+// add a lightbulb service such that we have at least one service.
+// accessory information service must have instance id 1.
+
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -339,6 +342,22 @@ pub struct PairingService {
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x03, 0x05])]
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pairings: FacadeDummyType,
+}
+
+#[gatt_service(uuid = service::LIGHTBULB)]
+pub struct LightbulbService {
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
+    #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x04)]
+    service_instance: u16,
+
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
+    #[characteristic(uuid=characteristic::ON, read, write )]
+    on: bool,
+
+    /// Service signature, only two bytes.
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x02])]
+    #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write, notify)]
+    service_signature: FacadeDummyType,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
