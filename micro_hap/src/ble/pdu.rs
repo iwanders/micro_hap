@@ -196,10 +196,35 @@ pub struct CharacteristicReadRequest {
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(u8)]
+enum WriteRequestBodyValue {
+    Value = BleTLVType::Value as u8,
+}
+
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct CharacteristicWriteRequest {
     pub header: RequestHeader,
     pub char_id: CharId,
+    pub body_length: u16,
+    tlv: WriteRequestBodyValue,
+    pub inner_length: u8,
+}
+impl CharacteristicWriteRequest {
+    fn parse_pdu_body(data: &[u8]) -> Result<(&CharacteristicWriteRequest, &[u8]), HapBleError> {
+        let exp = Self::mem_size();
+        if data.len() < exp {
+            return Err(HapBleError::UnexpectedDataLength {
+                expected: exp,
+                actual: data.len(),
+            });
+        }
+
+        let (h, aft) = data.split_at(exp);
+
+        let out = Self::try_ref_from_bytes(h).map_err(|_| HapBleError::InvalidValue)?;
+        Ok((out, &aft[0..out.inner_length as usize]))
+    }
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26
@@ -429,16 +454,29 @@ mod test {
     }
 
     #[test]
-    fn test_parse_pair_setup_write() {
+    fn test_parse_pair_setup_write() -> Result<(), HapBleError> {
         init();
 
         let payload = [
-            0, 2, 61, 34, 0, 17, 0, 1, 12, 0, 1, 0, 6, 1, 1, 19, 4, 16, 128, 0, 1, 9, 1, 1,
+            0x00, 0x02, 0x3D, 0x22, 0x00, 0x11, 0x00, 0x01, 0x0C, 0x00, 0x01, 0x00, 0x06, 0x01,
+            0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
+            0x01, //   tid  chr    bodylen   ^^ tlv payload?
         ];
+        // Ours:
+        //   00    02    cf    22    00    0b    00    01    06    00    01    00    06    01    01    09    01    01
+        // Reference:
+        // 0x00, 0x02, 0x3D, 0x22, 0x00, 0x11, 0x00, 0x01, 0x0C, 0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01, 0x01,
         let header = RequestHeader::parse_pdu(&payload);
         info!("header: {payload:0>2x?} {header:?}");
-        let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
-        info!("parsed: {parsed:?}");
+        let (parsed, body) = CharacteristicWriteRequest::parse_pdu_body(&payload)?;
+        info!("parsed: {parsed:?}  {body:0>2x?}");
+
+        let tlv_payload = [
+            0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
+            0x01,
+        ];
+
+        Ok(())
     }
 
     #[test]
