@@ -17,6 +17,8 @@ pub mod ble;
 pub mod http;
 use bitfield_struct::bitfield;
 
+pub mod pairing;
+
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //
