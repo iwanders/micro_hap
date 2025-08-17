@@ -188,6 +188,20 @@ pub struct ServiceSignatureReadRequest {
     pub svc_id: SvcId,
 }
 
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct CharacteristicReadRequest {
+    pub header: RequestHeader,
+    pub char_id: CharId,
+}
+
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct CharacteristicWriteRequest {
+    pub header: RequestHeader,
+    pub char_id: CharId,
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
 #[repr(u8)]
@@ -321,6 +335,11 @@ impl<'a> BodyBuilder<'a> {
         }
         self
     }
+    pub fn add_value(mut self, value: &[u8]) -> Self {
+        self.push_internal(&(BleTLVType::Value as u8));
+        self.push_slice(value);
+        self
+    }
 
     fn add_to_length(&mut self, value: usize) {
         *u16::mut_from_bytes(&mut self.buffer[self.start..self.start + 2]).unwrap() += value as u16;
@@ -402,8 +421,26 @@ mod test {
         let parsed = CharacteristicSignatureReadRequest::parse_pdu(&payload);
         info!("parsed: {parsed:?}");
 
-        //
+        let payload = [0, 3, 62, 36, 0];
+        let header = RequestHeader::parse_pdu(&payload);
+        info!("header: {payload:0>2x?} {header:?}");
+        let parsed = CharacteristicReadRequest::parse_pdu(&payload);
+        info!("parsed: {parsed:?}");
     }
+
+    #[test]
+    fn test_parse_pair_setup_write() {
+        init();
+
+        let payload = [
+            0, 2, 61, 34, 0, 17, 0, 1, 12, 0, 1, 0, 6, 1, 1, 19, 4, 16, 128, 0, 1, 9, 1, 1,
+        ];
+        let header = RequestHeader::parse_pdu(&payload);
+        info!("header: {payload:0>2x?} {header:?}");
+        let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
+        info!("parsed: {parsed:?}");
+    }
+
     #[test]
     fn test_body_builder() {
         init();

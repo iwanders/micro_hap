@@ -389,10 +389,9 @@ pub struct PairingService {
     #[characteristic(uuid=characteristic::PAIRING_PAIR_VERIFY, read, write)]
     pair_verify: FacadeDummyType,
 
-    // Software authentication is 0x2, this is non-const in the reference implementation though.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x24u16.to_le_bytes())]
-    #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, write, value=0x02)]
-    features: u8,
+    #[characteristic(uuid=characteristic::PAIRING_FEATURES, read, write)]
+    features: FacadeDummyType,
 
     // Paired read and write only.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x25u16.to_le_bytes())]
@@ -810,6 +809,46 @@ impl HapPeripheralContext {
         }
     }
 
+    pub async fn characteristic_read_request(
+        &mut self,
+        req: &pdu::CharacteristicReadRequest,
+    ) -> Result<BufferResponse, HapBleError> {
+        // Well ehm, what do we do here?
+        let char_id = req.char_id; // its unaligned, so copy it before we use it.
+        if let Some(chr) = self.get_attribute_by_char(char_id) {
+            if chr.uuid == crate::characteristic::VERSION.into() {
+                // Hardcode this for now, we'll make something smarter later.
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+
+                let len = BodyBuilder::new_at(*buffer, len)
+                    // Something here that writes "2.2.0"
+                    .add_value(&"2.2.0".as_bytes())
+                    .end();
+                Ok(BufferResponse(len))
+            } else if chr.uuid == crate::characteristic::PAIRING_FEATURES.into() {
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+                // Software authentication is 0x2, this is non-const in the reference implementation though.
+                let len = BodyBuilder::new_at(*buffer, len)
+                    .add_value(&2u8.as_bytes())
+                    .end();
+                Ok(BufferResponse(len))
+            } else {
+                error!(
+                    "Got read for characteristic that is not yet handled: {:?}",
+                    char_id
+                );
+                todo!();
+            }
+        } else {
+            error!("Got read for unknown characteristic: {:?}", char_id);
+            todo!();
+        }
+    }
+
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
         &self,
         event: ReadEvent<'stack, '_, P>,
@@ -936,42 +975,40 @@ impl HapPeripheralContext {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
 
-                match header.opcode {
+                //Ok(Some(GattEvent::Write(event)))
+                //
+                #[allow(unreachable_code)]
+                let resp = match header.opcode {
                     pdu::OpCode::ServiceSignatureRead => {
                         let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
-                        let resp = self.service_signature_request(&req).await?;
-                        self.prepared_reply = Some(Reply {
-                            payload: resp,
-                            handle: event.handle(),
-                        });
-
-                        let reply = trouble_host::att::AttRsp::Write;
-                        event.into_payload().reply(reply).await?;
-                        return Ok(None);
+                        self.service_signature_request(&req).await?
                     }
                     pdu::OpCode::CharacteristicSignatureRead => {
                         // second one is on [0, 1, 44, 2, 2]
                         let req = pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
                         warn!("Got req: {:?}", req);
-                        let resp = self.characteristic_signature_request(&req).await?;
-                        self.prepared_reply = Some(Reply {
-                            payload: resp,
-                            handle: event.handle(),
-                        });
-
-                        let reply = trouble_host::att::AttRsp::Write;
-                        event.into_payload().reply(reply).await?;
-                        return Ok(None);
+                        self.characteristic_signature_request(&req).await?
+                    }
+                    pdu::OpCode::CharacteristicRead => {
+                        let req = pdu::CharacteristicReadRequest::parse_pdu(event.data())?;
+                        warn!("Got req: {:?}", req);
+                        self.characteristic_read_request(&req).await?
                     }
                     _ => {
                         return {
-                            warn!("Failed to handle: {:?}", header);
+                            error!("Failed to handle: {:?}", header);
                             Err(HapBleError::UnexpectedRequest.into())
                         };
                     }
-                }
+                };
+                self.prepared_reply = Some(Reply {
+                    payload: resp,
+                    handle: event.handle(),
+                });
 
-                //Ok(Some(GattEvent::Write(event)))
+                let reply = trouble_host::att::AttRsp::Write;
+                event.into_payload().reply(reply).await?;
+                return Ok(None);
             }
             remainder => Ok(Some(remainder)),
         }
