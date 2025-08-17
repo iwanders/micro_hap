@@ -203,27 +203,48 @@ enum WriteRequestBodyValue {
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
-pub struct CharacteristicWriteRequest {
+pub struct CharacteristicWriteRequestHeader {
     pub header: RequestHeader,
     pub char_id: CharId,
     pub body_length: u16,
-    tlv: WriteRequestBodyValue,
-    pub inner_length: u8,
+    //tlv: WriteRequestBodyValue,
+    //pub inner_length: u8,
 }
-impl CharacteristicWriteRequest {
-    fn parse_pdu_body(data: &[u8]) -> Result<(&CharacteristicWriteRequest, &[u8]), HapBleError> {
-        let exp = Self::mem_size();
-        if data.len() < exp {
-            return Err(HapBleError::UnexpectedDataLength {
-                expected: exp,
-                actual: data.len(),
-            });
+
+#[derive(Debug, Copy, Clone)]
+pub struct CharacteristicWriteRequest<'a> {
+    /// The header as it was read.
+    pub header: &'a CharacteristicWriteRequestHeader,
+    /// The payload of the write.
+    pub body: &'a [u8],
+    /// The return response flag.
+    pub return_response: bool,
+}
+
+impl<'a> CharacteristicWriteRequest<'a> {
+    fn parse_pdu(data: &'a [u8]) -> Result<CharacteristicWriteRequest<'a>, HapBleError> {
+        let header = CharacteristicWriteRequestHeader::parse_pdu(data)?;
+
+        let mut res = CharacteristicWriteRequest {
+            header,
+            body: &data[0..0],
+            // Probably defaults to false?s
+            return_response: false,
+        };
+        let aft = &data[CharacteristicWriteRequestHeader::mem_size()..];
+
+        let mut reader = crate::tlv::TLVReader::new(aft);
+        for entry in reader {
+            let entry = entry?;
+            if entry.type_id == BleTLVType::Value as u8 {
+                res.body = entry.data;
+            } else if entry.type_id == BleTLVType::ReturnResponse as u8 {
+                res.return_response = entry.data.len() == 1 && entry.data[0] == 1;
+            } else {
+                todo!("unhandled entry type: 0x{:0>2x}", entry.type_id);
+            }
         }
-
-        let (h, aft) = data.split_at(exp);
-
-        let out = Self::try_ref_from_bytes(h).map_err(|_| HapBleError::InvalidValue)?;
-        Ok((out, &aft[0..out.inner_length as usize]))
+        Ok(res)
     }
 }
 
@@ -468,13 +489,26 @@ mod test {
         // 0x00, 0x02, 0x3D, 0x22, 0x00, 0x11, 0x00, 0x01, 0x0C, 0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01, 0x01,
         let header = RequestHeader::parse_pdu(&payload);
         info!("header: {payload:0>2x?} {header:?}");
-        let (parsed, body) = CharacteristicWriteRequest::parse_pdu_body(&payload)?;
-        info!("parsed: {parsed:?}  {body:0>2x?}");
+        let parsed = CharacteristicWriteRequest::parse_pdu(&payload)?;
+        info!("parsed: {parsed:?}  ");
+        // What's the 09 01 01 at the end!?
+        // Oh... maybe ReturnResponse??
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristicParseAndWriteValue.c#L67-L70
+        // yes..?
 
-        let tlv_payload = [
-            0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
-            0x01,
-        ];
+        assert_eq!(parsed.return_response, true);
+        assert_eq!(
+            parsed.body,
+            &[
+                0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01
+            ]
+        );
+
+        // let tlv_payload = [
+        //     0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
+        //     0x01,
+        // ];
+        // assert_eq!(body, tlv_payload);
 
         Ok(())
     }
