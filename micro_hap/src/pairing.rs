@@ -151,7 +151,7 @@ pub enum TLVType {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    // use super::*;
 
     fn init() {
         let _ = env_logger::builder()
@@ -161,12 +161,24 @@ mod test {
     }
 
     #[test]
-    fn test_pairing_tlv_parse() {
+    fn test_pairing_tlv_parse() -> Result<(), crate::tlv::TLVError> {
         init();
 
         let tlv_payload = [
             0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
             0x01,
         ];
+        let reader = crate::tlv::TLVReader::new(&tlv_payload);
+        for (i, entry) in reader.enumerate() {
+            let entry = entry?;
+            if i == 0 {
+                assert_eq!(entry.type_id, 0x00);
+            } else if i == 2 {
+                assert_eq!(entry.type_id, 0x13);
+                assert_eq!(entry.length, 0x04);
+            }
+        }
+
+        Ok(())
     }
 }

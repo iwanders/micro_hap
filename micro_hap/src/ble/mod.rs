@@ -5,7 +5,7 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
-use crate::{BleProperties, ServiceProperties};
+use crate::BleProperties;
 use bitfield_struct::bitfield;
 
 use crate::{CharId, SvcId};
@@ -51,6 +51,14 @@ pub enum HapBleError {
     BufferOverrun,
     /// Overrun on allocation space
     AllocationOverrun,
+}
+
+impl From<crate::tlv::TLVError> for HapBleError {
+    fn from(e: crate::tlv::TLVError) -> HapBleError {
+        match e {
+            crate::tlv::TLVError::NotEnoughData => HapBleError::InvalidValue,
+        }
+    }
 }
 
 impl From<HapBleError> for trouble_host::Error {
@@ -538,10 +546,10 @@ pub struct CharacteristicProperties {
     __: u16,
 }
 impl CharacteristicProperties {
-    pub fn with_open_rw(mut self, state: bool) -> Self {
+    pub fn with_open_rw(self, state: bool) -> Self {
         self.with_read_open(state).with_write_open(state)
     }
-    pub fn with_rw(mut self, state: bool) -> Self {
+    pub fn with_rw(self, state: bool) -> Self {
         self.with_read(state).with_write(state)
     }
 }
@@ -589,7 +597,7 @@ impl HapPeripheralContext {
 
     pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
         for s in self.services() {
-            if let Some(a) = s.get_attribute_by_iid(chr) {
+            if let Some(_attribute) = s.get_attribute_by_iid(chr) {
                 return Some(s);
             }
         }
@@ -1076,7 +1084,7 @@ mod test {
             &server.pairing,
         )?;
 
-        let service_signature_req = [0, 6, 0x3a, 2, 0];
+        let service_signature_req = [0, 6, 0x3a, 0x10, 0];
         let service_signature_req =
             pdu::ServiceSignatureReadRequest::parse_pdu(&service_signature_req)?;
         let resp = ctx
@@ -1091,7 +1099,7 @@ mod test {
         }
 
         // and then it sends... which we have no clue what it is yet.
-        let payload = [0x00, 0x01, 0xae, 0x02, 0x02];
+        let payload = [0x00, 0x01, 0xae, 0x20, 0x00];
         // [micro_hap::ble] Writing protocol.service_signature  [0, 1, ae, 2, 2]
         let service_signature_req = pdu::ServiceSignatureReadRequest::parse_pdu(&payload)?;
         let resp = ctx
@@ -1099,6 +1107,7 @@ mod test {
             .await?;
         // Oh... that's a characteristic signature read request.
         // we need the PDU types, and interpret based on that.
+        let _ = resp;
 
         Ok(())
     }

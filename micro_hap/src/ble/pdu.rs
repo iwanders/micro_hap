@@ -233,7 +233,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
         };
         let aft = &data[CharacteristicWriteRequestHeader::mem_size()..];
 
-        let mut reader = crate::tlv::TLVReader::new(aft);
+        let reader = crate::tlv::TLVReader::new(aft);
         for entry in reader {
             let entry = entry?;
             if entry.type_id == BleTLVType::Value as u8 {

@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+#![allow(dead_code)]
 use bt_hci::controller::ExternalController;
 //use trouble_example_apps::ble_bas_peripheral;
 use trouble_linux_examples::Transport;

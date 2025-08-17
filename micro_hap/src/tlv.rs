@@ -1,3 +1,8 @@
+/// Reader iterator for TLV sequences;
+/// Yielding entries that hold:
+///   type_id: u8,
+///   length: u8,
+///   data: [u8;length]
 pub struct TLVReader<'a> {
     buffer: &'a [u8],
     position: usize,

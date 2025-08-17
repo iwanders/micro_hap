@@ -14,7 +14,7 @@ pub mod service;
 pub mod uuid;
 
 pub mod ble;
-pub mod http;
+
 use bitfield_struct::bitfield;
 
 pub mod pairing;
@@ -152,12 +152,12 @@ impl BleProperties {
             properties: ble::CharacteristicProperties::new(),
         }
     }
-    pub fn with_format_opaque(mut self) -> Self {
+    pub fn with_format_opaque(self) -> Self {
         let mut format = self.format;
         format.format = ble::sig::Format::Opaque;
         Self { format, ..self }
     }
-    pub fn with_properties(mut self, properties: ble::CharacteristicProperties) -> Self {
+    pub fn with_properties(self, properties: ble::CharacteristicProperties) -> Self {
         let x = Self { properties, ..self };
         info!("x: {:#?}", x);
         x
