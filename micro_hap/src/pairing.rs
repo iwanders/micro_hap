@@ -212,24 +212,31 @@ impl Into<u8> for TLVType {
     }
 }
 
-pub struct TLVMethod<'a>(TLV<'a>);
-impl<'a> TLVMethod<'a> {
-    pub fn tied(data: &'a [u8]) -> Self {
-        Self(TLV::tied(data, TLVType::Method))
-    }
-}
-impl<'a> core::ops::Deref for TLVMethod<'a> {
-    type Target = TLV<'a>;
+macro_rules! typed_tlv {
+    ( $name:ident, $tlv_type:expr  ) => {
+        pub struct $name<'a>(TLV<'a>);
+        impl<'a> $name<'a> {
+            pub fn tied(data: &'a [u8]) -> Self {
+                Self(TLV::tied(data, $tlv_type))
+            }
+        }
+        impl<'a> core::ops::Deref for $name<'a> {
+            type Target = TLV<'a>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl<'a> core::ops::DerefMut for $name<'a> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
 }
-impl<'a> core::ops::DerefMut for TLVMethod<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+
+typed_tlv!(TLVMethod, TLVType::Method);
+typed_tlv!(TLVState, TLVType::State);
 
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(u8)]
@@ -246,7 +253,7 @@ pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<
     match setup.state {
         PairState::NotStarted => {
             let mut a = TLVMethod::tied(&data);
-            let mut b = TLV::tied(&data, 0x06);
+            let mut b = TLVState::tied(&data);
 
             let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
         }
@@ -279,15 +286,15 @@ mod test {
     fn test_pairing_tlv_parse() -> Result<(), crate::tlv::TLVError> {
         init();
 
-        let tlv_payload = [
+        let data = [
             0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
             0x01,
         ];
 
-        let mut a = TLV::tied(&tlv_payload, 0x00);
-        let mut b = TLV::tied(&tlv_payload, 0x06);
+        let mut a = TLVMethod::tied(&data);
+        let mut b = TLVState::tied(&data);
 
-        let collected = TLVReader::new(&tlv_payload).read_into(&mut [&mut a, &mut b]);
+        let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
         assert_eq!(collected.is_ok(), true);
         assert_eq!(a.type_id, 0x00);
         assert_eq!(a.length, 0x01);
