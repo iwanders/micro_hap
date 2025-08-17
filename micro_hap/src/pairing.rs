@@ -4,6 +4,7 @@
 //
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L122
 //
+use bitfield_struct::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 //
 
@@ -26,6 +27,7 @@ use uuid;
 #[derive(Debug, Copy, Clone)]
 pub enum PairingError {
     TLVError(TLVError),
+    IncorrectCombination,
 }
 
 impl From<TLVError> for PairingError {
@@ -53,6 +55,32 @@ pub struct Pairing {
     pub permissions: u8,
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L247
+/// Flags for pairing
+#[bitfield(u32)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct PairingFlags {
+    #[bits(4)]
+    _1: u8,
+
+    /// Transient Pair Setup. Pair Setup M1 - M4 without exchanging public keys.
+    // kHAPPairingFlag_Transient = 1U << 4U,
+    #[bits(1)]
+    transient: bool,
+
+    #[bits(19)]
+    _2: u32,
+
+    /// Split Pair Setup.
+    /// When set with kHAPPairingFlag_Transient save the SRP verifier used in this session,
+    ///  and when only kHAPPairingFlag_Split is set, use the saved SRP verifier from previous session.
+    // kHAPPairingFlag_Split = 1U << 24U,
+    #[bits(1)]
+    split: bool,
+    #[bits(7)]
+    _3: u8,
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L116
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairSetup {
@@ -61,7 +89,13 @@ pub struct PairSetup {
     pub error: u8,
 }
 
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
+pub struct PairServer {
+    pub flags: PairingFlags,
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairVerify {
     pub setup: PairSetup,
     pub session_key: [u8; CHACHA20_POLY1305_KEY_BYTES],
@@ -97,7 +131,7 @@ pub enum PairingMethod {
     ListPairings = 0x05,
 
     ///Pair Resume.
-    //@see HomeKit Accessory Protocol Specification R14 Table 7-38 Defines Description
+    /// HomeKit Accessory Protocol Specification R14 Table 7-38 Defines Description
     PairResume = 0x06,
 }
 
@@ -270,18 +304,22 @@ pub enum PairState {
     #[default]
     NotStarted = 0,
     ReceivedM1 = 1,
+    SentM2 = 2,
 }
 
 // HAPPairingPairSetupHandleWrite
-pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<(), PairingError> {
-    let _ = data;
+pub fn pair_setup_handle_incoming(
+    server: &mut PairServer,
+    setup: &mut PairSetup,
+    data: &[u8],
+) -> Result<(), PairingError> {
     match setup.state {
         PairState::NotStarted => {
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             let mut flags = TLVFlags::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut method, &mut state, &mut flags])?;
-            pair_setup_process_m1(setup, method, state, flags)
+            pair_setup_process_m1(server, setup, method, state, flags)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -289,15 +327,28 @@ pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<
     }
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1406
 // HAPPairingPairSetupHandleRead
-pub fn pair_setup_handle_outgoing(setup: &mut PairSetup, data: &mut [u8]) -> Result<usize, ()> {
-    let _ = data;
-    let _ = setup;
-    Ok(0)
+pub fn pair_setup_handle_outgoing(
+    server: &mut PairServer,
+    setup: &mut PairSetup,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    match setup.state {
+        PairState::ReceivedM1 => {
+            // Advance the state, and write M2.
+            setup.state = PairState::SentM2;
+            pair_setup_process_get_m2(server, setup, data)
+        }
+        catch_all => {
+            todo!("Unhandled state: {:?}", catch_all);
+        }
+    }
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
 pub fn pair_setup_process_m1(
+    server: &mut PairServer,
     setup: &mut PairSetup,
     method: TLVMethod,
     state: TLVState,
@@ -309,11 +360,58 @@ pub fn pair_setup_process_m1(
     // info!("flags: {:?}", flags);
 
     setup.method = *method;
-    // NONCOMPLIANCE  What to do with the flags, it goes into the server's pairsetup state... which we don't yet have
-    let _ = flags;
+    server.flags = PairingFlags::from_bits(flags.to_u32()?);
     setup.state = *state.try_from::<PairState>()?;
 
     Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
+pub fn pair_setup_process_get_m2(
+    server: &mut PairServer,
+    setup: &mut PairSetup,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    info!("Pair Setup M2: SRP Start Response.");
+    // NONCOMPLIANCE: Check if accessory is already paired.
+    // NONCOMPLIANCE: Check if accessory has received more than 100 unsuccesful attempts
+    // NONCOMPLIANCE: Keep invalid authentication counter.
+    let mut is_transient: bool = false;
+    let mut is_split: bool = false;
+    if server.flags.transient() {
+        if setup.method == PairingMethod::PairSetupWithAuth {
+            // What does this mean!?
+            warn!("pair setup M2; ignoring because pair setup with auth was requested");
+        } else {
+            if (setup.method != PairingMethod::PairSetup) {
+                error!("method should be pair setup");
+                return Err(PairingError::IncorrectCombination);
+            }
+            is_transient = true;
+        }
+    }
+    if server.flags.split() {
+        if setup.method == PairingMethod::PairSetupWithAuth {
+            // What does this mean!?
+            warn!("pair setup M2; ignoring because pair setup with auth was requested");
+        } else {
+            if (setup.method != PairingMethod::PairSetup) {
+                error!("method should be pair setup");
+                return Err(PairingError::IncorrectCombination);
+            }
+            is_split = true;
+        }
+    }
+
+    let restore = !is_transient && is_split;
+
+    // In the recording we see both flags being false.
+
+    // Stuff with setup info salts?
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessorySetupInfo.c#L298
+    // In the AppleHomekitADK, that is data that seems to have been made in the commissioning procedure?
+
+    todo!()
 }
 
 #[cfg(test)]
@@ -328,7 +426,16 @@ mod test {
     }
 
     #[test]
-    fn test_pairing_tlv_parse() -> Result<(), PairingError> {
+    fn test_pairing_flags() {
+        let transient = 1u32 << 4;
+        let from_flag = PairingFlags::new().with_transient(true);
+        assert_eq!(transient, from_flag.0);
+        let split = 1u32 << 24;
+        let from_flag = PairingFlags::new().with_split(true);
+        assert_eq!(split, from_flag.0);
+    }
+    #[test]
+    fn test_pairing_handle_setup() -> Result<(), PairingError> {
         init();
 
         let incoming_0 = [
@@ -336,7 +443,13 @@ mod test {
             0x01,
         ];
         let mut setup = PairSetup::default();
-        pair_setup_handle_incoming(&mut setup, &incoming_0)?;
+        let mut server = PairServer::default();
+        pair_setup_handle_incoming(&mut server, &mut setup, &incoming_0)?;
+
+        let mut buffer = [0u8; 1024];
+
+        pair_setup_handle_outgoing(&mut server, &mut setup, &mut buffer)?;
+
         Ok(())
     }
 }
