@@ -228,7 +228,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
         let mut res = CharacteristicWriteRequest {
             header,
             body: &data[0..0],
-            // Probably defaults to false?s
+            // Probably defaults to false?
             return_response: false,
         };
         let aft = &data[CharacteristicWriteRequestHeader::mem_size()..];

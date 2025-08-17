@@ -18,12 +18,38 @@ impl<'a> TLVReader<'a> {
             buffer,
         }
     }
+
+    pub fn read_into(self, tlvs: &mut [&mut TLV<'a>]) -> Result<(), TLVError> {
+        //let collected = TLVReader::read(&[&mut a, &mut b]);
+        for entry in self {
+            let entry = entry?;
+            for v in tlvs.iter_mut() {
+                if v.type_id == entry.type_id {
+                    (**v).length = entry.length;
+                    (**v).data = &entry.data;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub struct TLV<'a> {
     pub type_id: u8,
     pub length: u8,
     pub data: &'a [u8],
+}
+impl<'a> TLV<'a> {
+    pub fn tied<T: Into<u8>>(data: &'a [u8], type_id: T) -> Self {
+        Self {
+            type_id: type_id.into(),
+            length: 0,
+            data: &data[0..0],
+        }
+    }
+    pub fn is_some(&self) -> bool {
+        self.length != 0
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -103,6 +129,18 @@ mod test {
         let mut reader = TLVReader::new(&data);
         let a = reader.next().unwrap().unwrap();
         let b = reader.next().unwrap().unwrap();
+        assert_eq!(a.type_id, 0x00);
+        assert_eq!(a.length, 0x01);
+        assert_eq!(a.data, &[0x00]);
+        assert_eq!(b.type_id, 0x06);
+        assert_eq!(b.length, 0x01);
+        assert_eq!(b.data, &[0x01]);
+
+        let mut a = TLV::tied(&data, 0x00);
+        let mut b = TLV::tied(&data, 0x06);
+
+        let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
+        assert_eq!(collected.is_ok(), true);
         assert_eq!(a.type_id, 0x00);
         assert_eq!(a.length, 0x01);
         assert_eq!(a.data, &[0x00]);

@@ -1,6 +1,64 @@
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L56
 //
 //
+//
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L122
+//
+// use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+//
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c
+
+// Okay, this is some six step process...
+// The reference effectively uses two methods as entry points:
+// HAPPairingPairSetupHandleWrite at:
+//   https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1209
+// and
+// HAPPairingPairSetupHandleRead at:
+//   https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1377C10-L1377C39
+//
+// It's probably a good idea to follow that structure such that we can easily follow the code and if need be introspect
+// the data in intermediate stages in the reference.
+
+use uuid;
+
+pub const CHACHA20_POLY1305_KEY_BYTES: usize = 32;
+pub const X25519_SCALAR_BYTES: usize = 32;
+pub const X25519_BYTES: usize = 32;
+
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct PairingId(pub uuid::Uuid);
+
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub struct PairingPublicKey(pub [u8; 32]);
+
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub struct Pairing {
+    pub id: PairingId,
+    // NONCOMPLIANCE; Why do we have a numIdentifierBytes here??
+    pub public_key: PairingPublicKey,
+    pub permissions: u8,
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L116
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
+pub struct PairSetup {
+    pub state: PairState,
+    pub method: u8,
+    pub error: u8,
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
+pub struct PairVerify {
+    pub setup: PairSetup,
+    pub session_key: [u8; CHACHA20_POLY1305_KEY_BYTES],
+    pub cv_pk: [u8; X25519_BYTES],
+    pub cv_sk: [u8; X25519_SCALAR_BYTES],
+    pub cv_key: [u8; X25519_BYTES],
+    pub pairing_id: usize,
+    pub controller_cv_pk: [u8; X25519_BYTES],
+}
 
 #[repr(u8)]
 pub enum PairingMethod {
@@ -148,10 +206,67 @@ pub enum TLVType {
      */
     Separator = 0xFF,
 }
+impl Into<u8> for TLVType {
+    fn into(self) -> u8 {
+        self as u8
+    }
+}
+
+pub struct TLVMethod<'a>(TLV<'a>);
+impl<'a> TLVMethod<'a> {
+    pub fn tied(data: &'a [u8]) -> Self {
+        Self(TLV::tied(data, TLVType::Method))
+    }
+}
+impl<'a> core::ops::Deref for TLVMethod<'a> {
+    type Target = TLV<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<'a> core::ops::DerefMut for TLVMethod<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(u8)]
+pub enum PairState {
+    #[default]
+    NotStarted = 0,
+    //ReceivedM1 = 1,
+}
+
+use crate::tlv::{TLV, TLVReader};
+// HAPPairingPairSetupHandleWrite
+pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<(), ()> {
+    let _ = data;
+    match setup.state {
+        PairState::NotStarted => {
+            let mut a = TLVMethod::tied(&data);
+            let mut b = TLV::tied(&data, 0x06);
+
+            let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
+        }
+    }
+    Ok(())
+}
+
+// HAPPairingPairSetupHandleRead
+pub fn pair_setup_handle_outgoing(setup: &mut PairSetup, data: &mut [u8]) -> Result<usize, ()> {
+    let _ = data;
+    let _ = setup;
+    Ok(0)
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
+pub fn pair_setup_process_m1() {}
 
 #[cfg(test)]
 mod test {
-    // use super::*;
+    use super::*;
 
     fn init() {
         let _ = env_logger::builder()
@@ -168,17 +283,18 @@ mod test {
             0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
             0x01,
         ];
-        let reader = crate::tlv::TLVReader::new(&tlv_payload);
-        for (i, entry) in reader.enumerate() {
-            let entry = entry?;
-            if i == 0 {
-                assert_eq!(entry.type_id, 0x00);
-            } else if i == 2 {
-                assert_eq!(entry.type_id, 0x13);
-                assert_eq!(entry.length, 0x04);
-            }
-        }
 
+        let mut a = TLV::tied(&tlv_payload, 0x00);
+        let mut b = TLV::tied(&tlv_payload, 0x06);
+
+        let collected = TLVReader::new(&tlv_payload).read_into(&mut [&mut a, &mut b]);
+        assert_eq!(collected.is_ok(), true);
+        assert_eq!(a.type_id, 0x00);
+        assert_eq!(a.length, 0x01);
+        assert_eq!(a.data, &[0x00]);
+        assert_eq!(b.type_id, 0x06);
+        assert_eq!(b.length, 0x01);
+        assert_eq!(b.data, &[0x01]);
         Ok(())
     }
 }
