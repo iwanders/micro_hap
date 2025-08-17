@@ -4,7 +4,7 @@
 //
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L122
 //
-// use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 //
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c
@@ -20,7 +20,19 @@
 // It's probably a good idea to follow that structure such that we can easily follow the code and if need be introspect
 // the data in intermediate stages in the reference.
 
+use crate::tlv::{TLV, TLVError, TLVReader};
 use uuid;
+
+#[derive(Debug, Copy, Clone)]
+pub enum PairingError {
+    TLVError(TLVError),
+}
+
+impl From<TLVError> for PairingError {
+    fn from(e: TLVError) -> PairingError {
+        PairingError::TLVError(e)
+    }
+}
 
 pub const CHACHA20_POLY1305_KEY_BYTES: usize = 32;
 pub const X25519_SCALAR_BYTES: usize = 32;
@@ -45,7 +57,7 @@ pub struct Pairing {
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairSetup {
     pub state: PairState,
-    pub method: u8,
+    pub method: PairingMethod,
     pub error: u8,
 }
 
@@ -60,8 +72,12 @@ pub struct PairVerify {
     pub controller_cv_pk: [u8; X25519_BYTES],
 }
 
+#[derive(
+    PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
+)]
 #[repr(u8)]
 pub enum PairingMethod {
+    #[default]
     /// Pair Setup.
     PairSetup = 0x00,
 
@@ -86,6 +102,7 @@ pub enum PairingMethod {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L122
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum TLVType {
     /**
@@ -212,12 +229,17 @@ impl Into<u8> for TLVType {
     }
 }
 
+/// Helper macro to make typed newtype wrappers around TLV
 macro_rules! typed_tlv {
     ( $name:ident, $tlv_type:expr  ) => {
+        #[derive(PartialEq, Eq, Debug, Copy, Clone)]
         pub struct $name<'a>(TLV<'a>);
         impl<'a> $name<'a> {
             pub fn tied(data: &'a [u8]) -> Self {
                 Self(TLV::tied(data, $tlv_type))
+            }
+            pub fn tlv_type(&self) -> TLVType {
+                $tlv_type
             }
         }
         impl<'a> core::ops::Deref for $name<'a> {
@@ -235,30 +257,36 @@ macro_rules! typed_tlv {
     };
 }
 
+// And then make the concrete TLV types.
 typed_tlv!(TLVMethod, TLVType::Method);
 typed_tlv!(TLVState, TLVType::State);
+typed_tlv!(TLVFlags, TLVType::Flags);
 
-#[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(
+    PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
+)]
 #[repr(u8)]
 pub enum PairState {
     #[default]
     NotStarted = 0,
-    //ReceivedM1 = 1,
+    ReceivedM1 = 1,
 }
 
-use crate::tlv::{TLV, TLVReader};
 // HAPPairingPairSetupHandleWrite
-pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<(), ()> {
+pub fn pair_setup_handle_incoming(setup: &mut PairSetup, data: &[u8]) -> Result<(), PairingError> {
     let _ = data;
     match setup.state {
         PairState::NotStarted => {
-            let mut a = TLVMethod::tied(&data);
-            let mut b = TLVState::tied(&data);
-
-            let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
+            let mut method = TLVMethod::tied(&data);
+            let mut state = TLVState::tied(&data);
+            let mut flags = TLVFlags::tied(&data);
+            TLVReader::new(&data).require_into(&mut [&mut method, &mut state, &mut flags])?;
+            pair_setup_process_m1(setup, method, state, flags)
+        }
+        catch_all => {
+            todo!("Unhandled state: {:?}", catch_all);
         }
     }
-    Ok(())
 }
 
 // HAPPairingPairSetupHandleRead
@@ -269,7 +297,24 @@ pub fn pair_setup_handle_outgoing(setup: &mut PairSetup, data: &mut [u8]) -> Res
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
-pub fn pair_setup_process_m1() {}
+pub fn pair_setup_process_m1(
+    setup: &mut PairSetup,
+    method: TLVMethod,
+    state: TLVState,
+    flags: TLVFlags,
+) -> Result<(), PairingError> {
+    let method = method.try_from::<PairingMethod>()?;
+    // info!("method: {:?}", method);
+    // info!("state: {:?}", state);
+    // info!("flags: {:?}", flags);
+
+    setup.method = *method;
+    // NONCOMPLIANCE  What to do with the flags, it goes into the server's pairsetup state... which we don't yet have
+    let _ = flags;
+    setup.state = *state.try_from::<PairState>()?;
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod test {
@@ -283,25 +328,15 @@ mod test {
     }
 
     #[test]
-    fn test_pairing_tlv_parse() -> Result<(), crate::tlv::TLVError> {
+    fn test_pairing_tlv_parse() -> Result<(), PairingError> {
         init();
 
-        let data = [
+        let incoming_0 = [
             0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
             0x01,
         ];
-
-        let mut a = TLVMethod::tied(&data);
-        let mut b = TLVState::tied(&data);
-
-        let collected = TLVReader::new(&data).read_into(&mut [&mut a, &mut b]);
-        assert_eq!(collected.is_ok(), true);
-        assert_eq!(a.type_id, 0x00);
-        assert_eq!(a.length, 0x01);
-        assert_eq!(a.data, &[0x00]);
-        assert_eq!(b.type_id, 0x06);
-        assert_eq!(b.length, 0x01);
-        assert_eq!(b.data, &[0x01]);
+        let mut setup = PairSetup::default();
+        pair_setup_handle_incoming(&mut setup, &incoming_0)?;
         Ok(())
     }
 }

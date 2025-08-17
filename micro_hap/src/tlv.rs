@@ -1,3 +1,23 @@
+// For interpreting the TLV wrapper itself
+use zerocopy::{FromBytes, Immutable, KnownLayout, TryFromBytes};
+
+#[derive(Debug, Copy, Clone)]
+pub enum TLVError {
+    NotEnoughData,
+    MissingEntry,
+    UnexpectedValue,
+}
+
+impl From<TLVError> for trouble_host::Error {
+    fn from(e: TLVError) -> trouble_host::Error {
+        match e {
+            TLVError::NotEnoughData => trouble_host::Error::OutOfMemory,
+            TLVError::MissingEntry => trouble_host::Error::InvalidValue,
+            TLVError::UnexpectedValue => trouble_host::Error::InvalidValue,
+        }
+    }
+}
+
 /// Reader iterator for TLV sequences;
 /// Yielding entries that hold:
 ///   type_id: u8,
@@ -20,7 +40,6 @@ impl<'a> TLVReader<'a> {
     }
 
     pub fn read_into(self, tlvs: &mut [&mut TLV<'a>]) -> Result<(), TLVError> {
-        //let collected = TLVReader::read(&[&mut a, &mut b]);
         for entry in self {
             let entry = entry?;
             for v in tlvs.iter_mut() {
@@ -32,14 +51,29 @@ impl<'a> TLVReader<'a> {
         }
         Ok(())
     }
+
+    pub fn require_into(self, tlvs: &mut [&mut TLV<'a>]) -> Result<(), TLVError> {
+        self.read_into(tlvs)?;
+        for t in tlvs.iter() {
+            if t.is_none() {
+                return Err(TLVError::MissingEntry);
+            }
+        }
+        Ok(())
+    }
 }
 
+/// A borrowed TLV entry, it is a thin wrapper around the segment in the original buffer.
+/// This may act as an optional when the length is zero, but the lifetime is still tied on an original buffer.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct TLV<'a> {
     pub type_id: u8,
     pub length: u8,
     pub data: &'a [u8],
 }
+
 impl<'a> TLV<'a> {
+    /// Create a new TLV of the specified type, tied to the data buffer.
     pub fn tied<T: Into<u8>>(data: &'a [u8], type_id: T) -> Self {
         Self {
             type_id: type_id.into(),
@@ -47,20 +81,32 @@ impl<'a> TLV<'a> {
             data: &data[0..0],
         }
     }
+    /// The TLV contains something, its length is non zero.
     pub fn is_some(&self) -> bool {
         self.length != 0
     }
-}
 
-#[derive(Debug, Copy, Clone)]
-pub enum TLVError {
-    NotEnoughData,
-}
+    /// The TLV contains nothing, its length is zero.
+    pub fn is_none(&self) -> bool {
+        self.length == 0
+    }
 
-impl From<TLVError> for trouble_host::Error {
-    fn from(e: TLVError) -> trouble_host::Error {
-        match e {
-            TLVError::NotEnoughData => trouble_host::Error::OutOfMemory,
+    /// Try to interpret the data as a zerocopy-enabled type.
+    pub fn try_from<T: TryFromBytes + KnownLayout + Immutable>(&self) -> Result<&T, TLVError> {
+        T::try_ref_from_prefix(self.data)
+            .map_err(|_| TLVError::UnexpectedValue)
+            .map(|(a, _remaining)| a)
+    }
+
+    pub fn to_u32(&self) -> Result<u32, TLVError> {
+        if self.length == 1 {
+            Ok(u8::read_from_bytes(self.data).unwrap() as u32)
+        } else if self.length == 2 {
+            Ok(u16::read_from_bytes(self.data).unwrap() as u32)
+        } else if self.length == 4 {
+            Ok(u32::read_from_bytes(self.data).unwrap())
+        } else {
+            Err(TLVError::UnexpectedValue)
         }
     }
 }
@@ -147,5 +193,28 @@ mod test {
         assert_eq!(b.type_id, 0x06);
         assert_eq!(b.length, 0x01);
         assert_eq!(b.data, &[0x01]);
+    }
+    #[test]
+    fn test_tlv_to_u32() {
+        init();
+
+        let entry = TLVReader::new(&[0x00, 0x01, 0x37]).next().unwrap().unwrap();
+        assert_eq!(entry.to_u32().unwrap(), 0x37);
+        let entry = TLVReader::new(&[0x00, 0x02, 0x37, 0x02])
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            entry.to_u32().unwrap(),
+            u16::from_le_bytes([0x37, 0x02]) as u32
+        );
+        let entry = TLVReader::new(&[0x00, 0x04, 0x37, 0x02, 0x00, 0x03])
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            entry.to_u32().unwrap(),
+            u32::from_le_bytes([0x37, 0x02, 0x00, 0x03])
+        );
     }
 }
