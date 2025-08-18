@@ -36,6 +36,7 @@ use sha2::{Digest, Sha512};
 pub struct SrpGroup {
     g: u32,
     n: &'static U3072,
+    //k: &'static U3072,
 }
 
 pub struct SrpServer<'a, D: Digest> {
@@ -74,17 +75,16 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     ///
     /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
     /// k*v + g^b % N
-    pub fn compute_public_ephemeral(&self, b: &[u8], v: &WU3072, public_b: &mut WU3072) {
+    pub fn compute_public_ephemeral(&self, b: &[u8], v: &U3072, public_b: &mut WU3072) {
         let bi = WU3072::load_from(b);
 
         // let inter = (k * v) % &self.params.n;
-        let mut inter = WU3072::default();
-        compute_k::<Sha512>(&self.params, &mut inter);
+        let mut inter = compute_k::<Sha512>(self.params.g, self.params.n);
         // Now we have k in intermediate, all that remains is mult with v and modulo. Modulo is odd, so;
         // https://docs.rs/crypto-bigint/latest/crypto_bigint/struct.Uint.html#method.mul_mod
         // is applicable:
         let n = NonZero::new(*self.params.n).unwrap();
-        inter = Wrapping(inter.0.mul_mod(&v.0, &n));
+        inter = inter.mul_mod(&v, &n);
 
         // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
         // May need that montomery construct from https://github.com/RustCrypto/crypto-bigint/issues/775 to ensure
@@ -93,9 +93,9 @@ impl<'a, D: Digest> SrpServer<'a, D> {
 }
 
 // This entire function depends on the group... why don't we pre-calculate this and put it in the group instead?
-pub fn compute_k<D: Digest>(params: &SrpGroup, output: &mut WU3072) {
+pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     // to_be_bytes makes a copy... :(
-    let n_words: &[u64; 3072 / (64)] = params.n.as_words();
+    let n_words: &[u64; 3072 / (64)] = n.as_words();
     // Use zerocopy to cast that to bytes.
     use zerocopy::IntoBytes;
     let n_bytes = n_words.as_bytes();
@@ -110,17 +110,18 @@ pub fn compute_k<D: Digest>(params: &SrpGroup, output: &mut WU3072) {
         hasher.update(&[0]);
     }
     // This is fine, this allocates only 4 bytes on the stack.
-    hasher.update(&params.g.to_be_bytes());
+    hasher.update(&g.to_be_bytes());
     // info!("g.to_be_bytes(): {:?}", params.g.to_be_bytes());
 
     let hash_result = hasher.finalize();
 
     // Allocate the result on the stack, that's a must anyway.
-    output.0.set_zero();
-    let mut result_bytes = output.0.as_words_mut().as_mut_bytes();
+    let mut output: U3072 = Default::default();
+    let mut result_bytes = output.as_words_mut().as_mut_bytes();
     for (r, t) in result_bytes.iter_mut().rev().zip(hash_result.as_slice()) {
         *r = *t;
     }
+    output
 }
 
 #[cfg(test)]
@@ -132,16 +133,12 @@ mod test {
     #[test]
     fn test_srp_local() {
         crate::test::init();
-        let mut output = WU3072::default();
-        compute_k::<Sha512>(&groups::GROUP_3072, &mut output);
-        info!("output: {:0>2x?}", output.0.to_be_bytes());
-        info!("output:  {:?}", output);
+        let k = compute_k::<Sha512>(groups::GROUP_3072.g, &*groups::GROUP_3072.n);
+        info!("output: {:0>2x?}", k.to_be_bytes());
+        info!("output:  {:?}", k);
 
         let expected_start = [0xa9, 0xc2, 0xe2, 0x55, 0x9b, 0xf0, 0xeb, 0xb5, 0x3f, 0x0c];
-        assert_eq!(
-            output.0.to_be_bytes()[0..expected_start.len()],
-            expected_start
-        );
+        assert_eq!(k.to_be_bytes()[0..expected_start.len()], expected_start);
     }
     #[test]
     fn test_srp_reference() {
@@ -313,10 +310,10 @@ mod test {
 
 pub mod groups {
     use super::*;
-    // https://datatracker.ietf.org/doc/html/rfc5054#page-16
-    pub const GROUP_3072: SrpGroup = SrpGroup {
-        g: 5,
-        n: &U3072::from_be_slice(&[
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref GROUP_3072_N: U3072 = U3072::from_be_slice(&[
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc9, 0x0f, 0xda, 0xa2, 0x21, 0x68,
             0xc2, 0x34, 0xc4, 0xc6, 0x62, 0x8b, 0x80, 0xdc, 0x1c, 0xd1, 0x29, 0x02, 0x4e, 0x08,
             0x8a, 0x67, 0xcc, 0x74, 0x02, 0x0b, 0xbe, 0xa6, 0x3b, 0x13, 0x9b, 0x22, 0x51, 0x4a,
@@ -345,6 +342,14 @@ pub mod groups {
             0x46, 0xe2, 0x08, 0xe2, 0x4f, 0xa0, 0x74, 0xe5, 0xab, 0x31, 0x43, 0xdb, 0x5b, 0xfc,
             0xe0, 0xfd, 0x10, 0x8e, 0x4b, 0x82, 0xd1, 0x20, 0xa9, 0x3a, 0xd2, 0xca, 0xff, 0xff,
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        ]),
-    };
+        ]);
+        //static ref GROUP_3072_K: U3072 = compute_k(5, &GROUP_3072_N);
+        // https://datatracker.ietf.org/doc/html/rfc5054#page-16
+        pub static ref GROUP_3072: SrpGroup = SrpGroup {
+            g: 5,
+            n: &GROUP_3072_N,
+            //k: &GROUP_3072_K,
+        };
+        pub static ref GROUP_3072_K_SHA512 : U3072 = compute_k::<Sha512>(5, &GROUP_3072_N);
+    }
 }
