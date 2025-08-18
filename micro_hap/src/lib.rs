@@ -20,6 +20,8 @@ use bitfield_struct::bitfield;
 pub mod pairing;
 pub mod tlv;
 
+pub mod srp;
+
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //
@@ -181,5 +183,16 @@ impl Attribute {
     }
     pub fn ble_mut(&mut self) -> &mut BleProperties {
         self.ble.as_mut().unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    pub fn init() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::max())
+            .try_init();
     }
 }
