@@ -78,6 +78,7 @@ embedded-io-adapters = { version = "0.6.2", features = ["tokio-1"] }
 
 # For testing our non_std srp implementation.
 srp = "0.6.0"
+num-bigint = "0.4"
 
 
 [features]

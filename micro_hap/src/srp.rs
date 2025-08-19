@@ -20,6 +20,7 @@
 use core::marker::PhantomData;
 use crypto_bigint::prelude::*;
 use crypto_bigint::{NonZero, U3072, Wrapping};
+use crypto_bigint::{const_monty_form, impl_modulus};
 
 use crypto_bigint::modular::ConstMontyParams;
 //use crypto_bigint::{U1024, const_monty_form, impl_modulus};
@@ -48,19 +49,24 @@ trait LoadFromU8 {
     type Output;
     fn load_from(b: &[u8]) -> Self::Output;
 }
-impl LoadFromU8 for WU3072 {
-    type Output = WU3072;
-
-    fn load_from(b: &[u8]) -> Self::Output {
-        let mut output = Self::Output::default();
-        use zerocopy::IntoBytes;
-        let mut result_bytes = output.0.as_words_mut().as_mut_bytes();
-        for (r, t) in result_bytes.iter_mut().rev().zip(b) {
-            *r = *t;
+/// Helper macro to make typed newtype wrappers around TLV
+macro_rules! implLoad {
+    ( $name:ty  ) => {
+        impl LoadFromU8 for $name {
+            type Output = $name;
+            fn load_from(b: &[u8]) -> Self::Output {
+                let mut output = Self::Output::default();
+                use zerocopy::IntoBytes;
+                let mut result_bytes = output.as_words_mut().as_mut_bytes();
+                for (r, t) in result_bytes.iter_mut().rev().zip(b) {
+                    *r = *t;
+                }
+                output
+            }
         }
-        todo!()
-    }
+    };
 }
+implLoad!(U3072);
 
 impl<'a, D: Digest> SrpServer<'a, D> {
     /// Create new server state.
@@ -75,20 +81,47 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     ///
     /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
     /// k*v + g^b % N
-    pub fn compute_public_ephemeral(&self, b: &[u8], v: &U3072, public_b: &mut WU3072) {
-        let bi = WU3072::load_from(b);
+    pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut U3072) {
+        let bi = U3072::load_from(b);
+        let v = U3072::load_from(v);
+        info!("bi: {:x?}\n", bi);
+        info!("v: {:x?}  b: {}\n", v, v.bits());
+        info!("n: {:x?}  b: {}\n", self.params.n, self.params.n.bits());
 
+        // In https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/server.rs#L94
+        // this is two steps:
         // let inter = (k * v) % &self.params.n;
-        let mut inter = compute_k::<Sha512>(self.params.g, self.params.n);
+        // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
+
+        // First, lets do inter.
+        // let inter = (k * v) % &self.params.n;
+        let k = compute_k::<Sha512>(self.params.g, self.params.n);
+        let mut inter = k;
+        info!("inter: {:x?}, b: {}\n", inter, inter.bits());
+
         // Now we have k in intermediate, all that remains is mult with v and modulo. Modulo is odd, so;
         // https://docs.rs/crypto-bigint/latest/crypto_bigint/struct.Uint.html#method.mul_mod
         // is applicable:
         let n = NonZero::new(*self.params.n).unwrap();
         inter = inter.mul_mod(&v, &n);
+        info!("k * v % n : {:x?}\n", inter);
 
+        let g = U3072::from_u32(self.params.g);
+        // Next we need  this modpow calculation.
+        // g is the generator, b is the input data, and n is the prime. this is g^b % n
         // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
         // May need that montomery construct from https://github.com/RustCrypto/crypto-bigint/issues/775 to ensure
         // we get 'modpow' functionality...
+        //
+        // m.pow(&U1024::from_u32(65537u32))
+        //     .as_montgomery()
+        //     .to_be_bytes()
+        //
+        //
+        // let g = U3072::from_u32(self.params.g);
+        //let r = groups::SRP_3072_CONST_MONTY.retrieve();
+        let right_half = groups::SRP_3072_CONST_MONTY.pow(&bi).retrieve();
+        *public_b = inter.add_mod(&right_half, &self.params.n);
     }
 }
 
@@ -118,7 +151,7 @@ pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     // Allocate the result on the stack, that's a must anyway.
     let mut output: U3072 = Default::default();
     let mut result_bytes = output.as_words_mut().as_mut_bytes();
-    for (r, t) in result_bytes.iter_mut().rev().zip(hash_result.as_slice()) {
+    for (r, t) in result_bytes.iter_mut().zip(hash_result.as_slice()) {
         *r = *t;
     }
     output
@@ -129,6 +162,7 @@ mod test {
     #![allow(non_upper_case_globals)]
     #![allow(dead_code)]
     use super::*;
+    use num_bigint::BigUint;
 
     #[test]
     fn test_srp_local() {
@@ -139,15 +173,88 @@ mod test {
 
         let expected_start = [0xa9, 0xc2, 0xe2, 0x55, 0x9b, 0xf0, 0xeb, 0xb5, 0x3f, 0x0c];
         assert_eq!(k.to_be_bytes()[0..expected_start.len()], expected_start);
+
+        assert_eq!(k.to_words(), groups::GROUP_3072_K_SHA512.to_words());
     }
+
+    #[test]
+    fn test_mulmod() {
+        crate::test::init();
+        use crypto_bigint::U32768;
+        implLoad!(U32768);
+
+        // This is the goal:
+        use srp::groups::G_3072;
+        let ref_b = BigUint::from_bytes_be(&SRP_b);
+        let ref_v = BigUint::from_bytes_be(&SRP_V);
+        let ref_k = srp::utils::compute_k::<Sha512>(&G_3072);
+        let ref_inter = (ref_k * ref_v) % &G_3072.n;
+        let ref_inter_u3072 = U3072::load_from(&ref_inter.to_bytes_be());
+        info!("ref_inter_u3072: {:x?}\n", ref_inter_u3072);
+
+        // This is what we do:
+        let bi = U3072::load_from(&SRP_b);
+        let v = U3072::load_from(&SRP_V);
+        let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
+        info!("bi: {:x?}\n", bi);
+        info!("v: {:x?}  b: {}\n", v, v.bits());
+        info!(
+            "n: {:x?}  b: {}\n",
+            groups::GROUP_3072.n,
+            groups::GROUP_3072.n.bits()
+        );
+
+        // In https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/server.rs#L94
+        // this is two steps:
+        // let inter = (k * v) % &self.params.n;
+        // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
+
+        // First, lets do inter.
+        // let inter = (k * v) % &self.params.n;
+        let mut inter = k;
+        info!("inter: {:x?}, b: {}\n", inter, inter.bits());
+
+        // Now we have k in intermediate, all that remains is mult with v and modulo. Modulo is odd, so;
+        // https://docs.rs/crypto-bigint/latest/crypto_bigint/struct.Uint.html#method.mul_mod
+        // is applicable:
+        let n = NonZero::new(*groups::GROUP_3072.n).unwrap();
+        inter = inter.mul_mod(&v, &n);
+        info!("k * v % n : {:x?}\n", inter);
+
+        // try uber large, multiplication, then modulo?
+        let bi = U32768::load_from(&SRP_b);
+        let v = U32768::load_from(&SRP_V);
+        info!("v: {:x?}  b: {}\n", v, v.bits());
+        todo!("finally found the issue, load_from is broken!");
+        let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
+        let k_u = U32768::load_from(&k.to_be_bytes());
+        //let ref_inter = (ref_k * ref_v) % &G_3072.n;
+        let kv = k_u * v;
+    }
+
     #[test]
     fn test_srp_reference() {
         crate::test::init();
         use srp::groups::G_3072;
         let server = srp::server::SrpServer::<Sha512>::new(&G_3072);
         let b_pub = server.compute_public_ephemeral(&SRP_b, &SRP_V);
-        info!("srp_B: {b_pub:x?}");
+        info!("srp_B: {:x?}", U3072::load_from(&b_pub));
         assert_eq!(b_pub, SRP_B);
+        //(&self, b: &BigUint, k: &BigUint, v: &BigUint) -> BigUint {
+        //
+        let ref_b = BigUint::from_bytes_be(&SRP_b);
+        let ref_v = BigUint::from_bytes_be(&SRP_V);
+        let ref_k = srp::utils::compute_k::<Sha512>(&G_3072);
+        let ref_inter = (ref_k * ref_v) % &G_3072.n;
+        let ref_inter_u3072 = U3072::load_from(&ref_inter.to_bytes_be());
+        //info!("ref_inter: {:x?}", ref_inter);
+        info!("GOAL INTER: {:x?}", ref_inter_u3072);
+
+        let our_server = SrpServer::<Sha512>::new(&groups::GROUP_3072);
+        let mut our_b_pub = U3072::default();
+        our_server.compute_public_ephemeral(&SRP_b, &SRP_V, &mut our_b_pub);
+        info!("our_b_pub: {our_b_pub:x?}");
+        assert_eq!(our_b_pub, U3072::load_from(&SRP_B));
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
@@ -312,6 +419,9 @@ pub mod groups {
     use super::*;
     use lazy_static::lazy_static;
 
+    use crypto_bigint::impl_modulus;
+    use crypto_bigint::modular::ConstMontyParams;
+
     lazy_static! {
         static ref GROUP_3072_N: U3072 = U3072::from_be_slice(&[
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc9, 0x0f, 0xda, 0xa2, 0x21, 0x68,
@@ -351,5 +461,20 @@ pub mod groups {
             //k: &GROUP_3072_K,
         };
         pub static ref GROUP_3072_K_SHA512 : U3072 = compute_k::<Sha512>(5, &GROUP_3072_N);
+
+
+
+    }
+
+    impl_modulus!(
+        Srp3072Modulus,
+        U3072,
+        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF"
+    );
+    pub type Srp3072ConstMontyForm =
+        crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, { U3072::LIMBS }>;
+    lazy_static! {
+        pub static ref SRP_3072_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> =
+            Srp3072ConstMontyForm::default();
     }
 }
