@@ -45,17 +45,17 @@ pub struct SrpServer<'a, D: Digest> {
     d: PhantomData<D>,
 }
 
-trait LoadFromU8 {
+trait LoadFromBigEndianU8 {
     type Output;
-    fn load_from(b: &[u8]) -> Self::Output;
+    fn load_from_be(b: &[u8]) -> Self::Output;
 }
 /// Helper macro to make typed newtype wrappers around TLV
 macro_rules! implLoad {
     ( $name:ty  ) => {
-        impl LoadFromU8 for $name {
+        impl LoadFromBigEndianU8 for $name {
             type Output = $name;
 
-            fn load_from(b: &[u8]) -> Self::Output {
+            fn load_from_be(b: &[u8]) -> Self::Output {
                 let mut output = Self::Output::default();
                 let len = Self::Output::BYTES;
                 use zerocopy::IntoBytes;
@@ -85,8 +85,8 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
     /// k*v + g^b % N
     pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut U3072) {
-        let bi = U3072::load_from(b);
-        let v = U3072::load_from(v);
+        let bi = U3072::load_from_be(b);
+        let v = U3072::load_from_be(v);
         info!("bi: {:x?}\n", bi);
         info!("v: {:x?}  b: {}\n", v, v.bits());
         info!("n: {:x?}  b: {}\n", self.params.n, self.params.n.bits());
@@ -123,6 +123,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         //
         // let g = U3072::from_u32(self.params.g);
         //let r = groups::SRP_3072_CONST_MONTY.retrieve();
+
         let right_half = groups::SRP_3072_CONST_MONTY.pow(&bi).retrieve();
         *public_b = inter.add_mod(&right_half, &self.params.n);
     }
@@ -152,7 +153,7 @@ pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     let hash_result = hasher.finalize();
 
     // Allocate the result on the stack, that's a must anyway.
-    U3072::load_from(hash_result.as_slice())
+    U3072::load_from_be(hash_result.as_slice())
 }
 
 #[cfg(test)]
@@ -179,11 +180,11 @@ mod test {
     }
 
     #[test]
-    fn test_mulmod() {
+    fn test_mulmod_modpow() {
         crate::test::init();
 
         // Check loading integers.
-        let v = U128::load_from(&(0x1234567890abcdefu128 | (123u128 << 80)).to_be_bytes());
+        let v = U128::load_from_be(&(0x1234567890abcdefu128 | (123u128 << 80)).to_be_bytes());
         info!("v: {:x?}\n", v);
         assert_eq!(v.as_words()[0], 0x1234567890abcdefu64); // word 0 is the low word.
         assert_eq!(v.as_words()[1], 123u64 << (80 - 64)); // word 1 is the high word.
@@ -193,6 +194,12 @@ mod test {
         let zi = u128::from_be_bytes(z);
         assert_eq!(zi, 0x00000000007B00001234567890ABCDEFu128);
 
+        // Ensure we can roundtrip with big endian bytes.
+        assert_eq!(
+            zi.to_be_bytes(),
+            U128::load_from_be(&zi.to_be_bytes()).to_be_bytes()
+        );
+
         // So all numbers are big endian, and they're stored big endian.
 
         // This is the goal:
@@ -201,12 +208,12 @@ mod test {
         let ref_v = BigUint::from_bytes_be(&SRP_V);
         let ref_k = srp::utils::compute_k::<Sha512>(&G_3072);
         let ref_inter = (ref_k * ref_v) % &G_3072.n;
-        let ref_inter_u3072 = U3072::load_from(&ref_inter.to_bytes_be());
+        let ref_inter_u3072 = U3072::load_from_be(&ref_inter.to_bytes_be());
         info!("ref_inter_u3072: {:x?}\n", ref_inter_u3072);
 
         // This is what we do:
-        let bi = U3072::load_from(&SRP_b);
-        let v = U3072::load_from(&SRP_V);
+        let bi = U3072::load_from_be(&SRP_b);
+        let v = U3072::load_from_be(&SRP_V);
         let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
         info!("bi: {:x?}   b: {}\n", bi, bi.bits());
         info!("v: {:x?}  b: {}\n", v, v.bits());
@@ -215,12 +222,6 @@ mod test {
             groups::GROUP_3072.n,
             groups::GROUP_3072.n.bits()
         );
-
-        // In https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/server.rs#L94
-        // this is two steps:
-        // let inter = (k * v) % &self.params.n;
-        // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
-
         // First, lets do inter.
         // let inter = (k * v) % &self.params.n;
         let mut inter = k;
@@ -232,17 +233,43 @@ mod test {
         let n = NonZero::new(*groups::GROUP_3072.n).unwrap();
         inter = inter.mul_mod(&v, &n);
         info!("k * v % n : {:x?}\n", inter);
-        return;
 
-        // try uber large, multiplication, then modulo?
-        let bi = U32768::load_from(&SRP_b);
-        let v = U32768::load_from(&SRP_V);
-        info!("v: {:x?}  b: {}\n", v, v.bits());
-        //todo!("finally found the issue, load_from is broken!");
-        let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
-        let k_u = U32768::load_from(&k.to_be_bytes());
-        //let ref_inter = (ref_k * ref_v) % &G_3072.n;
-        let kv = k_u * v;
+        // Verify that matches.
+        assert_eq!(ref_inter_u3072.to_be_bytes(), inter.to_be_bytes());
+
+        // That checks off the first step, next lets do this mulmod thing.
+
+        // In https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/server.rs#L94
+        // this is two steps:
+        let ref_right = &G_3072.g.modpow(&ref_b, &G_3072.n);
+        info!("ref_right: {:x?}\n", ref_right);
+        let ref_right_u3072: U3072 = U3072::load_from_be(&ref_right.to_bytes_be());
+        info!(
+            "ref_right_u3072: {:x?}, {:?}\n",
+            ref_right_u3072,
+            ref_right_u3072.bits()
+        );
+
+        // Okay, now we need this magic.
+        //
+        //let right_half = groups::SRP_3072_CONST_MONTY_.pow(&bi).retrieve();
+
+        impl_modulus!(
+            Srp3072Modulus,
+            U3072,
+            "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF"
+        );
+        // let z = Srp3072ConstMontyForm::default();
+
+        let m = U3072::from_u8(5);
+        let m = const_monty_form!(m, Srp3072Modulus);
+
+        let right_ours = m.pow(&bi).retrieve();
+        info!("right_ours: {:x?}, {:?}\n", right_ours, right_ours.bits());
+        assert_eq!(right_ours.to_be_bytes(), ref_right_u3072.to_be_bytes());
+
+        // let ref_res = (ref_inter + &G_3072.g.modpow(&ref_b, &G_3072.n)) % &G_3072.n;
+        // info!("ref_res: {:x?}\n", ref_res);
     }
 
     #[test]
@@ -251,23 +278,14 @@ mod test {
         use srp::groups::G_3072;
         let server = srp::server::SrpServer::<Sha512>::new(&G_3072);
         let b_pub = server.compute_public_ephemeral(&SRP_b, &SRP_V);
-        info!("srp_B: {:x?}", U3072::load_from(&b_pub));
+        info!("srp_B: {:x?}", U3072::load_from_be(&b_pub));
         assert_eq!(b_pub, SRP_B);
-        //(&self, b: &BigUint, k: &BigUint, v: &BigUint) -> BigUint {
-        //
-        let ref_b = BigUint::from_bytes_be(&SRP_b);
-        let ref_v = BigUint::from_bytes_be(&SRP_V);
-        let ref_k = srp::utils::compute_k::<Sha512>(&G_3072);
-        let ref_inter = (ref_k * ref_v) % &G_3072.n;
-        let ref_inter_u3072 = U3072::load_from(&ref_inter.to_bytes_be());
-        //info!("ref_inter: {:x?}", ref_inter);
-        info!("GOAL INTER: {:x?}", ref_inter_u3072);
 
         let our_server = SrpServer::<Sha512>::new(&groups::GROUP_3072);
         let mut our_b_pub = U3072::default();
         our_server.compute_public_ephemeral(&SRP_b, &SRP_V, &mut our_b_pub);
         info!("our_b_pub: {our_b_pub:x?}");
-        assert_eq!(our_b_pub, U3072::load_from(&SRP_B));
+        assert_eq!(our_b_pub, U3072::load_from_be(&SRP_B));
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
@@ -486,8 +504,14 @@ pub mod groups {
     );
     pub type Srp3072ConstMontyForm =
         crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, { U3072::LIMBS }>;
+
+    // impl_modulus!(Srp3072ModulusN, U3072, "05");
+    // pub type Srp3072ConstMontyFormN =
+    //     crypto_bigint::modular::ConstMontyForm<Srp3072ModulusN, { U3072::LIMBS }>;
     lazy_static! {
         pub static ref SRP_3072_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> =
             Srp3072ConstMontyForm::default();
+        // pub static ref SRP_3072_CONST_MONTY_N: crypto_bigint::modular::ConstMontyForm<Srp3072ModulusN, 48> =
+        //     Srp3072ConstMontyFormN::default();
     }
 }
