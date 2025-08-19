@@ -54,11 +54,14 @@ macro_rules! implLoad {
     ( $name:ty  ) => {
         impl LoadFromU8 for $name {
             type Output = $name;
+
             fn load_from(b: &[u8]) -> Self::Output {
                 let mut output = Self::Output::default();
+                let len = Self::Output::BYTES;
                 use zerocopy::IntoBytes;
+                // words: Inner limb array. Stored from least significant to most significant.
                 let mut result_bytes = output.as_words_mut().as_mut_bytes();
-                for (r, t) in result_bytes.iter_mut().rev().zip(b) {
+                for (r, t) in result_bytes.iter_mut().rev().skip(len - b.len()).zip(b) {
                     *r = *t;
                 }
                 output
@@ -149,12 +152,7 @@ pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     let hash_result = hasher.finalize();
 
     // Allocate the result on the stack, that's a must anyway.
-    let mut output: U3072 = Default::default();
-    let mut result_bytes = output.as_words_mut().as_mut_bytes();
-    for (r, t) in result_bytes.iter_mut().zip(hash_result.as_slice()) {
-        *r = *t;
-    }
-    output
+    U3072::load_from(hash_result.as_slice())
 }
 
 #[cfg(test)]
@@ -164,6 +162,9 @@ mod test {
     use super::*;
     use num_bigint::BigUint;
 
+    use crypto_bigint::{U128, U32768};
+    implLoad!(U128);
+    implLoad!(U32768);
     #[test]
     fn test_srp_local() {
         crate::test::init();
@@ -180,8 +181,19 @@ mod test {
     #[test]
     fn test_mulmod() {
         crate::test::init();
-        use crypto_bigint::U32768;
-        implLoad!(U32768);
+
+        // Check loading integers.
+        let v = U128::load_from(&(0x1234567890abcdefu128 | (123u128 << 80)).to_be_bytes());
+        info!("v: {:x?}\n", v);
+        assert_eq!(v.as_words()[0], 0x1234567890abcdefu64); // word 0 is the low word.
+        assert_eq!(v.as_words()[1], 123u64 << (80 - 64)); // word 1 is the high word.
+        let z = v.to_be_bytes();
+        let low = 0x1234567890abcdefu64.to_be_bytes();
+        assert_eq!(&z[0 + 8..8 + 8], &low[0..8]);
+        let zi = u128::from_be_bytes(z);
+        assert_eq!(zi, 0x00000000007B00001234567890ABCDEFu128);
+
+        // So all numbers are big endian, and they're stored big endian.
 
         // This is the goal:
         use srp::groups::G_3072;
@@ -196,7 +208,7 @@ mod test {
         let bi = U3072::load_from(&SRP_b);
         let v = U3072::load_from(&SRP_V);
         let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
-        info!("bi: {:x?}\n", bi);
+        info!("bi: {:x?}   b: {}\n", bi, bi.bits());
         info!("v: {:x?}  b: {}\n", v, v.bits());
         info!(
             "n: {:x?}  b: {}\n",
@@ -220,12 +232,13 @@ mod test {
         let n = NonZero::new(*groups::GROUP_3072.n).unwrap();
         inter = inter.mul_mod(&v, &n);
         info!("k * v % n : {:x?}\n", inter);
+        return;
 
         // try uber large, multiplication, then modulo?
         let bi = U32768::load_from(&SRP_b);
         let v = U32768::load_from(&SRP_V);
         info!("v: {:x?}  b: {}\n", v, v.bits());
-        todo!("finally found the issue, load_from is broken!");
+        //todo!("finally found the issue, load_from is broken!");
         let k = compute_k::<Sha512>(groups::GROUP_3072.g, groups::GROUP_3072.n);
         let k_u = U32768::load_from(&k.to_be_bytes());
         //let ref_inter = (ref_k * ref_v) % &G_3072.n;
