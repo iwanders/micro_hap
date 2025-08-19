@@ -40,6 +40,11 @@ pub const CHACHA20_POLY1305_KEY_BYTES: usize = 32;
 pub const X25519_SCALAR_BYTES: usize = 32;
 pub const X25519_BYTES: usize = 32;
 
+pub const SRP_PUBLIC_KEY_BYTES: usize = 384;
+pub const SRP_SECRET_KEY_BYTES: usize = 32;
+pub const SRP_SESSION_KEY_BYTES: usize = 64;
+pub const SRP_PROOF_BYTES: usize = 64;
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessorySetupInfo.c#L324C45-L324C59
 // Zero byte at the end is not added.
 pub const SRP_USERNAME: &'static str = "Pair-Setup";
@@ -93,9 +98,49 @@ pub struct PairSetup {
     pub error: u8,
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L128
+/// Container struct for all the pairing temporary values.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub struct ServerPairSetup {
+    /// Ephemeral public key
+    #[allow(non_snake_case)]
+    pub A: [u8; SRP_PUBLIC_KEY_BYTES],
+
+    /// Private secret
+    pub b: [u8; SRP_SECRET_KEY_BYTES],
+
+    /// Ephemeral public key
+    #[allow(non_snake_case)]
+    pub B: [u8; SRP_PUBLIC_KEY_BYTES],
+
+    /// SRP session key
+    #[allow(non_snake_case)]
+    pub K: [u8; SRP_SESSION_KEY_BYTES],
+
+    /// Session key for pair setup procecure
+    pub session_key: [u8; CHACHA20_POLY1305_KEY_BYTES],
+
+    pub m1: [u8; SRP_PROOF_BYTES],
+    pub m2: [u8; SRP_PROOF_BYTES],
+}
+impl Default for ServerPairSetup {
+    fn default() -> Self {
+        Self {
+            A: [0u8; SRP_PUBLIC_KEY_BYTES],
+            b: [0u8; SRP_SECRET_KEY_BYTES],
+            B: [0u8; SRP_PUBLIC_KEY_BYTES],
+            K: [0u8; SRP_SESSION_KEY_BYTES],
+            session_key: [0u8; CHACHA20_POLY1305_KEY_BYTES],
+            m1: [0u8; SRP_PROOF_BYTES],
+            m2: [0u8; SRP_PROOF_BYTES],
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairServer {
     pub flags: PairingFlags,
+    pub pair_setup: ServerPairSetup,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
@@ -441,6 +486,10 @@ pub fn pair_setup_process_get_m2(
     // In the AppleHomekitADK, that is data that seems to have been made in the commissioning procedure?
 
     // Do SRP things...
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L256
+
+    // fill with random:
+    ctx.server.pair_setup.b = todo!();
 
     todo!()
 }

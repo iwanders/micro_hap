@@ -388,7 +388,9 @@ impl<'a> BodyBuilder<'a> {
     }
 
     fn add_to_length(&mut self, value: usize) {
-        *u16::mut_from_bytes(&mut self.buffer[self.start..self.start + 2]).unwrap() += value as u16;
+        let position_buffer = &mut self.buffer[self.start..self.start + 2];
+        let previous = u16::from_le_bytes([position_buffer[0], position_buffer[1]]);
+        position_buffer.copy_from_slice(&((previous + value as u16).to_le_bytes()));
     }
 
     fn push_internal<T: IntoBytes + Immutable>(&mut self, value: &T) {

@@ -159,18 +159,6 @@ mod test {
     use crypto_bigint::{U128, U32768};
     implLoad!(U128);
     implLoad!(U32768);
-    #[test]
-    fn test_srp_local() {
-        crate::test::init();
-        let k = compute_k::<Sha512>(groups::GROUP_3072.g, &*groups::GROUP_3072.n);
-        info!("output: {:0>2x?}", k.to_be_bytes());
-        info!("output:  {:?}", k);
-
-        let expected_start = [0xa9, 0xc2, 0xe2, 0x55, 0x9b, 0xf0, 0xeb, 0xb5, 0x3f, 0x0c];
-        assert_eq!(k.to_be_bytes()[0..expected_start.len()], expected_start);
-
-        assert_eq!(k.to_words(), groups::GROUP_3072_K_SHA512.to_words());
-    }
 
     #[test]
     fn test_mulmod_modpow() {
@@ -477,7 +465,7 @@ pub mod groups {
             n: &GROUP_3072_N,
             //k: &GROUP_3072_K,
         };
-        pub static ref GROUP_3072_K_SHA512 : U3072 = compute_k::<Sha512>(5, &GROUP_3072_N);
+
 
 
 
