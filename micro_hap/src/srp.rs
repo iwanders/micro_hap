@@ -87,9 +87,9 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut U3072) {
         let bi = U3072::load_from_be(b);
         let v = U3072::load_from_be(v);
-        info!("bi: {:x?}\n", bi);
-        info!("v: {:x?}  b: {}\n", v, v.bits());
-        info!("n: {:x?}  b: {}\n", self.params.n, self.params.n.bits());
+        // info!("bi: {:x?}\n", bi);
+        // info!("v: {:x?}  b: {}\n", v, v.bits());
+        // info!("n: {:x?}  b: {}\n", self.params.n, self.params.n.bits());
 
         // In https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/server.rs#L94
         // this is two steps:
@@ -100,32 +100,25 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         // let inter = (k * v) % &self.params.n;
         let k = compute_k::<Sha512>(self.params.g, self.params.n);
         let mut inter = k;
-        info!("inter: {:x?}, b: {}\n", inter, inter.bits());
+        // info!("inter: {:x?}, b: {}\n", inter, inter.bits());
 
         // Now we have k in intermediate, all that remains is mult with v and modulo. Modulo is odd, so;
         // https://docs.rs/crypto-bigint/latest/crypto_bigint/struct.Uint.html#method.mul_mod
         // is applicable:
         let n = NonZero::new(*self.params.n).unwrap();
         inter = inter.mul_mod(&v, &n);
-        info!("k * v % n : {:x?}\n", inter);
+        // info!("k * v % n : {:x?}\n", inter);
 
-        let g = U3072::from_u32(self.params.g);
-        // Next we need  this modpow calculation.
+        // Next we need  this modpow calculation... this issue shows the way:
+        // https://github.com/RustCrypto/crypto-bigint/issues/775
         // g is the generator, b is the input data, and n is the prime. this is g^b % n
         // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
-        // May need that montomery construct from https://github.com/RustCrypto/crypto-bigint/issues/775 to ensure
-        // we get 'modpow' functionality...
-        //
-        // m.pow(&U1024::from_u32(65537u32))
-        //     .as_montgomery()
-        //     .to_be_bytes()
-        //
-        //
-        // let g = U3072::from_u32(self.params.g);
-        //let r = groups::SRP_3072_CONST_MONTY.retrieve();
+        let right_side = groups::SRP_3072_G_CONST_MONTY.pow(&bi).retrieve();
 
-        let right_half = groups::SRP_3072_CONST_MONTY.pow(&bi).retrieve();
-        *public_b = inter.add_mod(&right_half, &self.params.n);
+        // Finally, we add that to the intermediate we already had:
+        let combined = inter.add_mod(&right_side, &groups::GROUP_3072.n);
+        // info!("combined: {:x?}, {:?}\n", combined, combined.bits());
+        *public_b = combined;
     }
 }
 
@@ -250,26 +243,19 @@ mod test {
             ref_right_u3072.bits()
         );
 
-        // Okay, now we need this magic.
-        //
-        //let right_half = groups::SRP_3072_CONST_MONTY_.pow(&bi).retrieve();
+        // Next we need  this modpow calculation.
+        // g is the generator, b is the input data, and n is the prime. this is g^b % n
+        // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
 
-        impl_modulus!(
-            Srp3072Modulus,
-            U3072,
-            "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF"
-        );
-        // let z = Srp3072ConstMontyForm::default();
-
-        let m = U3072::from_u8(5);
-        let m = const_monty_form!(m, Srp3072Modulus);
-
-        let right_ours = m.pow(&bi).retrieve();
+        let right_ours = groups::SRP_3072_G_CONST_MONTY.pow(&bi).retrieve();
         info!("right_ours: {:x?}, {:?}\n", right_ours, right_ours.bits());
         assert_eq!(right_ours.to_be_bytes(), ref_right_u3072.to_be_bytes());
 
-        // let ref_res = (ref_inter + &G_3072.g.modpow(&ref_b, &G_3072.n)) % &G_3072.n;
-        // info!("ref_res: {:x?}\n", ref_res);
+        let combined = inter.add_mod(&right_ours, &groups::GROUP_3072.n);
+        info!("combined: {:x?}, {:?}\n", combined, combined.bits());
+
+        // Verify that our final result is correct.
+        assert_eq!(combined, U3072::load_from_be(&SRP_B));
     }
 
     #[test]
@@ -505,13 +491,12 @@ pub mod groups {
     pub type Srp3072ConstMontyForm =
         crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, { U3072::LIMBS }>;
 
-    // impl_modulus!(Srp3072ModulusN, U3072, "05");
-    // pub type Srp3072ConstMontyFormN =
-    //     crypto_bigint::modular::ConstMontyForm<Srp3072ModulusN, { U3072::LIMBS }>;
     lazy_static! {
         pub static ref SRP_3072_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> =
             Srp3072ConstMontyForm::default();
-        // pub static ref SRP_3072_CONST_MONTY_N: crypto_bigint::modular::ConstMontyForm<Srp3072ModulusN, 48> =
-        //     Srp3072ConstMontyFormN::default();
+        pub static ref SRP_3072_G_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> = {
+            let m = U3072::from_u8(5);
+            const_monty_form!(m, Srp3072Modulus)
+        };
     }
 }
