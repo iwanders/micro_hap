@@ -16,38 +16,23 @@
 // WU3072.to_be_bytes() gives a copy in big endian bytes, so lets not do that.
 // Note everything is in big endian...
 
-// This bigint crate is no-alloc
+// Todo; we might as well remove the lifetimes and hashing function, since we only really care about a single group and
+// hash function here.
+
 use core::marker::PhantomData;
+use crypto_bigint::const_monty_form;
 use crypto_bigint::prelude::*;
-use crypto_bigint::{NonZero, U3072, Wrapping};
-use crypto_bigint::{const_monty_form, impl_modulus};
+use crypto_bigint::{NonZero, U3072};
 
 use crypto_bigint::modular::ConstMontyParams;
-//use crypto_bigint::{U1024, const_monty_form, impl_modulus};
-
-type WU3072 = Wrapping<U3072>;
-type NU3072 = NonZero<U3072>;
 
 // U3072 is 384 bytes... is that enough to do this logic here?
 use sha2::{Digest, Sha512};
 
-// From rfc2945
-//
-
-pub struct SrpGroup {
-    g: u32,
-    n: &'static U3072,
-    //k: &'static U3072,
-}
-
-pub struct SrpServer<'a, D: Digest> {
-    params: &'a SrpGroup,
-    d: PhantomData<D>,
-}
-
 trait LoadFromBigEndianU8 {
     type Output;
     fn load_from_be(b: &[u8]) -> Self::Output;
+    fn store_to_be(&self, b: &mut [u8]);
 }
 /// Helper macro to make typed newtype wrappers around TLV
 macro_rules! implLoad {
@@ -66,10 +51,30 @@ macro_rules! implLoad {
                 }
                 output
             }
+            fn store_to_be(&self, b: &mut [u8]) {
+                let mut output = Self::Output::default();
+                let len = Self::Output::BYTES;
+                use zerocopy::IntoBytes;
+                // words: Inner limb array. Stored from least significant to most significant.
+                let mut result_bytes = self.as_words().as_bytes();
+                for (r, t) in result_bytes.iter().rev().zip(b.iter_mut()) {
+                    *t = *r;
+                }
+            }
         }
     };
 }
 implLoad!(U3072);
+pub struct SrpGroup {
+    g: u32,
+    n: &'static U3072,
+    //k: &'static U3072,
+}
+
+pub struct SrpServer<'a, D: Digest> {
+    params: &'a SrpGroup,
+    d: PhantomData<D>,
+}
 
 impl<'a, D: Digest> SrpServer<'a, D> {
     /// Create new server state.
@@ -174,6 +179,13 @@ mod test {
         assert_eq!(&z[0 + 8..8 + 8], &low[0..8]);
         let zi = u128::from_be_bytes(z);
         assert_eq!(zi, 0x00000000007B00001234567890ABCDEFu128);
+
+        // Check storing integers.
+        let mut buffer = [0u8; 128 / 8];
+        v.store_to_be(&mut buffer);
+        assert_eq!(&buffer, &z);
+        assert_eq!(&buffer, &zi.to_be_bytes());
+        assert_eq!(&buffer, &v.to_be_bytes());
 
         // Ensure we can roundtrip with big endian bytes.
         assert_eq!(
