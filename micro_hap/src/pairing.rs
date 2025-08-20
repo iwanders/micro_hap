@@ -101,20 +101,18 @@ pub struct PairSetup {
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L128
 /// Container struct for all the pairing temporary values.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[allow(non_snake_case)]
 pub struct ServerPairSetup {
     /// Ephemeral public key
-    #[allow(non_snake_case)]
     pub A: [u8; SRP_PUBLIC_KEY_BYTES],
 
     /// Private secret
     pub b: [u8; SRP_SECRET_KEY_BYTES],
 
     /// Ephemeral public key
-    #[allow(non_snake_case)]
     pub B: [u8; SRP_PUBLIC_KEY_BYTES],
 
     /// SRP session key
-    #[allow(non_snake_case)]
     pub K: [u8; SRP_SESSION_KEY_BYTES],
 
     /// Session key for pair setup procecure
@@ -369,21 +367,24 @@ pub enum PairState {
     SentM2 = 2,
 }
 
-pub struct PairContext<'server, 'setup, 'setupinfo> {
+pub struct PairContext<'server, 'setup, 'setupinfo, 'random> {
     pub server: &'server mut PairServer,
     pub setup: &'setup mut PairSetup,
     pub info: &'setupinfo SetupInfo,
+    pub random_bytes: &'random [u8],
 }
-impl<'server, 'setup, 'setupinfo> PairContext<'server, 'setup, 'setupinfo> {
+impl<'server, 'setup, 'setupinfo, 'random> PairContext<'server, 'setup, 'setupinfo, 'random> {
     pub fn new(
         server: &'server mut PairServer,
         setup: &'setup mut PairSetup,
         info: &'setupinfo SetupInfo,
+        random_bytes: &'random [u8],
     ) -> Self {
         Self {
             server,
             setup,
             info,
+            random_bytes,
         }
     }
 }
@@ -441,6 +442,11 @@ pub fn pair_setup_process_m1(
     Ok(())
 }
 
+pub type HomekitSrp<'a> = crate::srp::SrpServer<'a, sha2::Sha512>;
+pub fn homekit_srp() -> crate::srp::SrpServer<'static, sha2::Sha512> {
+    HomekitSrp::new(&crate::srp::groups::GROUP_3072)
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
 pub fn pair_setup_process_get_m2(
     ctx: &mut PairContext,
@@ -477,7 +483,9 @@ pub fn pair_setup_process_get_m2(
         }
     }
 
-    let restore = !is_transient && is_split;
+    let _restore = !is_transient && is_split;
+
+    // NONCOMPLIANCE do something with _restore, probably need this after we do the initial pair?
 
     // In the recording we see both flags being false.
 
@@ -488,10 +496,29 @@ pub fn pair_setup_process_get_m2(
     // Do SRP things...
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L256
 
-    // fill with random:
-    ctx.server.pair_setup.b = todo!();
+    // fill b with random;
+    //
+    let len = ctx.server.pair_setup.b.len();
+    ctx.server
+        .pair_setup
+        .b
+        .copy_from_slice(&ctx.random_bytes[0..len]);
 
-    todo!()
+    // Then, we derive the public key B.
+
+    let v = SRP_SECRET_KEY_BYTES;
+
+    let server = homekit_srp();
+
+    // Calculate the public ephemeral data.
+    server.compute_public_ephemeral(
+        &ctx.server.pair_setup.b,
+        &ctx.info.verifier,
+        &mut ctx.server.pair_setup.B,
+    );
+    //todo!("need to write public ephemeral into B");
+
+    Ok(0)
 }
 
 #[cfg(test)]
@@ -525,21 +552,39 @@ mod test {
         ];
         let mut setup = PairSetup::default();
         let mut server = PairServer::default();
-        let (info, random_b) = recorded_info();
+        let recorded = recorded_info();
 
-        let mut ctx = PairContext::new(&mut server, &mut setup, &info);
+        let mut ctx = PairContext::new(
+            &mut server,
+            &mut setup,
+            &recorded.setup_info,
+            &recorded.random_b,
+        );
         pair_setup_handle_incoming(&mut ctx, &incoming_0)?;
 
         let mut buffer = [0u8; 1024];
 
         pair_setup_handle_outgoing(&mut ctx, &mut buffer)?;
 
+        info!("recorded.public_B: {:x?}", recorded.public_B);
+        info!("srvr.pair_setup.B: {:x?}", ctx.server.pair_setup.B);
+
+        // Afer this, the public ephemeral should match.
+        // Gah, we don't have the private b in the recording
+
         Ok(())
     }
 
     // Lets keep values for the unit tests below this line, such that I don't have to scroll too much :)
 
-    fn recorded_info() -> (SetupInfo, Vec<u8>) {
+    #[allow(non_snake_case)]
+    struct RecordedInfo {
+        setup_info: SetupInfo,
+        random_b: Vec<u8>,
+        public_B: Vec<u8>,
+    }
+
+    fn recorded_info() -> RecordedInfo {
         let salt = [
             0xF3, 0xB3, 0x3D, 0xAF, 0xA6, 0xF7, 0x32, 0x03, 0x28, 0x61, 0x6A, 0x58, 0x28, 0x29,
             0x63, 0x36,
@@ -574,8 +619,10 @@ mod test {
             0xC5, 0x28, 0x72, 0xF7, 0x73, 0x48, 0x98, 0xAE, 0xAA, 0xFB, 0x6B, 0x50, 0x3F, 0xCA,
             0x4A, 0x27, 0xCB, 0x92, 0x17, 0x31,
         ];
-        //fd83ea824d6cbfab7fa5034b607529ab85197fba147b6529f5950437951255f6bbe1605ca3c1bc0480c70f993ad3e5f5ae82dc9bbbf9c34407d97512ab2e2d2ca81d6b9bcc7f5feb42b0ad1e18b26733b04547671135584a07f1ba32b39631175f2b167f0dcd2a831a62e7b56c5e7ffcc91ad3c6fc67c420f299625303fe5f7a0f7ce785a37566b924393d7b5cc837901d627d074f633bccaadd60754c7c9a7215a3bc8a3294fc98fe1b9d79c48dba1f34c41ce3728cb76b17b4a0d754c3c11c2d03175b47e8e6dd56739fa7a126a3209d78eac8fb92de7de44a82b560bb2811a8a626b004cee4931391bb872b0963b26907320b7e393672babea9bdbb3190d0912e83311e6a35a3e13bd1ce7a97a28cbcf253e0b77b478d4baea89476ec127b992adcf41fe0c64dab98d59837fd08d1050e7938d145988e206681219bc0e476816066159d00c4e61fbb4fc8b53995ba169a9e1b9f886d3507c1dc25ff07c06a9a29b79c73ea3efeeddbee87251a30d4bbcac092dcaa1100f858df2de92b9176
-        let random_b = vec![
+
+        let random_b = vec![0; 32];
+
+        let public_B = vec![
             0xfd, 0x83, 0xea, 0x82, 0x4d, 0x6c, 0xbf, 0xab, 0x7f, 0xa5, 0x03, 0x4b, 0x60, 0x75,
             0x29, 0xab, 0x85, 0x19, 0x7f, 0xba, 0x14, 0x7b, 0x65, 0x29, 0xf5, 0x95, 0x04, 0x37,
             0x95, 0x12, 0x55, 0xf6, 0xbb, 0xe1, 0x60, 0x5c, 0xa3, 0xc1, 0xbc, 0x04, 0x80, 0xc7,
@@ -606,6 +653,10 @@ mod test {
             0xdf, 0x2d, 0xe9, 0x2b, 0x91, 0x76,
         ];
 
-        (SetupInfo { salt, verifier }, random_b)
+        RecordedInfo {
+            setup_info: SetupInfo { salt, verifier },
+            random_b,
+            public_B,
+        }
     }
 }

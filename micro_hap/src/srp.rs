@@ -89,7 +89,9 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     ///
     /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
     /// k*v + g^b % N
-    pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut U3072) {
+    ///
+    /// public_b: Must be 384 bytes long.
+    pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut [u8]) {
         let bi = U3072::load_from_be(b);
         let v = U3072::load_from_be(v);
         // info!("bi: {:x?}\n", bi);
@@ -123,7 +125,8 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         // Finally, we add that to the intermediate we already had:
         let combined = inter.add_mod(&right_side, &groups::GROUP_3072.n);
         // info!("combined: {:x?}, {:?}\n", combined, combined.bits());
-        *public_b = combined;
+        //*public_b = combined;
+        combined.store_to_be(public_b);
     }
 }
 
@@ -268,10 +271,12 @@ mod test {
         assert_eq!(b_pub, SRP_B);
 
         let our_server = SrpServer::<Sha512>::new(&groups::GROUP_3072);
-        let mut our_b_pub = U3072::default();
+        //let mut our_b_pub = U3072::default();
+        let mut our_b_pub = [0u8; 384];
+
         our_server.compute_public_ephemeral(&SRP_b, &SRP_V, &mut our_b_pub);
         info!("our_b_pub: {our_b_pub:x?}");
-        assert_eq!(our_b_pub, U3072::load_from_be(&SRP_B));
+        assert_eq!(U3072::load_from_be(&our_b_pub), U3072::load_from_be(&SRP_B));
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165

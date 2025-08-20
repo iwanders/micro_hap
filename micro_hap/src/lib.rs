@@ -188,7 +188,6 @@ impl Attribute {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     pub fn init() {
         let _ = env_logger::builder()
             .is_test(true)
