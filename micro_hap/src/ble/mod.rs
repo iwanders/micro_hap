@@ -33,6 +33,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // For the permissions;
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L48
 // seems to have the best overview?
+//
+// We probably have to handle this fragmentation stuff as well?
+//
+//
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -575,10 +579,11 @@ pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,
     prepared_reply: Option<Reply>,
+
     information_service: crate::Service,
     protocol_service: crate::Service,
-
     pairing_service: crate::Service,
+    // pair_ctx: crate::pairing::PairContext<'static, 'static, 'static, 'static>,
 }
 impl HapPeripheralContext {
     fn services(&self) -> [&crate::Service; 3] {
@@ -1004,6 +1009,24 @@ impl HapPeripheralContext {
                         let req = pdu::CharacteristicReadRequest::parse_pdu(event.data())?;
                         warn!("Got req: {:?}", req);
                         self.characteristic_read_request(&req).await?
+                    }
+                    pdu::OpCode::CharacteristicWrite => {
+                        if event.handle() == hap.pairing.pair_setup.handle {
+                            let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&event.data())?;
+                            info!("got write on pair setup with: {:?}", parsed);
+
+                            // let r = crate::pairing::pair_setup_handle_incoming(
+                            // &mut self.pair_ctx,
+                            // parsed.body,
+                            // )?;
+                            return Ok(None);
+
+                            // let mut buffer = [0u8; 1024];
+
+                            // pair_setup_handle_outgoing(&mut ctx, &mut buffer)?;
+                        } else {
+                            todo!("Need dispatch to correct method");
+                        }
                     }
                     _ => {
                         return {

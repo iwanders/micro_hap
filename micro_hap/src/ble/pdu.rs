@@ -222,7 +222,7 @@ pub struct CharacteristicWriteRequest<'a> {
 }
 
 impl<'a> CharacteristicWriteRequest<'a> {
-    fn parse_pdu(data: &'a [u8]) -> Result<CharacteristicWriteRequest<'a>, HapBleError> {
+    pub fn parse_pdu(data: &'a [u8]) -> Result<CharacteristicWriteRequest<'a>, HapBleError> {
         let header = CharacteristicWriteRequestHeader::parse_pdu(data)?;
 
         let mut res = CharacteristicWriteRequest {
