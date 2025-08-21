@@ -59,6 +59,7 @@ impl From<crate::tlv::TLVError> for HapBleError {
             crate::tlv::TLVError::NotEnoughData => HapBleError::InvalidValue,
             crate::tlv::TLVError::MissingEntry => HapBleError::InvalidValue,
             crate::tlv::TLVError::UnexpectedValue => HapBleError::InvalidValue,
+            crate::tlv::TLVError::BufferOverrun => HapBleError::BufferOverrun,
         }
     }
 }

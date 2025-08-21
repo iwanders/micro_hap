@@ -1,17 +1,23 @@
 // For interpreting the TLV wrapper itself
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TLVError {
+    /// Not enough data to parse.
     NotEnoughData,
+    /// Missing an expected entry.
     MissingEntry,
+    /// Parse error (like an unexpectedly sized integer)
     UnexpectedValue,
+    /// Exhausted the buffer while trying to write to it.
+    BufferOverrun,
 }
 
 impl From<TLVError> for trouble_host::Error {
     fn from(e: TLVError) -> trouble_host::Error {
         match e {
             TLVError::NotEnoughData => trouble_host::Error::OutOfMemory,
+            TLVError::BufferOverrun => trouble_host::Error::OutOfMemory,
             TLVError::MissingEntry => trouble_host::Error::InvalidValue,
             TLVError::UnexpectedValue => trouble_host::Error::InvalidValue,
         }
@@ -157,7 +163,7 @@ impl<'a> TLVWriter<'a> {
         self.position
     }
 
-    pub fn add_u32<T: Into<u8>>(self, t: T, value: u32) -> Self {
+    pub fn add_u32<T: Into<u8>>(self, t: T, value: u32) -> Result<Self, TLVError> {
         let tt: u8 = t.into();
         // Reduce the width to the necessary length.
         if value <= u8::MAX.into() {
@@ -169,33 +175,45 @@ impl<'a> TLVWriter<'a> {
         }
     }
 
-    pub fn add_entry<T: Into<u8>, V: IntoBytes + Immutable>(self, t: T, value: &V) -> Self {
+    pub fn add_entry<T: Into<u8>, V: IntoBytes + Immutable>(
+        self,
+        t: T,
+        value: &V,
+    ) -> Result<Self, TLVError> {
         self.add_slice(t, &value.as_bytes())
     }
 
-    pub fn add_slice<T: Into<u8>>(mut self, t: T, value: &[u8]) -> Self {
+    pub fn add_slice<T: Into<u8>>(mut self, t: T, value: &[u8]) -> Result<Self, TLVError> {
         let tt: u8 = t.into();
-        self.write_u8s(tt, value);
-        self
+        self.write_u8s(tt, value)?;
+        Ok(self)
     }
 
-    fn push_internal<T: IntoBytes + Immutable>(&mut self, value: &T) {
+    fn push_internal<T: IntoBytes + Immutable>(&mut self, value: &T) -> Result<(), TLVError> {
         let as_bytes = value.as_bytes();
+        if self.position + as_bytes.len() >= self.buffer.len() {
+            return Err(TLVError::BufferOverrun);
+        }
         self.buffer[self.position..self.position + as_bytes.len()].copy_from_slice(as_bytes);
         self.position += as_bytes.len();
+        Ok(())
     }
 
-    fn write_u8s(&mut self, tt: u8, mut values: &[u8]) {
+    fn write_u8s(&mut self, tt: u8, mut values: &[u8]) -> Result<(), TLVError> {
         while !values.is_empty() {
             let this_length = values.len().min(255);
-            self.push_internal(&tt);
-            self.push_internal(&((this_length) as u8));
+            self.push_internal(&tt)?;
+            self.push_internal(&((this_length) as u8))?;
 
+            if self.position + this_length >= self.buffer.len() {
+                return Err(TLVError::BufferOverrun);
+            }
             self.buffer[self.position..self.position + this_length]
                 .copy_from_slice(&values[0..this_length]);
             self.position += this_length;
             values = &values[this_length..]
         }
+        Ok(())
     }
 }
 
@@ -274,15 +292,15 @@ mod test {
         );
     }
     #[test]
-    fn test_tlv_write() {
+    fn test_tlv_write() -> Result<(), TLVError> {
         let mut buffer = [0u8; 32];
         let tv = 0x00;
-        let length = TLVWriter::new(&mut buffer).add_entry(tv, &0x37u8).end();
+        let length = TLVWriter::new(&mut buffer).add_entry(tv, &0x37u8)?.end();
         assert_eq!(length, 3);
         assert_eq!(&buffer[0..3], &[tv, 0x01, 0x37]);
 
         buffer.fill(0);
-        let length = TLVWriter::new(&mut buffer).add_u32(tv, 0x37).end();
+        let length = TLVWriter::new(&mut buffer).add_u32(tv, 0x37)?.end();
         assert_eq!(length, 3);
         assert_eq!(&buffer[0..3], &[tv, 0x01, 0x37]);
 
@@ -318,10 +336,18 @@ mod test {
             0x71, 0xdb, 0x84, 0x23, 0x8f,
         ];
         let mut buffer = [0u8; 512];
-        let length = TLVWriter::new(&mut buffer).add_slice(0x03, &payload).end();
+        let length = TLVWriter::new(&mut buffer).add_slice(0x03, &payload)?.end();
         assert_eq!(length, 388);
         assert_eq!(&buffer[0..2], &[0x03, 0xff]);
         assert_eq!(&buffer[255 + 2..255 + 4], &[0x03, 0x81]);
         assert_eq!(&buffer[255..255 + 6], &[0xe3, 0x82, 0x03, 0x81, 0x1f, 0x03]);
+
+        // Verify a buffer overrun results in a buffer overrun error
+        let mut buffer = [0u8; 2];
+        let length = TLVWriter::new(&mut buffer).add_entry(tv, &0x37u8);
+        assert!(length.is_err());
+        assert_eq!(length.err().unwrap(), TLVError::BufferOverrun);
+
+        Ok(())
     }
 }
