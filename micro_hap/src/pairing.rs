@@ -517,6 +517,8 @@ pub fn pair_setup_process_get_m2(
         &mut ctx.server.pair_setup.B,
     );
     //todo!("need to write public ephemeral into B");
+    //
+    // Now we need a TLV writer; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L264
 
     Ok(0)
 }
@@ -570,7 +572,7 @@ mod test {
         info!("srvr.pair_setup.B: {:x?}", ctx.server.pair_setup.B);
 
         // Afer this, the public ephemeral should match.
-        // Gah, we don't have the private b in the recording
+        // Gah, we don't have the private b in the recording... so nothing matches.
 
         Ok(())
     }
