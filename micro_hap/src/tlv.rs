@@ -138,7 +138,6 @@ impl<'a> Iterator for TLVReader<'a> {
 }
 
 pub struct TLVWriter<'a> {
-    start: usize, // this is where the body length always goes.
     position: usize,
     buffer: &'a mut [u8],
 }
@@ -149,7 +148,6 @@ impl<'a> TLVWriter<'a> {
     pub fn new_at(buffer: &'a mut [u8], start: usize) -> Self {
         buffer[start..start + 2].fill(0);
         Self {
-            start,
             position: start,
             buffer,
         }
@@ -159,7 +157,7 @@ impl<'a> TLVWriter<'a> {
         self.position
     }
 
-    pub fn add_u32<T: Into<u8>>(mut self, t: T, value: u32) -> Self {
+    pub fn add_u32<T: Into<u8>>(self, t: T, value: u32) -> Self {
         let tt: u8 = t.into();
         // Reduce the width to the necessary length.
         if value <= u8::MAX.into() {
@@ -171,7 +169,7 @@ impl<'a> TLVWriter<'a> {
         }
     }
 
-    pub fn add_entry<T: Into<u8>, V: IntoBytes + Immutable>(mut self, t: T, value: &V) -> Self {
+    pub fn add_entry<T: Into<u8>, V: IntoBytes + Immutable>(self, t: T, value: &V) -> Self {
         self.add_slice(t, &value.as_bytes())
     }
 

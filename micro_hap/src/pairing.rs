@@ -21,7 +21,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // It's probably a good idea to follow that structure such that we can easily follow the code and if need be introspect
 // the data in intermediate stages in the reference.
 
-use crate::tlv::{TLV, TLVError, TLVReader};
+use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
 
 #[derive(Debug, Copy, Clone)]
@@ -506,8 +506,6 @@ pub fn pair_setup_process_get_m2(
 
     // Then, we derive the public key B.
 
-    let v = SRP_SECRET_KEY_BYTES;
-
     let server = homekit_srp();
 
     // Calculate the public ephemeral data.
@@ -519,6 +517,9 @@ pub fn pair_setup_process_get_m2(
     //todo!("need to write public ephemeral into B");
     //
     // Now we need a TLV writer; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L264
+
+    let writer = TLVWriter::new(data);
+    let _ = writer;
 
     Ok(0)
 }
@@ -624,6 +625,7 @@ mod test {
 
         let random_b = vec![0; 32];
 
+        #[allow(non_snake_case)]
         let public_B = vec![
             0xfd, 0x83, 0xea, 0x82, 0x4d, 0x6c, 0xbf, 0xab, 0x7f, 0xa5, 0x03, 0x4b, 0x60, 0x75,
             0x29, 0xab, 0x85, 0x19, 0x7f, 0xba, 0x14, 0x7b, 0x65, 0x29, 0xf5, 0x95, 0x04, 0x37,

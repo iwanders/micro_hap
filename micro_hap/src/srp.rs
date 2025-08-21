@@ -21,10 +21,7 @@
 
 use core::marker::PhantomData;
 use crypto_bigint::const_monty_form;
-use crypto_bigint::prelude::*;
 use crypto_bigint::{NonZero, U3072};
-
-use crypto_bigint::modular::ConstMontyParams;
 
 // U3072 is 384 bytes... is that enough to do this logic here?
 use sha2::{Digest, Sha512};
@@ -45,18 +42,16 @@ macro_rules! implLoad {
                 let len = Self::Output::BYTES;
                 use zerocopy::IntoBytes;
                 // words: Inner limb array. Stored from least significant to most significant.
-                let mut result_bytes = output.as_words_mut().as_mut_bytes();
+                let result_bytes = output.as_words_mut().as_mut_bytes();
                 for (r, t) in result_bytes.iter_mut().rev().skip(len - b.len()).zip(b) {
                     *r = *t;
                 }
                 output
             }
             fn store_to_be(&self, b: &mut [u8]) {
-                let mut output = Self::Output::default();
-                let len = Self::Output::BYTES;
                 use zerocopy::IntoBytes;
                 // words: Inner limb array. Stored from least significant to most significant.
-                let mut result_bytes = self.as_words().as_bytes();
+                let result_bytes = self.as_words().as_bytes();
                 for (r, t) in result_bytes.iter().rev().zip(b.iter_mut()) {
                     *t = *r;
                 }

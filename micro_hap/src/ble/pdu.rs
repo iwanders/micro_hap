@@ -2,7 +2,7 @@
 
 use super::HapBleError;
 use bitfield_struct::bitfield;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
