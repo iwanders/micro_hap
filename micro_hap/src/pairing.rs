@@ -317,6 +317,14 @@ pub struct SetupInfo {
     salt: [u8; 16],
     verifier: [u8; 384],
 }
+impl Default for SetupInfo {
+    fn default() -> Self {
+        Self {
+            salt: [0u8; 16],
+            verifier: [0u8; 384],
+        }
+    }
+}
 
 /// Setup code string, with zero byte; XXX-XX-XXX
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
@@ -367,30 +375,32 @@ pub enum PairState {
     SentM2 = 2,
 }
 
-pub struct PairContext<'server, 'setup, 'setupinfo, 'random> {
-    pub server: &'server mut PairServer,
-    pub setup: &'setup mut PairSetup,
-    pub info: &'setupinfo SetupInfo,
-    pub random_bytes: &'random [u8],
+pub struct PairContext {
+    pub server: PairServer,
+    pub setup: PairSetup,
+    pub info: SetupInfo,
 }
-impl<'server, 'setup, 'setupinfo, 'random> PairContext<'server, 'setup, 'setupinfo, 'random> {
-    pub fn new(
-        server: &'server mut PairServer,
-        setup: &'setup mut PairSetup,
-        info: &'setupinfo SetupInfo,
-        random_bytes: &'random [u8],
-    ) -> Self {
+impl Default for PairContext {
+    fn default() -> Self {
         Self {
-            server,
-            setup,
-            info,
-            random_bytes,
+            server: Default::default(),
+            setup: Default::default(),
+            info: Default::default(),
         }
     }
 }
 
+type RandomFunction<'a> = &'a dyn Fn() -> u8;
+pub struct PairSupport<'a> {
+    pub rng: RandomFunction<'a>,
+}
+
 // HAPPairingPairSetupHandleWrite
-pub fn pair_setup_handle_incoming(ctx: &mut PairContext, data: &[u8]) -> Result<(), PairingError> {
+pub fn pair_setup_handle_incoming(
+    ctx: &mut PairContext,
+    support: &PairSupport,
+    data: &[u8],
+) -> Result<(), PairingError> {
     match ctx.setup.state {
         PairState::NotStarted => {
             let mut method = TLVMethod::tied(&data);
@@ -409,13 +419,14 @@ pub fn pair_setup_handle_incoming(ctx: &mut PairContext, data: &[u8]) -> Result<
 // HAPPairingPairSetupHandleRead
 pub fn pair_setup_handle_outgoing(
     ctx: &mut PairContext,
+    support: &PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     match ctx.setup.state {
         PairState::ReceivedM1 => {
             // Advance the state, and write M2.
             ctx.setup.state = PairState::SentM2;
-            pair_setup_process_get_m2(ctx, data)
+            pair_setup_process_get_m2(ctx, support, data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -450,6 +461,7 @@ pub fn homekit_srp() -> crate::srp::SrpServer<'static, sha2::Sha512> {
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
 pub fn pair_setup_process_get_m2(
     ctx: &mut PairContext,
+    support: &PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Setup M2: SRP Start Response.");
@@ -499,11 +511,7 @@ pub fn pair_setup_process_get_m2(
     // fill b with random;
     //
     let len = ctx.server.pair_setup.b.len();
-    ctx.server
-        .pair_setup
-        .b
-        .copy_from_slice(&ctx.random_bytes[0..len]);
-
+    ctx.server.pair_setup.b.fill_with(|| (support.rng)());
     // Then, we derive the public key B.
 
     let server = homekit_srp();
@@ -570,17 +578,26 @@ mod test {
         let mut server = PairServer::default();
         let recorded = recorded_info();
 
-        let mut ctx = PairContext::new(
-            &mut server,
-            &mut setup,
-            &recorded.setup_info,
-            &recorded.random_b,
-        );
-        pair_setup_handle_incoming(&mut ctx, &incoming_0)?;
+        let mut ctx = PairContext::default();
+        ctx.info = recorded.setup_info;
+        let mut counter = core::cell::RefCell::new(0);
+
+        let random_buffer = recorded.random_b.clone();
+
+        let rng = move || {
+            let mut c = counter.borrow_mut();
+            let v = random_buffer[*c];
+            *c += 1;
+            v
+        };
+
+        let support = PairSupport { rng: &rng };
+
+        pair_setup_handle_incoming(&mut ctx, &support, &incoming_0)?;
 
         let mut buffer = [0u8; 1024];
 
-        pair_setup_handle_outgoing(&mut ctx, &mut buffer)?;
+        pair_setup_handle_outgoing(&mut ctx, &support, &mut buffer)?;
 
         info!("recorded.public_B: {:x?}", recorded.public_B);
         info!("srvr.pair_setup.B: {:x?}", ctx.server.pair_setup.B);
