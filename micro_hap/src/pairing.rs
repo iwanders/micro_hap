@@ -363,6 +363,8 @@ macro_rules! typed_tlv {
 typed_tlv!(TLVMethod, TLVType::Method);
 typed_tlv!(TLVState, TLVType::State);
 typed_tlv!(TLVFlags, TLVType::Flags);
+typed_tlv!(TLVProof, TLVType::Proof);
+typed_tlv!(TLVPublicKey, TLVType::PublicKey);
 
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
@@ -408,11 +410,26 @@ pub fn pair_setup_handle_incoming(
     let _ = support;
     match ctx.setup.state {
         PairState::NotStarted => {
+            info!("not started, so m1");
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             let mut flags = TLVFlags::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut method, &mut state, &mut flags])?;
             pair_setup_process_m1(ctx, method, state, flags)
+        }
+        PairState::SentM2 => {
+            info!("Stage M3 begin");
+            {
+                let mut r = TLVReader::new(&data);
+                for z in r {
+                    info!("z: {:?}", z);
+                }
+            }
+            let mut state = TLVState::tied(&data);
+            let mut public_key = TLVPublicKey::tied(&data);
+            let mut proof = TLVProof::tied(&data);
+            TLVReader::new(&data).require_into(&mut [&mut state, &mut public_key, &mut proof])?;
+            pair_setup_process_m3(ctx, state, public_key, proof)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -440,6 +457,7 @@ pub fn pair_setup_handle_outgoing(
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
+// HAPPairingPairSetupProcessM1
 pub fn pair_setup_process_m1(
     ctx: &mut PairContext,
     method: TLVMethod,
@@ -455,6 +473,19 @@ pub fn pair_setup_process_m1(
     ctx.setup.method = *method;
     ctx.server.flags = PairingFlags::from_bits(flags.to_u32()?);
     ctx.setup.state = *state.try_from::<PairState>()?;
+
+    Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L342
+// HAPPairingPairSetupProcessM3
+pub fn pair_setup_process_m3(
+    ctx: &mut PairContext,
+    state: TLVState,
+    public_key: TLVPublicKey,
+    proof: TLVProof,
+) -> Result<(), PairingError> {
+    info!("hit setup process m3");
 
     Ok(())
 }
@@ -574,10 +605,6 @@ mod test {
     fn test_pairing_handle_setup() -> Result<(), PairingError> {
         init();
 
-        let incoming_0 = [
-            0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
-            0x01,
-        ];
         let mut setup = PairSetup::default();
         let mut server = PairServer::default();
         let recorded = recorded_info();
@@ -597,7 +624,7 @@ mod test {
 
         let support = PairSupport { rng: &rng };
 
-        pair_setup_handle_incoming(&mut ctx, &support, &incoming_0)?;
+        pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_0)?;
 
         let mut buffer = [0u8; 1024];
 
@@ -609,6 +636,8 @@ mod test {
         // Afer this, the public ephemeral should match.
         assert_eq!(recorded.public_B, ctx.server.pair_setup.B);
 
+        pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_1)?;
+
         Ok(())
     }
 
@@ -616,12 +645,18 @@ mod test {
 
     #[allow(non_snake_case)]
     struct RecordedInfo {
+        incoming_0: Vec<u8>,
         setup_info: SetupInfo,
         random_b: Vec<u8>,
         public_B: Vec<u8>,
+        incoming_1: Vec<u8>,
     }
 
     fn recorded_info() -> RecordedInfo {
+        let incoming_0 = vec![
+            0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
+            0x01,
+        ];
         let salt = [
             0xb3, 0x5b, 0x84, 0xc4, 0x04, 0x8b, 0x2d, 0x91, 0x35, 0xc4, 0xaf, 0xa3, 0x6d, 0xf6,
             0x2b, 0x29,
@@ -695,10 +730,14 @@ mod test {
             0x0b, 0xae, 0xb3, 0x49, 0xf1, 0xfb,
         ];
 
+        // This is wrong, we need a pdu reassembler.
+        let incoming_1 = vec![];
         RecordedInfo {
+            incoming_0,
             setup_info: SetupInfo { salt, verifier },
             random_b,
             public_B,
+            incoming_1,
         }
     }
 }
