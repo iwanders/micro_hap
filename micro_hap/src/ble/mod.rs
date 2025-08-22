@@ -1020,18 +1020,20 @@ impl HapPeripheralContext {
                             let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&event.data())?;
                             info!("got write on pair setup with: {:?}", parsed);
 
+                            // Write the body to our internal buffer here.
+                            let mut buffer = self.buffer.borrow_mut();
+                            parsed.copy_body(&mut *buffer)?;
                             let mut pair_ctx = self.pair_ctx.borrow_mut();
                             let r = crate::pairing::pair_setup_handle_incoming(
                                 &mut **pair_ctx,
                                 support,
-                                parsed.body,
+                                &*buffer,
                             )
                             .map_err(|_| HapBleError::InvalidValue)?;
 
                             // So now we craft the reply.
 
                             // let resp = parsed.header.header.to_success();
-                            let mut buffer = self.buffer.borrow_mut();
                             // let len = resp.write_into_length(*buffer)?;
 
                             let full_len = buffer.len();

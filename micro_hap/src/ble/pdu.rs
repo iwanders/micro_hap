@@ -6,6 +6,7 @@ use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
+use heapless::Vec;
 
 // PDU? Protocol Data Unit?
 
@@ -211,12 +212,12 @@ pub struct CharacteristicWriteRequestHeader {
     //pub inner_length: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct CharacteristicWriteRequest<'a> {
     /// The header as it was read.
     pub header: &'a CharacteristicWriteRequestHeader,
-    /// The payload of the write.
-    pub body: &'a [u8],
+    /// The payload of the write. 8 * 255 = 2040... probably enough?
+    body: heapless::Vec<&'a [u8], 8>,
     /// The return response flag.
     pub return_response: bool,
 }
@@ -227,7 +228,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
 
         let mut res = CharacteristicWriteRequest {
             header,
-            body: &data[0..0],
+            body: heapless::Vec::new(),
             // Probably defaults to false?
             return_response: false,
         };
@@ -238,7 +239,9 @@ impl<'a> CharacteristicWriteRequest<'a> {
             let entry = entry?;
             info!("entry: {:?}", entry);
             if entry.type_id == BleTLVType::Value as u8 {
-                res.body = entry.data;
+                res.body
+                    .push(entry.data)
+                    .map_err(|_| HapBleError::AllocationOverrun)?;
             } else if entry.type_id == BleTLVType::ReturnResponse as u8 {
                 res.return_response = entry.data.len() == 1 && entry.data[0] == 1;
             } else {
@@ -246,6 +249,19 @@ impl<'a> CharacteristicWriteRequest<'a> {
             }
         }
         Ok(res)
+    }
+
+    pub fn copy_body(&self, mut output: &mut [u8]) -> Result<usize, HapBleError> {
+        let mut total_length = 0;
+        for s in self.body.iter() {
+            if s.len() >= output.len() {
+                return Err(HapBleError::BufferOverrun);
+            }
+            output[0..s.len()].copy_from_slice(s);
+            output = &mut output[s.len()..];
+            total_length += s.len()
+        }
+        Ok(total_length)
     }
 }
 
@@ -486,6 +502,7 @@ mod test {
         let parsed = CharacteristicReadRequest::parse_pdu(&payload);
         info!("parsed: {parsed:?}");
 
+        // A payload we need to defragment.
         let payload = vec![
             0x00, 0x02, 0x37, 0x22, 0x00, 0xd0, 0x01, 0x01, 0xff, 0x06, 0x01, 0x03, 0x03, 0xff,
             0xcd, 0xc2, 0x25, 0x41, 0x60, 0x7f, 0x3f, 0x5c, 0xa7, 0x22, 0x40, 0x09, 0x97, 0x30,
@@ -527,8 +544,19 @@ mod test {
         let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
         info!("parsed: {parsed:?}");
         let parsed = parsed.unwrap();
+        assert!(parsed.return_response);
+
+        let mut contiguous_body = [0u8; 2048];
+        let z = parsed.copy_body(&mut contiguous_body);
+
+        assert!(z.is_ok());
+
+        let copied_body = &contiguous_body[0..z.unwrap()];
+
         let body_length = parsed.header.body_length;
-        assert_eq!(body_length, parsed.body.len() as u16);
+        // -3 for the return response value.
+        // -2 * 2 for the two value fragments.
+        assert_eq!(body_length - 3 - 2 * 2, copied_body.len() as u16);
     }
 
     #[test]
@@ -556,9 +584,9 @@ mod test {
         assert_eq!(parsed.return_response, true);
         assert_eq!(
             parsed.body,
-            &[
+            &[&[
                 0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01
-            ]
+            ]]
         );
 
         // let tlv_payload = [
