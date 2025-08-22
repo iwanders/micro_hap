@@ -314,8 +314,8 @@ impl Into<u8> for TLVType {
 /// Setup information created during device commissioning.
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct SetupInfo {
-    salt: [u8; 16],
-    verifier: [u8; 384],
+    pub salt: [u8; 16],
+    pub verifier: [u8; 384],
 }
 impl Default for SetupInfo {
     fn default() -> Self {
@@ -390,7 +390,11 @@ impl Default for PairContext {
     }
 }
 
+/// Function signature for the random generator. It's not FnMut for convenience in case we need to add more to the
+/// support, use interior mutability if necessary.
 type RandomFunction<'a> = &'a dyn Fn() -> u8;
+
+/// Helper support for the pairing situations.
 pub struct PairSupport<'a> {
     pub rng: RandomFunction<'a>,
 }
@@ -401,6 +405,7 @@ pub fn pair_setup_handle_incoming(
     support: &PairSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
+    let _ = support;
     match ctx.setup.state {
         PairState::NotStarted => {
             let mut method = TLVMethod::tied(&data);
@@ -442,6 +447,7 @@ pub fn pair_setup_process_m1(
     flags: TLVFlags,
 ) -> Result<(), PairingError> {
     let method = method.try_from::<PairingMethod>()?;
+    info!("hit setup process m1");
     // info!("method: {:?}", method);
     // info!("state: {:?}", state);
     // info!("flags: {:?}", flags);
@@ -509,8 +515,6 @@ pub fn pair_setup_process_get_m2(
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L256
 
     // fill b with random;
-    //
-    let len = ctx.server.pair_setup.b.len();
     ctx.server.pair_setup.b.fill_with(|| (support.rng)());
     // Then, we derive the public key B.
 

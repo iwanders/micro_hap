@@ -113,12 +113,25 @@ mod ble_bas_peripheral {
             .set_information_static(&server, &value)
             .unwrap();
 
+        let pair_ctx = {
+            static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
+            STATE.init_with(micro_hap::pairing::PairContext::default)
+        };
+        // We need real commissioning for this.
+        pair_ctx.info.salt[0] = 1;
+        pair_ctx.info.salt[1] = 3;
+        pair_ctx.info.verifier[0] = 1;
+        pair_ctx.info.verifier[1] = 3;
+
         let buffer: &mut [u8] = {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
+
+        // This is also pretty big on the stack :/
         let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
             buffer,
+            pair_ctx,
             &server.accessory_information,
             &server.protocol,
             &server.pairing,
@@ -129,9 +142,10 @@ mod ble_bas_peripheral {
             loop {
                 match advertise(name, &mut peripheral, &server).await {
                     Ok(conn) => {
+                        // Increase the data length to 251 bytes per package, default is like 27.
                         conn.update_data_length(&stack, 251, 2120)
                             .await
-                            .expect("fialed to set data length");
+                            .expect("Failed to set data length");
                         let conn = conn
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
@@ -250,10 +264,18 @@ mod ble_bas_peripheral {
                     // This step is also performed at drop(), but writing it explicitly is necessary
                     // in order to ensure reply is sent.
 
+                    let rng = core::cell::RefCell::new(rand::rng());
+                    use rand::Rng;
+                    let rng = move || {
+                        let mut gn = rng.borrow_mut();
+                        gn.random::<u8>()
+                    };
+
+                    let support = micro_hap::pairing::PairSupport { rng: &rng };
+
                     let fallthrough_event = hap_context
-                        .process_gatt_event(&server.as_hap(), event)
+                        .process_gatt_event(&server.as_hap(), &support, event)
                         .await?;
-                    //let fallthrough_event = Some(event);
 
                     if let Some(event) = fallthrough_event {
                         match event.accept() {

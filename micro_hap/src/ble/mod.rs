@@ -578,6 +578,8 @@ struct Reply {
 pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,
+    pair_ctx: core::cell::RefCell<&'static mut crate::pairing::PairContext>,
+
     prepared_reply: Option<Reply>,
 
     information_service: crate::Service,
@@ -628,6 +630,7 @@ pub struct BufferResponse(pub usize);
 impl HapPeripheralContext {
     pub fn new(
         buffer: &'static mut [u8],
+        pair_ctx: &'static mut crate::pairing::PairContext,
         information_service: &AccessoryInformationService,
         protocol_service: &ProtocolInformationService,
         pairing_service: &PairingService,
@@ -635,6 +638,7 @@ impl HapPeripheralContext {
         Ok(Self {
             //protocol_service_properties: Default::default(),
             buffer: buffer.into(),
+            pair_ctx: pair_ctx.into(),
             prepared_reply: None,
             information_service: information_service.populate_support()?,
             protocol_service: protocol_service.populate_support()?,
@@ -887,9 +891,10 @@ impl HapPeripheralContext {
         core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
     }
 
-    pub async fn process_gatt_event<'stack, 'server, 'hap, P: PacketPool>(
+    pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
         &mut self,
         hap: &HapServices<'hap>,
+        support: &crate::pairing::PairSupport<'support>,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
     {
@@ -1015,15 +1020,40 @@ impl HapPeripheralContext {
                             let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&event.data())?;
                             info!("got write on pair setup with: {:?}", parsed);
 
-                            // let r = crate::pairing::pair_setup_handle_incoming(
-                            // &mut self.pair_ctx,
-                            // parsed.body,
-                            // )?;
-                            return Ok(None);
+                            let mut pair_ctx = self.pair_ctx.borrow_mut();
+                            let r = crate::pairing::pair_setup_handle_incoming(
+                                &mut **pair_ctx,
+                                support,
+                                parsed.body,
+                            )
+                            .map_err(|_| HapBleError::InvalidValue)?;
 
-                            // let mut buffer = [0u8; 1024];
+                            // So now we craft the reply.
 
-                            // pair_setup_handle_outgoing(&mut ctx, &mut buffer)?;
+                            // let resp = parsed.header.header.to_success();
+                            let mut buffer = self.buffer.borrow_mut();
+                            // let len = resp.write_into_length(*buffer)?;
+
+                            let full_len = buffer.len();
+                            let (mut first_half, mut second_half) =
+                                buffer.split_at_mut(full_len / 2);
+
+                            // Put the reply in the second half.
+                            let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
+                                &mut **pair_ctx,
+                                support,
+                                &mut second_half,
+                            )
+                            .map_err(|_| HapBleError::InvalidValue)?;
+
+                            let reply = parsed.header.header.to_success();
+                            let len = reply.write_into_length(first_half)?;
+
+                            let len = BodyBuilder::new_at(first_half, len)
+                                .add_value(&second_half[0..outgoing_len])
+                                .end();
+
+                            BufferResponse(len)
                         } else {
                             todo!("Need dispatch to correct method");
                         }
@@ -1103,8 +1133,19 @@ mod test {
             STATE.init([0u8; 2048])
         };
 
+        let pair_ctx = {
+            static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
+            STATE.init_with(crate::pairing::PairContext::default)
+        };
+        // We need real commissioning for this.
+        pair_ctx.info.salt[0] = 1;
+        pair_ctx.info.salt[1] = 3;
+        pair_ctx.info.verifier[0] = 1;
+        pair_ctx.info.verifier[1] = 3;
+
         let mut ctx = HapPeripheralContext::new(
             buffer,
+            pair_ctx,
             &server.accessory_information,
             &server.protocol,
             &server.pairing,
