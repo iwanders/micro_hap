@@ -219,7 +219,7 @@ impl<'a> TLV<'a> {
     pub fn copy_body(&self, mut output: &mut [u8]) -> Result<usize, TLVError> {
         let mut total_length = 0;
         for s in self.data.iter() {
-            if s.len() >= output.len() {
+            if s.len() > output.len() {
                 return Err(TLVError::BufferOverrun);
             }
             output[0..s.len()].copy_from_slice(s);

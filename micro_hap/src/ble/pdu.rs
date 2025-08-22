@@ -6,9 +6,8 @@ use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
-use heapless::Vec;
 
-// PDU? Protocol Data Unit?
+// PDU? Protocol Data Unit!
 
 // PDU looks like:
 // control field | some fixed params | body length | TLV
@@ -256,7 +255,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
     pub fn copy_body(&self, mut output: &mut [u8]) -> Result<usize, HapBleError> {
         let mut total_length = 0;
         for s in self.body.iter() {
-            if s.len() >= output.len() {
+            if s.len() > output.len() {
                 return Err(HapBleError::BufferOverrun);
             }
             output[0..s.len()].copy_from_slice(s);

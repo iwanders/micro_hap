@@ -28,6 +28,8 @@ use uuid;
 pub enum PairingError {
     TLVError(TLVError),
     IncorrectCombination,
+    IncorrectState,
+    IncorrectLength,
 }
 
 impl From<TLVError> for PairingError {
@@ -375,6 +377,8 @@ pub enum PairState {
     NotStarted = 0,
     ReceivedM1 = 1,
     SentM2 = 2,
+    ReceivedM3 = 3,
+    SentM4 = 4,
 }
 
 pub struct PairContext {
@@ -419,17 +423,11 @@ pub fn pair_setup_handle_incoming(
         }
         PairState::SentM2 => {
             info!("Stage M3 begin");
-            {
-                let mut r = TLVReader::new(&data);
-                for z in r {
-                    info!("z: {:?}", z);
-                }
-            }
-            todo!("we also need a reassembler at the TLV layer.");
             let mut state = TLVState::tied(&data);
             let mut public_key = TLVPublicKey::tied(&data);
             let mut proof = TLVProof::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut state, &mut public_key, &mut proof])?;
+            ctx.setup.state = PairState::ReceivedM3;
             pair_setup_process_m3(ctx, state, public_key, proof)
         }
         catch_all => {
@@ -450,6 +448,11 @@ pub fn pair_setup_handle_outgoing(
             // Advance the state, and write M2.
             ctx.setup.state = PairState::SentM2;
             pair_setup_process_get_m2(ctx, support, data)
+        }
+        PairState::ReceivedM3 => {
+            // Advance the state, and write M2.
+            ctx.setup.state = PairState::SentM4;
+            pair_setup_process_get_m4(ctx, support, data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -488,6 +491,26 @@ pub fn pair_setup_process_m3(
 ) -> Result<(), PairingError> {
     info!("hit setup process m3");
 
+    let state = *state.try_from::<PairState>()?;
+    if state != PairState::ReceivedM3 {
+        return Err(PairingError::IncorrectState);
+    }
+
+    let public_key_len = public_key.len();
+    let a_len = ctx.server.pair_setup.A.len();
+    if public_key_len > a_len {
+        return Err(PairingError::IncorrectLength);
+    }
+
+    // Zero extend big endian....
+    let right = &mut ctx.server.pair_setup.A[a_len - public_key_len..];
+    public_key.copy_body(right)?;
+
+    // Copy the proof, whatever that means.
+    proof.copy_body(&mut ctx.server.pair_setup.m1)?;
+
+    // And update the state.
+    ctx.setup.state = state;
     Ok(())
 }
 
@@ -581,6 +604,16 @@ pub fn pair_setup_process_get_m2(
     Ok(writer.end())
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L430
+pub fn pair_setup_process_get_m4(
+    ctx: &mut PairContext,
+    support: &PairSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    info!("Pair Setup M4: SRP Start Response.");
+    todo!("do amazing things to calculate the SRP shared secret");
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -638,6 +671,9 @@ mod test {
         assert_eq!(recorded.public_B, ctx.server.pair_setup.B);
 
         pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_1)?;
+        let mut buffer = [0u8; 1024];
+
+        pair_setup_handle_outgoing(&mut ctx, &support, &mut buffer)?;
 
         Ok(())
     }
