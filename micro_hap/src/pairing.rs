@@ -334,7 +334,7 @@ pub struct SetupCode(pub [u8; 11]);
 /// Helper macro to make typed newtype wrappers around TLV
 macro_rules! typed_tlv {
     ( $name:ident, $tlv_type:expr  ) => {
-        #[derive(PartialEq, Eq, Debug, Copy, Clone)]
+        #[derive(PartialEq, Eq, Debug, Clone)]
         pub struct $name<'a>(TLV<'a>);
         impl<'a> $name<'a> {
             pub fn tied(data: &'a [u8]) -> Self {

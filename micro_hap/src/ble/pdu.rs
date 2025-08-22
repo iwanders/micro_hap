@@ -239,11 +239,13 @@ impl<'a> CharacteristicWriteRequest<'a> {
             let entry = entry?;
             info!("entry: {:?}", entry);
             if entry.type_id == BleTLVType::Value as u8 {
-                res.body
-                    .push(entry.data)
-                    .map_err(|_| HapBleError::AllocationOverrun)?;
+                res.body = entry.data_slices();
+                // res.body
+                //     .push(entry.data)
+                //     .map_err(|_| HapBleError::AllocationOverrun)?;
             } else if entry.type_id == BleTLVType::ReturnResponse as u8 {
-                res.return_response = entry.data.len() == 1 && entry.data[0] == 1;
+                let data = entry.short_data()?;
+                res.return_response = data.len() == 1 && data[0] == 1;
             } else {
                 todo!("unhandled entry type: 0x{:0>2x}", entry.type_id);
             }

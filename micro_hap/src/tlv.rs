@@ -34,6 +34,8 @@ pub struct TLVReader<'a> {
     position: usize,
 }
 
+pub struct TLVRawIter<'a>(TLVReader<'a>);
+
 impl<'a> TLVReader<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
         Self::new_at(buffer, 0)
@@ -45,13 +47,79 @@ impl<'a> TLVReader<'a> {
         }
     }
 
+    /// Bad signature, but (type,length)
+    fn peek_next(&self) -> Option<(u8, u8)> {
+        if (self.position + 1) < self.buffer.len() {
+            let type_id = self.buffer[self.position];
+            let length = self.buffer[self.position + 1];
+            Some((type_id, length))
+        } else {
+            None
+        }
+    }
+
+    pub fn next_segment(&mut self) -> Option<Result<TLV<'a>, TLVError>> {
+        if (self.position + 1) < self.buffer.len() {
+            let type_id = self.buffer[self.position];
+            let length = self.buffer[self.position + 1];
+            let data_end = self.position + 2 + length as usize;
+            if data_end <= self.buffer.len() {
+                let data = &self.buffer[self.position + 2..data_end];
+                self.position = data_end;
+                return Some(Ok(TLV {
+                    type_id,
+                    length,
+                    data: heapless::Vec::from_slice(&[data]).unwrap(),
+                }));
+            } else {
+                // Ensure the iterator will only ever yields None from now.
+                self.position = self.buffer.len() + 1;
+                Some(Err(TLVError::NotEnoughData))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn next_coalesced(&mut self) -> Option<Result<TLV<'a>, TLVError>> {
+        let value = self.next_segment()?;
+        if value.is_err() {
+            return Some(value);
+        }
+        let mut value = value.ok().unwrap();
+        while let Some((type_id, length)) = self.peek_next() {
+            if type_id == value.type_id {
+                // it is the same type as before.
+                let next_value = self.next_segment()?;
+                if next_value.is_err() {
+                    return Some(next_value);
+                }
+                let next_value = next_value.ok().unwrap();
+
+                // Coalesce the left into the right.
+                let cr = value.combine_with(&next_value);
+                if cr.is_err() {
+                    return Some(Err(cr.err().unwrap()));
+                }
+
+                if next_value.length != 255 {
+                    // We know this is the last segment, so return.
+                    return Some(Ok(value));
+                }
+            } else {
+                break;
+            }
+        }
+        Some(Ok(value))
+    }
+
     pub fn read_into(self, tlvs: &mut [&mut TLV<'a>]) -> Result<(), TLVError> {
         for entry in self {
             let entry = entry?;
             for v in tlvs.iter_mut() {
                 if v.type_id == entry.type_id {
                     (**v).length = entry.length;
-                    (**v).data = &entry.data;
+                    (**v).data = entry.data.clone();
                 }
             }
         }
@@ -69,13 +137,21 @@ impl<'a> TLVReader<'a> {
     }
 }
 
+impl<'a> Iterator for TLVReader<'a> {
+    type Item = Result<TLV<'a>, TLVError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_coalesced()
+    }
+}
+
 /// A borrowed TLV entry, it is a thin wrapper around the segment in the original buffer.
 /// This may act as an optional when the length is zero, but the lifetime is still tied on an original buffer.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TLV<'a> {
     pub type_id: u8,
-    pub length: u8,
-    pub data: &'a [u8],
+    length: u8,
+    /// The payload of the write. 8 * 255 = 2040... probably enough?
+    data: heapless::Vec<&'a [u8], 8>,
 }
 
 impl<'a> TLV<'a> {
@@ -84,9 +160,21 @@ impl<'a> TLV<'a> {
         Self {
             type_id: type_id.into(),
             length: 0,
-            data: &data[0..0],
+            data: Default::default(),
         }
     }
+
+    fn combine_with(&mut self, other: &TLV<'a>) -> Result<(), TLVError> {
+        if self.type_id != other.type_id {
+            return Err(TLVError::UnexpectedValue);
+        }
+        for right in other.data.iter() {
+            self.data.push(right).map_err(|_| TLVError::BufferOverrun)?;
+        }
+
+        Ok(())
+    }
+
     /// The TLV contains something, its length is non zero.
     pub fn is_some(&self) -> bool {
         self.length != 0
@@ -97,49 +185,48 @@ impl<'a> TLV<'a> {
         self.length == 0
     }
 
+    pub fn len(&self) -> usize {
+        self.data.iter().map(|z| z.len()).sum()
+    }
+
     /// Try to interpret the data as a zerocopy-enabled type.
     pub fn try_from<T: TryFromBytes + KnownLayout + Immutable>(&self) -> Result<&T, TLVError> {
-        T::try_ref_from_prefix(self.data)
+        T::try_ref_from_prefix(self.short_data()?)
             .map_err(|_| TLVError::UnexpectedValue)
             .map(|(a, _remaining)| a)
     }
 
+    pub fn short_data(&self) -> Result<&[u8], TLVError> {
+        self.data.first().copied().ok_or(TLVError::BufferOverrun)
+    }
+
+    pub fn data_slices(&self) -> heapless::Vec<&'a [u8], 8> {
+        self.data.clone()
+    }
+
     pub fn to_u32(&self) -> Result<u32, TLVError> {
         if self.length == 1 {
-            Ok(u8::read_from_bytes(self.data).unwrap() as u32)
+            Ok(u8::read_from_bytes(self.short_data()?).unwrap() as u32)
         } else if self.length == 2 {
-            Ok(u16::read_from_bytes(self.data).unwrap() as u32)
+            Ok(u16::read_from_bytes(self.short_data()?).unwrap() as u32)
         } else if self.length == 4 {
-            Ok(u32::read_from_bytes(self.data).unwrap())
+            Ok(u32::read_from_bytes(self.short_data()?).unwrap())
         } else {
             Err(TLVError::UnexpectedValue)
         }
     }
-}
 
-impl<'a> Iterator for TLVReader<'a> {
-    type Item = Result<TLV<'a>, TLVError>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if (self.position + 1) < self.buffer.len() {
-            let type_id = self.buffer[self.position];
-            let length = self.buffer[self.position + 1];
-            let data_end = self.position + 2 + length as usize;
-            if data_end <= self.buffer.len() {
-                let data = &self.buffer[self.position + 2..data_end];
-                self.position = data_end;
-                return Some(Ok(TLV {
-                    type_id,
-                    length,
-                    data,
-                }));
-            } else {
-                // Ensure the iterator will only ever yields None from now.
-                self.position = self.buffer.len() + 1;
-                Some(Err(TLVError::NotEnoughData))
+    pub fn copy_body(&self, mut output: &mut [u8]) -> Result<usize, TLVError> {
+        let mut total_length = 0;
+        for s in self.data.iter() {
+            if s.len() >= output.len() {
+                return Err(TLVError::BufferOverrun);
             }
-        } else {
-            None
+            output[0..s.len()].copy_from_slice(s);
+            output = &mut output[s.len()..];
+            total_length += s.len()
         }
+        Ok(total_length)
     }
 }
 
@@ -225,7 +312,7 @@ mod test {
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPTLVTest.c#L103
     #[test]
-    fn test_tlv_pairing_parse() {
+    fn test_tlv_pairing_parse() -> Result<(), TLVError> {
         crate::test::init();
 
         // Single TLV.
@@ -235,7 +322,7 @@ mod test {
         let z = reader.next().unwrap().unwrap();
         assert_eq!(z.type_id, 0x01);
         assert_eq!(z.length, 0x01);
-        assert_eq!(z.data, &[0x01]);
+        assert_eq!(z.short_data()?, &[0x01]);
 
         // iw; Single tlv good test.
         let tlv_payload = [0x05, 0x01, 0x03];
@@ -243,7 +330,7 @@ mod test {
         let z = reader.next().unwrap().unwrap();
         assert_eq!(z.type_id, 0x05);
         assert_eq!(z.length, 0x01);
-        assert_eq!(z.data, &[0x03]);
+        assert_eq!(z.short_data()?, &[0x03]);
 
         // HomeKit Pair Setup M1
         let data = [0x00, 0x01, 0x00, 0x06, 0x01, 0x01];
@@ -252,10 +339,10 @@ mod test {
         let b = reader.next().unwrap().unwrap();
         assert_eq!(a.type_id, 0x00);
         assert_eq!(a.length, 0x01);
-        assert_eq!(a.data, &[0x00]);
+        assert_eq!(a.short_data()?, &[0x00]);
         assert_eq!(b.type_id, 0x06);
         assert_eq!(b.length, 0x01);
-        assert_eq!(b.data, &[0x01]);
+        assert_eq!(b.short_data()?, &[0x01]);
 
         let mut a = TLV::tied(&data, 0x00);
         let mut b = TLV::tied(&data, 0x06);
@@ -264,10 +351,12 @@ mod test {
         assert_eq!(collected.is_ok(), true);
         assert_eq!(a.type_id, 0x00);
         assert_eq!(a.length, 0x01);
-        assert_eq!(a.data, &[0x00]);
+        assert_eq!(a.short_data()?, &[0x00]);
         assert_eq!(b.type_id, 0x06);
         assert_eq!(b.length, 0x01);
-        assert_eq!(b.data, &[0x01]);
+        assert_eq!(b.short_data()?, &[0x01]);
+
+        Ok(())
     }
 
     #[test]
@@ -294,7 +383,7 @@ mod test {
         );
     }
     #[test]
-    fn test_tlv_write() -> Result<(), TLVError> {
+    fn test_tlv_write_read() -> Result<(), TLVError> {
         let mut buffer = [0u8; 32];
         let tv = 0x00;
         let length = TLVWriter::new(&mut buffer).add_entry(tv, &0x37u8)?.end();
@@ -343,6 +432,20 @@ mod test {
         assert_eq!(&buffer[0..2], &[0x03, 0xff]);
         assert_eq!(&buffer[255 + 2..255 + 4], &[0x03, 0x81]);
         assert_eq!(&buffer[255..255 + 6], &[0xe3, 0x82, 0x03, 0x81, 0x1f, 0x03]);
+
+        let buffer = &buffer[0..388];
+        // Lets see if we can read that back....
+        let mut r = TLVReader::new(&buffer);
+        for v in r {
+            let v = v?;
+            info!("v: {:?}", v);
+            assert_eq!(v.type_id, 0x03);
+            assert_eq!(v.len(), payload.len());
+            let mut combined_buffer = [0u8; 512];
+            let cl = v.copy_body(&mut combined_buffer)?;
+            let combined = &combined_buffer[0..cl];
+            assert_eq!(combined, payload);
+        }
 
         // Verify a buffer overrun results in a buffer overrun error
         let mut buffer = [0u8; 2];
