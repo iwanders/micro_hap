@@ -200,7 +200,8 @@ impl<'a> TLVWriter<'a> {
     }
 
     fn write_u8s(&mut self, tt: u8, mut values: &[u8]) -> Result<(), TLVError> {
-        while !values.is_empty() {
+        let mut first = true;
+        while !values.is_empty() || first {
             let this_length = values.len().min(255);
             self.push_internal(&tt)?;
             self.push_internal(&((this_length) as u8))?;
@@ -211,7 +212,8 @@ impl<'a> TLVWriter<'a> {
             self.buffer[self.position..self.position + this_length]
                 .copy_from_slice(&values[0..this_length]);
             self.position += this_length;
-            values = &values[this_length..]
+            values = &values[this_length..];
+            first = false;
         }
         Ok(())
     }

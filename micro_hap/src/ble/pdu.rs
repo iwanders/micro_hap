@@ -330,43 +330,42 @@ impl<'a> BodyBuilder<'a> {
         self.position
     }
     pub fn add_u16(mut self, t: BleTLVType, value: u16) -> Self {
-        self.push_internal(&t);
-        self.push_slice(&[value]);
+        self.push_slice(t as u8, &[value]);
         self
     }
     pub fn add_u16s(mut self, t: BleTLVType, value: &[u16]) -> Self {
-        self.push_internal(&t);
-        self.push_slice(value);
+        self.push_slice(t as u8, value);
         self
     }
 
     pub fn add_service(mut self, id: SvcId) -> Self {
-        self.push_internal(&(BleTLVType::ServiceInstanceID as u8));
-        self.push_slice(&[id.0]);
+        self.push_slice(BleTLVType::ServiceInstanceID as u8, &[id.0]);
         self
     }
 
     pub fn add_service_uuid(mut self, uid: &crate::uuid::Uuid) -> Self {
-        self.push_internal(&(BleTLVType::ServiceType as u8));
-        self.push_slice(uid.as_raw());
+        self.push_slice(BleTLVType::ServiceType as u8, uid.as_raw());
         self
     }
 
     pub fn add_characteristic_uuid(mut self, uid: &crate::uuid::Uuid) -> Self {
-        self.push_internal(&(BleTLVType::CharacteristicType as u8));
-        self.push_slice(uid.as_raw());
+        self.push_slice(BleTLVType::CharacteristicType as u8, uid.as_raw());
         self
     }
 
     pub fn add_characteristic_properties(mut self, properties: CharacteristicProperties) -> Self {
-        self.push_internal(&(BleTLVType::HAPCharacteristicPropertiesDescriptor as u8));
-        self.push_slice(&[properties.0]);
+        self.push_slice(
+            BleTLVType::HAPCharacteristicPropertiesDescriptor as u8,
+            &[properties.0],
+        );
         self
     }
 
     pub fn add_format(mut self, format: &sig::CharacteristicRepresentation) -> Self {
-        self.push_internal(&(BleTLVType::GATTPresentationFormatDescriptor as u8));
-        self.push_slice(format.as_bytes());
+        self.push_slice(
+            BleTLVType::GATTPresentationFormatDescriptor as u8,
+            format.as_bytes(),
+        );
 
         self
     }
@@ -376,14 +375,15 @@ impl<'a> BodyBuilder<'a> {
         user_description: &Option<heapless::String<N>>,
     ) -> Self {
         if let Some(str) = user_description {
-            self.push_internal(&(BleTLVType::GATTUserDescriptionDescriptor as u8));
-            self.push_slice(str.as_bytes());
+            self.push_slice(
+                BleTLVType::GATTUserDescriptionDescriptor as u8,
+                str.as_bytes(),
+            );
         }
         self
     }
     pub fn add_value(mut self, value: &[u8]) -> Self {
-        self.push_internal(&(BleTLVType::Value as u8));
-        self.push_slice(value);
+        self.push_slice(BleTLVType::Value as u8, value);
         self
     }
 
@@ -395,19 +395,36 @@ impl<'a> BodyBuilder<'a> {
 
     fn push_internal<T: IntoBytes + Immutable>(&mut self, value: &T) {
         let as_bytes = value.as_bytes();
+        if self.position + as_bytes.len() >= self.buffer.len() {
+            panic!();
+        }
         self.buffer[self.position..self.position + as_bytes.len()].copy_from_slice(as_bytes);
         self.position += as_bytes.len();
-        self.add_to_length(T::mem_size());
+        self.add_to_length(as_bytes.len());
     }
 
-    fn push_slice<T: IntoBytes + Immutable + MemSizeOf>(&mut self, values: &[T]) {
-        self.push_internal(&((values.len() * T::mem_size()) as u8));
-        for value in values {
-            let as_bytes = value.as_bytes();
-            self.buffer[self.position..self.position + as_bytes.len()].copy_from_slice(as_bytes);
-            self.position += as_bytes.len();
+    fn push_slice<T: IntoBytes + Immutable + MemSizeOf>(&mut self, tt: u8, values: &[T]) {
+        let as_bytes = values.as_bytes();
+        self.write_u8s(tt, as_bytes);
+    }
+
+    fn write_u8s(&mut self, tt: u8, mut values: &[u8]) {
+        let mut first = true;
+        while !values.is_empty() || first {
+            let this_length = values.len().min(255);
+            self.push_internal(&tt);
+            self.push_internal(&((this_length) as u8));
+
+            if self.position + this_length >= self.buffer.len() {
+                panic!();
+            }
+            self.buffer[self.position..self.position + this_length]
+                .copy_from_slice(&values[0..this_length]);
+            self.position += this_length;
+            self.add_to_length(this_length);
+            values = &values[this_length..];
+            first = false;
         }
-        self.add_to_length(values.len() * T::mem_size());
     }
 }
 
@@ -415,16 +432,9 @@ impl<'a> BodyBuilder<'a> {
 mod test {
     use super::*;
 
-    fn init() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::max())
-            .try_init();
-    }
-
     #[test]
     fn test_controlfield_bitfield() {
-        init();
+        crate::test::init();
         let mut v = ControlField::new();
         v.set_continuation(true);
 
@@ -435,7 +445,7 @@ mod test {
 
     #[test]
     fn test_parse_service_signature_req() {
-        init();
+        crate::test::init();
         let b = [0, 6, 107, 2, 0u8];
         let parsed = ServiceSignatureReadRequest::try_ref_from_bytes(&b);
         info!("parsed: {parsed:?}");
@@ -478,7 +488,7 @@ mod test {
 
     #[test]
     fn test_parse_pair_setup_write() -> Result<(), HapBleError> {
-        init();
+        crate::test::init();
 
         let payload = [
             0x00, 0x02, 0x3D, 0x22, 0x00, 0x11, 0x00, 0x01, 0x0C, 0x00, 0x01, 0x00, 0x06, 0x01,
@@ -517,7 +527,7 @@ mod test {
 
     #[test]
     fn test_body_builder() {
-        init();
+        crate::test::init();
         let mut buffer = [0u8; 32];
         // 06 00 0f 02 04 00 10 00
         let b = BodyBuilder::new(&mut buffer)
@@ -526,6 +536,7 @@ mod test {
             .end();
         let expected = [0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00];
         assert_eq!(buffer[0..b], expected);
+
         let c = BodyBuilder::new_at(&mut buffer, b)
             .add_u16(BleTLVType::HAPServiceProperties, 0x05)
             .add_u16s(BleTLVType::HAPLinkedServices, &[0x18])
@@ -564,9 +575,13 @@ mod test {
         ];
         let mut buffer = [0u8; 512];
         let length = BodyBuilder::new(&mut buffer).add_value(&payload).end();
-        assert_eq!(length, 388);
-        assert_eq!(&buffer[0..2], &[0x01, 0xff]);
-        assert_eq!(&buffer[255 + 2..255 + 4], &[0x01, 0x81]);
-        assert_eq!(&buffer[255..255 + 6], &[0xe3, 0x82, 0x03, 0x81, 0x1f, 0x03]);
+        assert_eq!(length, 388 + 2);
+        let buffer = &buffer[2..];
+        assert_eq!(&buffer[0..2], &[BleTLVType::Value as u8, 0xff]);
+        assert_eq!(&buffer[255 + 2..255 + 4], &[BleTLVType::Value as u8, 0x81]);
+        assert_eq!(
+            &buffer[255..255 + 6],
+            &[0xe3, 0x82, BleTLVType::Value as u8, 0x81, 0x1f, 0x03]
+        );
     }
 }
