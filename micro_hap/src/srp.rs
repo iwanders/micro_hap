@@ -125,13 +125,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         combined.store_to_be(public_b);
     }
 
-    pub fn compute_premaster_secret(
-        &self,
-        public_a: &U3072,
-        v: &U3072,
-        u: &U3072,
-        b: &U3072,
-    ) -> U3072 {
+    fn compute_premaster_secret(&self, public_a: &U3072, v: &U3072, u: &U3072, b: &U3072) -> U3072 {
         // Okay, so this is  <premaster secret> = (A * v^u) ^ b % N
         // (A * v^u)
         // let base = (a_pub * v.modpow(u, &self.params.n)) % &self.params.n;

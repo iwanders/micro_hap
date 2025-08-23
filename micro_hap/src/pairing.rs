@@ -30,6 +30,7 @@ pub enum PairingError {
     IncorrectCombination,
     IncorrectState,
     IncorrectLength,
+    BadPublicKey,
 }
 
 impl From<TLVError> for PairingError {
@@ -611,7 +612,23 @@ pub fn pair_setup_process_get_m4(
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Setup M4: SRP Start Response.");
-    todo!("do amazing things to calculate the SRP shared secret");
+    let server = homekit_srp();
+
+    // NONCOMPLIANCE: ignoring the whole restorePrevious again.
+    let public_b = &ctx.server.pair_setup.B;
+    let b = &ctx.server.pair_setup.b;
+    let v = &ctx.info.verifier;
+    let public_a = &ctx.server.pair_setup.A;
+    server
+        .compute_shared_secret(public_b, b, v, public_a, &mut ctx.server.pair_setup.K)
+        .map_err(|_| PairingError::BadPublicKey)?;
+
+    // What's the difference between K and S? First 64 bytes of S seems to be K?
+    info!("Calculated K: {:?}", ctx.server.pair_setup.K);
+
+    // we also have to check m1 :(
+
+    todo!();
 }
 
 #[cfg(test)]
