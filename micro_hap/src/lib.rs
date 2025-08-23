@@ -186,6 +186,38 @@ impl Attribute {
     }
 }
 
+//  HAPSessionChannelState
+#[derive(Clone, Debug, Default)]
+pub struct ControlChannel {
+    pub key: [u8; pairing::CHACHA20_POLY1305_KEY_BYTES],
+    pub nonce: u64,
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
+#[derive(Clone, Debug, Default)]
+pub struct Session {
+    // The followinf four are in the hap substruct.
+    /// Accessory to Controller control channel.
+    pub a_to_c: ControlChannel,
+    /// Controller to Accessory control channel.
+    pub c_to_a: ControlChannel,
+    /// Whether the session originated from a transient pair setup procedure.
+    pub transient: bool,
+    /// Whether the security session is active.
+    pub security_active: bool,
+    // ble specific data here?
+}
+
+// Where are sessions created, and how to we find the correct session, and how are they assigned to the connections
+// or client?
+// Session is opaque; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L221-L225
+// but asserted here:
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L169-L170
+//
+// Which also means that the BLE side only has one: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Main.c#L258
+// Can a bluetooth accessory only have one connection?
+// Ah yes, it is a peripheral, peripherals in general get only one connection.
+
 #[cfg(test)]
 mod test {
     pub fn init() {
