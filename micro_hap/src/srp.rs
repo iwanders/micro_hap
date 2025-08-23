@@ -433,7 +433,7 @@ mod test {
         let verifier = server.process_reply(&SRP_b, SRP_V, &SRP_A).unwrap();
         // Ah, the hashing for m1 breaks from the implementation in 'srp'?
         // https://github.com/RustCrypto/PAKEs/issues/152
-        let m2 = verifier.proof();
+        //let m2 = verifier.proof();
         let premaster_secret = verifier.key();
         assert_eq!(premaster_secret, SRP_S); // matches.
         // assert!(verifier.verify_client(&SRP_m2).is_ok());

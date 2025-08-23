@@ -650,8 +650,22 @@ pub fn pair_setup_process_get_m4(
     info!("got_m1: {:0>2x?}", ctx.server.pair_setup.m1);
     info!("calculated_m1: {:0>2x?}", calculated_m1);
     if &ctx.server.pair_setup.m1 != &calculated_m1 {
+        // NONCOMPLIANCE: Do something with counters to keep track of unsuccessful attempts.
         return Err(PairingError::BadProof);
     }
+    // Cool, m1 matches, which means we advance to generating the accessory proof.
+    let client_proof_m1 = &ctx.server.pair_setup.m1;
+    server.compute_m2(
+        public_a,
+        session_key,
+        client_proof_m1,
+        &mut ctx.server.pair_setup.m2,
+    );
+
+    // oh, now we need something with hkdf_sha512...
+    info!("calculated_m2: {:0>2x?}", ctx.server.pair_setup.m2);
+
+    // append m2 to the payload.
 
     todo!();
 }
