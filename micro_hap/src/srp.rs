@@ -174,6 +174,27 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         secret.store_to_be(shared_secret);
         Ok(())
     }
+
+    pub fn compute_m2(
+        &self,
+        public_a: &[u8],
+        shared_secret: &[u8],
+        client_proof_m1: &[u8],
+        m2: &mut [u8],
+    ) {
+        // Hash of A, m, session_key
+        // session_key is hashes shared secret.
+        let mut secret_hasher = D::new();
+        secret_hasher.update(shared_secret);
+        let session_key = secret_hasher.finalize();
+
+        let mut hasher = D::new();
+        hasher.update(public_a);
+        hasher.update(client_proof_m1);
+        hasher.update(session_key.as_slice());
+        let hash_result = hasher.finalize();
+        m2.copy_from_slice(&hash_result.as_slice())
+    }
 }
 
 // This entire function depends on the group... why don't we pre-calculate this and put it in the group instead?
@@ -364,6 +385,11 @@ mod test {
         assert_eq!(our_shared_secret, SRP_S);
 
         // Next up, calculate the proofs?
+        let mut our_m2 = [0u8; 64];
+        our_server.compute_m2(&SRP_A, &our_shared_secret, &SRP_m1, &mut our_m2);
+        assert_eq!(&our_m2, SRP_m2);
+
+        // That should be it?
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
