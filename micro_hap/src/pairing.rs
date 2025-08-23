@@ -437,7 +437,10 @@ pub fn pair_setup_handle_incoming(
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             let mut flags = TLVFlags::tied(&data);
+            info!("before read into, data: {:0>2x?}", data);
             TLVReader::new(&data).require_into(&mut [&mut method, &mut state, &mut flags])?;
+
+            info!("pair_setup_process_m1 next");
             pair_setup_process_m1(ctx, method, state, flags)
         }
         PairState::SentM2 => {
@@ -631,7 +634,7 @@ pub fn pair_setup_process_get_m4(
 ) -> Result<usize, PairingError> {
     let _ = support;
 
-    info!("Pair Setup M4: SRP Start Response.");
+    info!("Pair Setup M4: SRP Verify Response.");
     let server = homekit_srp();
 
     // NONCOMPLIANCE: ignoring the whole restorePrevious again.

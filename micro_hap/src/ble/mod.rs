@@ -1022,6 +1022,7 @@ impl HapPeripheralContext {
 
                             // Write the body to our internal buffer here.
                             let mut buffer = self.buffer.borrow_mut();
+                            buffer.fill(0);
                             parsed.copy_body(&mut *buffer)?;
                             let mut pair_ctx = self.pair_ctx.borrow_mut();
                             crate::pairing::pair_setup_handle_incoming(

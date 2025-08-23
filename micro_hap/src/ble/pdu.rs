@@ -558,6 +558,13 @@ mod test {
         // -3 for the return response value.
         // -2 * 2 for the two value fragments.
         assert_eq!(body_length - 3 - 2 * 2, copied_body.len() as u16);
+
+        let payload = [
+            0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01,
+            0x01,
+        ];
+        let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
+        info!("parsed: {:?}", parsed);
     }
 
     #[test]

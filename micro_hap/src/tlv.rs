@@ -60,6 +60,11 @@ impl<'a> TLVReader<'a> {
         if (self.position + 1) < self.buffer.len() {
             let type_id = self.buffer[self.position];
             let length = self.buffer[self.position + 1];
+
+            // Ensure we ignore zero bytes at the end of the buffer.
+            if length == 0 {
+                return None;
+            }
             let data_end = self.position + 2 + length as usize;
             if data_end <= self.buffer.len() {
                 let data = &self.buffer[self.position + 2..data_end];
@@ -85,8 +90,8 @@ impl<'a> TLVReader<'a> {
             return Some(value);
         }
         let mut value = value.ok().unwrap();
-        while let Some((type_id, _length)) = self.peek_next() {
-            if type_id == value.type_id {
+        while let Some((type_id, length)) = self.peek_next() {
+            if type_id == value.type_id && length != 0 {
                 // it is the same type as before.
                 let next_value = self.next_segment()?;
                 if next_value.is_err() {
@@ -354,6 +359,17 @@ mod test {
         assert_eq!(b.type_id, 0x06);
         assert_eq!(b.length, 0x01);
         assert_eq!(b.short_data()?, &[0x01]);
+
+        let payload = [0, 1, 0, 6, 1, 1, 19, 4, 16, 128, 0, 1, 0, 0, 0, 0, 0, 0];
+
+        let mut method = crate::pairing::TLVMethod::tied(&payload);
+        let mut state = crate::pairing::TLVState::tied(&payload);
+        let mut flags = crate::pairing::TLVFlags::tied(&payload);
+        info!("before read into, data: {:0>2x?}", payload);
+        TLVReader::new(&payload).require_into(&mut [&mut method, &mut state, &mut flags])?;
+        info!("method {:?}", method);
+        info!("state {:?}", state);
+        info!("flags {:?}", flags);
 
         Ok(())
     }
