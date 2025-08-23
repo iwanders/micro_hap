@@ -154,7 +154,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         shared_secret: &mut [u8],
     ) -> Result<(), ()> {
         let u = compute_u::<D>(public_a, public_b);
-        let public_b = U3072::load_from_be(public_b);
+        //let public_b = U3072::load_from_be(public_b);
         let private_b = U3072::load_from_be(b);
         let public_a = U3072::load_from_be(public_a);
         let v = U3072::load_from_be(v);

@@ -39,6 +39,11 @@ impl From<TLVError> for PairingError {
         PairingError::TLVError(e)
     }
 }
+impl From<hkdf::InvalidLength> for PairingError {
+    fn from(_e: hkdf::InvalidLength) -> PairingError {
+        PairingError::IncorrectLength
+    }
+}
 
 pub const CHACHA20_POLY1305_KEY_BYTES: usize = 32;
 pub const X25519_SCALAR_BYTES: usize = 32;
@@ -54,8 +59,14 @@ pub const SRP_PROOF_BYTES: usize = 64;
 // Zero byte at the end is not added.
 pub const SRP_USERNAME: &'static str = "Pair-Setup";
 
-pub const SRP_HKDF_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
-pub const SRP_HKDF_INFO: &'static str = "Pair-Setup-Encrypt-Info";
+// Salt and info for the session key.
+pub const PAIR_SETUP_ENCRYPT_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
+pub const PAIR_SETUP_ENCRYPT_INFO: &'static str = "Pair-Setup-Encrypt-Info";
+
+// Salt and info for the control channel.
+pub const CONTROL_CHANNEL_SALT: &'static str = "SplitSetupSalt";
+pub const CONTROL_CHANNEL_ACCESSORY: &'static str = "AccessoryEncrypt-Control";
+pub const CONTROL_CHANNEL_CONTROLLER: &'static str = "ControllerEncrypt-Control";
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -391,6 +402,7 @@ pub struct PairContext {
     pub server: PairServer,
     pub setup: PairSetup,
     pub info: SetupInfo,
+    pub session: crate::Session,
 }
 impl Default for PairContext {
     fn default() -> Self {
@@ -398,6 +410,7 @@ impl Default for PairContext {
             server: Default::default(),
             setup: Default::default(),
             info: Default::default(),
+            session: Default::default(),
         }
     }
 }
@@ -616,6 +629,8 @@ pub fn pair_setup_process_get_m4(
     support: &PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
+    let _ = support;
+
     info!("Pair Setup M4: SRP Start Response.");
     let server = homekit_srp();
 
@@ -670,20 +685,16 @@ pub fn pair_setup_process_get_m4(
 
     // pub const SRP_HKDF_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
     // pub const SRP_HKDF_INFO: &'static str = "Pair-Setup-Encrypt-Info";
-    let r = hkdf_sha512(
+    hkdf_sha512(
         &ctx.server.pair_setup.K,
-        SRP_HKDF_SALT.as_bytes(),
-        SRP_HKDF_INFO.as_bytes(),
+        PAIR_SETUP_ENCRYPT_SALT.as_bytes(),
+        PAIR_SETUP_ENCRYPT_INFO.as_bytes(),
         &mut ctx.server.pair_setup.session_key,
-    );
+    )?;
     info!(
         "ctx.server.pair_setup.session_key: {:0>2x?}",
         ctx.server.pair_setup.session_key
     );
-
-    if r.is_err() {
-        return Err(PairingError::IncorrectLength);
-    }
 
     // That concludes the session key... next we can start writing the response.
 
@@ -697,25 +708,36 @@ pub fn pair_setup_process_get_m4(
         todo!();
     }
 
-    if (ctx.setup.method == PairingMethod::PairSetup && ctx.server.flags.transient()) {
+    if ctx.setup.method == PairingMethod::PairSetup && ctx.server.flags.transient() {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L740
         // Make a sesion... and a control channel, whatever that means.
-        todo!();
+        // Clear the current session.
+        ctx.session = Default::default();
+
+        hkdf_sha512(
+            &ctx.server.pair_setup.K,
+            CONTROL_CHANNEL_SALT.as_bytes(),
+            CONTROL_CHANNEL_ACCESSORY.as_bytes(),
+            &mut ctx.session.a_to_c.key,
+        )?;
+        hkdf_sha512(
+            &ctx.server.pair_setup.K,
+            CONTROL_CHANNEL_SALT.as_bytes(),
+            CONTROL_CHANNEL_CONTROLLER.as_bytes(),
+            &mut ctx.session.c_to_a.key,
+        )?;
+
+        ctx.session.security_active = true;
+        ctx.session.transient = true;
+
+        // NONCOMPLIANCE: not clearing setup procedure data.
+        // NONCOMPLIANCE: not handling keepSetupInfo
     }
 
-    // writer = writer.add_slice(TLVType::PublicKey, &ctx.server.pair_setup.B)?;
+    // NONCOMPLIANCE: Not informing the application the pairing procedure succeeded.
+    // NONCOMPLIANCE: Not telling the ble transport the session is accepted.
 
-    // writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
-
-    // Make flags
-    // let flags = PairingFlags::new()
-    //     .with_split(is_split)
-    //     .with_transient(is_transient);
-
-    // writer = writer.add_entry(TLVType::Flags, &flags)?;
-    // append m2 to the payload.
-
-    todo!();
+    Ok(writer.end())
 }
 
 pub fn hkdf_sha512(
@@ -724,7 +746,7 @@ pub fn hkdf_sha512(
     info: &[u8],
     result: &mut [u8],
 ) -> Result<(), hkdf::InvalidLength> {
-    use sha2::{Digest, Sha512};
+    use sha2::Sha512;
     let hk = hkdf::Hkdf::<Sha512>::new(Some(&salt[..]), &key);
     hk.expand(&info, result)
 }
@@ -748,16 +770,13 @@ mod test {
     fn test_pairing_handle_setup() -> Result<(), PairingError> {
         crate::test::init();
 
-        let mut setup = PairSetup::default();
-        let mut server = PairServer::default();
         let recorded = recorded_info();
 
         let mut ctx = PairContext::default();
         ctx.info = recorded.setup_info;
-        let mut counter = core::cell::RefCell::new(0);
 
+        let counter = core::cell::RefCell::new(0);
         let random_buffer = recorded.random_b.clone();
-
         let rng = move || {
             let mut c = counter.borrow_mut();
             let v = random_buffer[*c];

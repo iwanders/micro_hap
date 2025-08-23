@@ -34,8 +34,6 @@ pub struct TLVReader<'a> {
     position: usize,
 }
 
-pub struct TLVRawIter<'a>(TLVReader<'a>);
-
 impl<'a> TLVReader<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
         Self::new_at(buffer, 0)
@@ -87,7 +85,7 @@ impl<'a> TLVReader<'a> {
             return Some(value);
         }
         let mut value = value.ok().unwrap();
-        while let Some((type_id, length)) = self.peek_next() {
+        while let Some((type_id, _length)) = self.peek_next() {
             if type_id == value.type_id {
                 // it is the same type as before.
                 let next_value = self.next_segment()?;
@@ -157,6 +155,7 @@ pub struct TLV<'a> {
 impl<'a> TLV<'a> {
     /// Create a new TLV of the specified type, tied to the data buffer.
     pub fn tied<T: Into<u8>>(data: &'a [u8], type_id: T) -> Self {
+        let _ = data;
         Self {
             type_id: type_id.into(),
             length: 0,
@@ -435,7 +434,7 @@ mod test {
 
         let buffer = &buffer[0..388];
         // Lets see if we can read that back....
-        let mut r = TLVReader::new(&buffer);
+        let r = TLVReader::new(&buffer);
         for v in r {
             let v = v?;
             info!("v: {:?}", v);

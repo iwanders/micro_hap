@@ -1024,7 +1024,7 @@ impl HapPeripheralContext {
                             let mut buffer = self.buffer.borrow_mut();
                             parsed.copy_body(&mut *buffer)?;
                             let mut pair_ctx = self.pair_ctx.borrow_mut();
-                            let r = crate::pairing::pair_setup_handle_incoming(
+                            crate::pairing::pair_setup_handle_incoming(
                                 &mut **pair_ctx,
                                 support,
                                 &*buffer,
@@ -1037,8 +1037,7 @@ impl HapPeripheralContext {
                             // let len = resp.write_into_length(*buffer)?;
 
                             let full_len = buffer.len();
-                            let (mut first_half, mut second_half) =
-                                buffer.split_at_mut(full_len / 2);
+                            let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
 
                             // Put the reply in the second half.
                             let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
