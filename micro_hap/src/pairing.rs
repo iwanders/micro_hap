@@ -54,6 +54,9 @@ pub const SRP_PROOF_BYTES: usize = 64;
 // Zero byte at the end is not added.
 pub const SRP_USERNAME: &'static str = "Pair-Setup";
 
+pub const SRP_HKDF_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
+pub const SRP_HKDF_INFO: &'static str = "Pair-Setup-Encrypt-Info";
+
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct PairingId(pub uuid::Uuid);
@@ -661,28 +664,78 @@ pub fn pair_setup_process_get_m4(
         client_proof_m1,
         &mut ctx.server.pair_setup.m2,
     );
-
-    // oh, now we need something with hkdf_sha512...
     info!("calculated_m2: {:0>2x?}", ctx.server.pair_setup.m2);
 
+    // oh, now we need something with hkdf_sha512...
+
+    // pub const SRP_HKDF_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
+    // pub const SRP_HKDF_INFO: &'static str = "Pair-Setup-Encrypt-Info";
+    let r = hkdf_sha512(
+        &ctx.server.pair_setup.K,
+        SRP_HKDF_SALT.as_bytes(),
+        SRP_HKDF_INFO.as_bytes(),
+        &mut ctx.server.pair_setup.session_key,
+    );
+    info!(
+        "ctx.server.pair_setup.session_key: {:0>2x?}",
+        ctx.server.pair_setup.session_key
+    );
+
+    if r.is_err() {
+        return Err(PairingError::IncorrectLength);
+    }
+
+    // That concludes the session key... next we can start writing the response.
+
+    let mut writer = TLVWriter::new(data);
+
+    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+
+    writer = writer.add_entry(TLVType::Proof, &ctx.server.pair_setup.m2)?;
+
+    if ctx.setup.method == PairingMethod::PairSetupWithAuth {
+        todo!();
+    }
+
+    if (ctx.setup.method == PairingMethod::PairSetup && ctx.server.flags.transient()) {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L740
+        // Make a sesion... and a control channel, whatever that means.
+        todo!();
+    }
+
+    // writer = writer.add_slice(TLVType::PublicKey, &ctx.server.pair_setup.B)?;
+
+    // writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
+
+    // Make flags
+    // let flags = PairingFlags::new()
+    //     .with_split(is_split)
+    //     .with_transient(is_transient);
+
+    // writer = writer.add_entry(TLVType::Flags, &flags)?;
     // append m2 to the payload.
 
     todo!();
+}
+
+pub fn hkdf_sha512(
+    key: &[u8],
+    salt: &[u8],
+    info: &[u8],
+    result: &mut [u8],
+) -> Result<(), hkdf::InvalidLength> {
+    use sha2::{Digest, Sha512};
+    let hk = hkdf::Hkdf::<Sha512>::new(Some(&salt[..]), &key);
+    hk.expand(&info, result)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    fn init() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::max())
-            .try_init();
-    }
-
     #[test]
     fn test_pairing_flags() {
+        crate::test::init();
         let transient = 1u32 << 4;
         let from_flag = PairingFlags::new().with_transient(true);
         assert_eq!(transient, from_flag.0);
@@ -693,7 +746,7 @@ mod test {
 
     #[test]
     fn test_pairing_handle_setup() -> Result<(), PairingError> {
-        init();
+        crate::test::init();
 
         let mut setup = PairSetup::default();
         let mut server = PairServer::default();
@@ -732,6 +785,33 @@ mod test {
         pair_setup_handle_outgoing(&mut ctx, &support, &mut buffer)?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_hkdf_sha512() {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPCryptoTest.c#L345
+        let hkdf_ikm: &[u8] = &[
+            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
+            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
+        ];
+        let hkdf_info: &[u8] = &[0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9];
+        let hkdf_salt: &[u8] = &[
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0b, 0x0c,
+        ];
+        let hkdf_okm: &[u8] = &[
+            0x83, 0x23, 0x90, 0x08, 0x6c, 0xda, 0x71, 0xfb, 0x47, 0x62, 0x5b, 0xb5, 0xce, 0xb1,
+            0x68, 0xe4, 0xc8, 0xe2, 0x6a, 0x1a, 0x16, 0xed, 0x34, 0xd9, 0xfc, 0x7f, 0xe9, 0x2c,
+            0x14, 0x81, 0x57, 0x93, 0x38, 0xda, 0x36, 0x2c, 0xb8, 0xd9, 0xf9, 0x25, 0xd7, 0xcb,
+        ];
+
+        let key = hkdf_ikm;
+        let salt = hkdf_salt;
+        let info = hkdf_info;
+        let mut output = [0u8; 42];
+        let r = hkdf_sha512(key, salt, info, &mut output);
+        assert!(r.is_ok());
+
+        assert_eq!(hkdf_okm, &output);
     }
 
     // Lets keep values for the unit tests below this line, such that I don't have to scroll too much :)

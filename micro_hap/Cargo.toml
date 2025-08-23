@@ -35,6 +35,9 @@ embedded-io-async = "0.6.1"
 sha2 = "0.10.9"
 crypto-bigint = "0.6.1"
 
+# For more crypto stuff
+hkdf = "0.12.4"
+
 #
 zerocopy = { version = "0.8.26", features = ["derive"] }
 bitfield-struct = "0.11.0"
