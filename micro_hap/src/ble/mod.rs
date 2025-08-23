@@ -949,9 +949,14 @@ impl HapPeripheralContext {
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
-                warn!("Raw write data {:x?}", event.data());
-                // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
-                // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
+                warn!("Raw write data {:0>2x?}", event.data());
+                if self.pair_ctx.borrow().session.security_active {
+                    // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
+                    // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
+                    // Yes, these are encrypted.
+                    //
+                    todo!("need to implement decryption");
+                }
 
                 let header = pdu::RequestHeader::parse_pdu(event.data())?;
                 warn!("Write header {:x?}", header);

@@ -723,12 +723,14 @@ pub fn pair_setup_process_get_m4(
             CONTROL_CHANNEL_ACCESSORY.as_bytes(),
             &mut ctx.session.a_to_c.key,
         )?;
+        info!("a_to_c key: {:0>2x?}", ctx.session.a_to_c.key);
         hkdf_sha512(
             &ctx.server.pair_setup.K,
             CONTROL_CHANNEL_SALT.as_bytes(),
             CONTROL_CHANNEL_CONTROLLER.as_bytes(),
             &mut ctx.session.c_to_a.key,
         )?;
+        info!("c_to_a key: {:0>2x?}", ctx.session.c_to_a.key);
 
         ctx.session.security_active = true;
         ctx.session.transient = true;
@@ -823,6 +825,7 @@ mod test {
 
     #[test]
     fn test_hkdf_sha512() {
+        crate::test::init();
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPCryptoTest.c#L345
         let hkdf_ikm: &[u8] = &[
             0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
@@ -846,6 +849,40 @@ mod test {
         assert!(r.is_ok());
 
         assert_eq!(hkdf_okm, &output);
+    }
+
+    #[test]
+    fn test_first_incoming_payload() {
+        crate::test::init();
+        use chacha20poly1305::aead::generic_array::typenum::Unsigned;
+        use chacha20poly1305::{
+            ChaCha20Poly1305, Nonce,
+            aead::{Aead, AeadCore, KeyInit},
+        };
+        // c_to_a key: [66, 52, 2f, e8, f4, 98, dd, fa, d2, 54, 93, d8, 6a, ef, e7, ad, 50, e5, 80, fc, 39, 52, 4e, 12, ca, ea, c3, be, 5d, 36, b1, 30]
+        // Raw write data [82, 25, d1, a4, 1f, a, d5, e0, ef, e8, b2, 48, 32, a2, 7c, b6, 62, 39, 74, b6, 31]
+        let key = [
+            0x66, 0x52, 0x2f, 0xe8, 0xf4, 0x98, 0xdd, 0xfa, 0xd2, 0x54, 0x93, 0xd8, 0x6a, 0xef,
+            0xe7, 0xad, 0x50, 0xe5, 0x80, 0xfc, 0x39, 0x52, 0x4e, 0x12, 0xca, 0xea, 0xc3, 0xbe,
+            0x5d, 0x36, 0xb1, 0x30,
+        ];
+        let ciphertext = [
+            0x82, 0x25, 0xd1, 0xa4, 0x1f, 0x0a, 0xd5, 0xe0, 0xef, 0xe8, 0xb2, 0x48, 0x32, 0xa2,
+            0x7c, 0xb6, 0x62, 0x39, 0x74, 0xb6, 0x31,
+        ];
+        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+        let cipher = ChaCha20Poly1305::new_from_slice(&key).expect("key should work");
+        // let nonce_integer: u64 = 0;
+        let nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        // nonce_bytes[0] = 1;
+
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let plaintext = cipher
+            .decrypt(&nonce, ciphertext.as_ref())
+            .expect("decryption should work");
+        info!("plaintext: {:0>2x?}", plaintext);
+
+        assert_eq!(&plaintext, &[0x00, 0x12, 0x03, 0x11, 0x00]);
     }
 
     // Lets keep values for the unit tests below this line, such that I don't have to scroll too much :)
