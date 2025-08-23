@@ -31,6 +31,7 @@ pub enum PairingError {
     IncorrectState,
     IncorrectLength,
     BadPublicKey,
+    BadProof,
 }
 
 impl From<TLVError> for PairingError {
@@ -44,6 +45,7 @@ pub const X25519_SCALAR_BYTES: usize = 32;
 pub const X25519_BYTES: usize = 32;
 
 pub const SRP_PUBLIC_KEY_BYTES: usize = 384;
+pub const SRP_PREMASTER_SECRET_BYTES: usize = 384;
 pub const SRP_SECRET_KEY_BYTES: usize = 32;
 pub const SRP_SESSION_KEY_BYTES: usize = 64;
 pub const SRP_PROOF_BYTES: usize = 64;
@@ -619,14 +621,37 @@ pub fn pair_setup_process_get_m4(
     let b = &ctx.server.pair_setup.b;
     let v = &ctx.info.verifier;
     let public_a = &ctx.server.pair_setup.A;
+    // premaster is also called S.
+    let mut premaster = [0u8; SRP_PREMASTER_SECRET_BYTES];
     server
-        .compute_shared_secret(public_b, b, v, public_a, &mut ctx.server.pair_setup.K)
+        .compute_shared_secret(public_b, b, v, public_a, &mut premaster)
         .map_err(|_| PairingError::BadPublicKey)?;
 
+    info!("premaster: {:0>2x?}", &premaster);
+
+    server.session_key(&premaster, &mut ctx.server.pair_setup.K);
+
     // What's the difference between K and S? First 64 bytes of S seems to be K?
-    info!("Calculated K: {:?}", ctx.server.pair_setup.K);
+    info!("Calculated K: {:0>2x?}", ctx.server.pair_setup.K);
 
     // we also have to check m1 :(
+    let mut calculated_m1 = [0u8; SRP_PROOF_BYTES];
+    let salt = &ctx.info.salt;
+    let session_key = &ctx.server.pair_setup.K;
+    server.compute_m1(
+        SRP_USERNAME,
+        salt,
+        public_a,
+        public_b,
+        session_key,
+        &mut calculated_m1,
+    );
+
+    info!("got_m1: {:0>2x?}", ctx.server.pair_setup.m1);
+    info!("calculated_m1: {:0>2x?}", calculated_m1);
+    if &ctx.server.pair_setup.m1 != &calculated_m1 {
+        return Err(PairingError::BadProof);
+    }
 
     todo!();
 }

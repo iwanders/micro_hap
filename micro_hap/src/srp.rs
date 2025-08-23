@@ -169,25 +169,35 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         Ok(())
     }
 
+    pub fn session_key(&self, premaster_secret: &[u8], session_key: &mut [u8]) {
+        let first_nonzero = premaster_secret
+            .iter()
+            .position(|p| *p != 0)
+            .expect("input premaster may not be zero");
+        let premaster_secret = &premaster_secret[first_nonzero..];
+
+        let mut secret_hasher = D::new();
+        secret_hasher.update(premaster_secret);
+        session_key.copy_from_slice(&secret_hasher.finalize());
+    }
+
     pub fn compute_m1(
         &self,
         username: &str,
         salt: &[u8],
         public_a: &[u8],
         public_b: &[u8],
-        shared_secret: &[u8],
+        session_key: &[u8],
         m1: &mut [u8],
     ) {
         // session_key is hashes shared secret.
-        let mut secret_hasher = D::new();
-        secret_hasher.update(shared_secret);
-        let session_key = secret_hasher.finalize();
+        // let mut secret_hasher = D::new();
+        // secret_hasher.update(shared_secret);
+        // let session_key = secret_hasher.finalize();
 
         // Hash N and g.
         let mut hash_n = hash_n::<Sha512>().finalize();
-        info!("hn: {:0>2x?}", hash_n);
         let hash_g = hash_g::<Sha512>().finalize();
-        info!("hg: {:0>2x?}", hash_g);
 
         for (n, g) in hash_n
             .as_mut_slice()
@@ -203,9 +213,9 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         let hash_username = username_hasher.finalize();
 
         // session_key is hashes shared secret.
-        let mut secret_hasher = D::new();
-        secret_hasher.update(shared_secret);
-        let session_key = secret_hasher.finalize();
+        //let mut secret_hasher = D::new();
+        //secret_hasher.update(shared_secret);
+        //let session_key = secret_hasher.finalize();
 
         // Now, we can hash all of this.
         let mut m1_hasher = D::new();
@@ -221,20 +231,20 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     pub fn compute_m2(
         &self,
         public_a: &[u8],
-        shared_secret: &[u8],
+        session_key: &[u8],
         client_proof_m1: &[u8],
         m2: &mut [u8],
     ) {
         // Hash of A, m, session_key
         // session_key is hashes shared secret.
-        let mut secret_hasher = D::new();
-        secret_hasher.update(shared_secret);
-        let session_key = secret_hasher.finalize();
+        // let mut secret_hasher = D::new();
+        // secret_hasher.update(shared_secret);
+        // let session_key = secret_hasher.finalize();
 
         let mut hasher = D::new();
         hasher.update(public_a);
         hasher.update(client_proof_m1);
-        hasher.update(session_key.as_slice());
+        hasher.update(session_key);
         let hash_result = hasher.finalize();
         m2.copy_from_slice(&hash_result.as_slice())
     }
@@ -452,9 +462,15 @@ mod test {
         assert!(r.is_ok());
         assert_eq!(our_shared_secret, SRP_S);
 
+        let mut our_session_key = [0u8; 64];
+        info!("our_shared_secret: {:0>2x?}", &our_shared_secret);
+        our_server.session_key(&our_shared_secret, &mut our_session_key);
+        assert_eq!(&our_session_key, &SRP_k);
+        let session_key = &our_session_key;
+
         // Next up, calculate the proofs?
         let mut our_m2 = [0u8; 64];
-        our_server.compute_m2(&SRP_A, &our_shared_secret, &SRP_m1, &mut our_m2);
+        our_server.compute_m2(&SRP_A, session_key, &SRP_m1, &mut our_m2);
         assert_eq!(&our_m2, SRP_m2);
 
         // Also make m1, because we need it to check against.
@@ -463,18 +479,14 @@ mod test {
         let salt = &SRP_SALT;
         let public_a = &SRP_A;
         let public_b = &our_b_pub;
-        let shared_secret = &our_shared_secret;
         let mut our_m1 = [0u8; 64];
 
-        our_server.compute_m1(
-            username,
-            salt,
-            public_a,
-            public_b,
-            shared_secret,
-            &mut our_m1,
-        );
+        our_server.compute_m1(username, salt, public_a, public_b, session_key, &mut our_m1);
         assert_eq!(&our_m1, SRP_m1);
+
+        // let mut our_session_key = [0u8; 64];
+        // our_server.session_key(shared_secret, &mut our_session_key);
+        // pub fn session_key(&self, premaster_secret: &[u8], session_key: &mut [u8]) {}
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
