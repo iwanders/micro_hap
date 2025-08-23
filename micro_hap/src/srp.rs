@@ -63,6 +63,7 @@ implLoad!(U3072);
 pub struct SrpGroup {
     g: u32,
     n: &'static U3072,
+    nz: &'static NonZero<U3072>,
     //k: &'static U3072,
 }
 
@@ -123,6 +124,56 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         //*public_b = combined;
         combined.store_to_be(public_b);
     }
+
+    pub fn compute_premaster_secret(
+        &self,
+        public_a: &U3072,
+        v: &U3072,
+        u: &U3072,
+        b: &U3072,
+    ) -> U3072 {
+        // Okay, so this is  <premaster secret> = (A * v^u) ^ b % N
+        // (A * v^u)
+        // let base = (a_pub * v.modpow(u, &self.params.n)) % &self.params.n;
+        // base.modpow(b, &self.params.n)
+        //
+        // Need to convert that to the crypto bigint types.
+        // Base first, which is A * v^u
+        // v^u requires the montgomery form on a non-const avalue
+        // const_monty_form!(v, groups::Srp3072Modulus);
+        // doesn't work, is that a bug?
+        let v_m = const_monty_form!(v, Srp3072Modulus);
+        let base = v_m.pow(&u).retrieve();
+        let z = public_a.mul_mod(&base, groups::GROUP_3072.nz);
+
+        let base_m = const_monty_form!(z, Srp3072Modulus);
+
+        base_m.pow(&b).retrieve()
+    }
+
+    pub fn compute_shared_secret(
+        &self,
+        public_b: &[u8],
+        b: &[u8],
+        v: &[u8],
+        public_a: &[u8],
+        shared_secret: &mut [u8],
+    ) -> Result<(), ()> {
+        let u = compute_u::<D>(public_a, public_b);
+        let public_b = U3072::load_from_be(public_b);
+        let private_b = U3072::load_from_be(b);
+        let public_a = U3072::load_from_be(public_a);
+        let v = U3072::load_from_be(v);
+
+        if public_a.rem(&self.params.nz) == U3072::ZERO {
+            // This is a malicious A, so return an error.
+            return Err(());
+        }
+
+        let secret = self.compute_premaster_secret(&public_a, &v, &u, &private_b);
+        secret.store_to_be(shared_secret);
+        Ok(())
+    }
 }
 
 // This entire function depends on the group... why don't we pre-calculate this and put it in the group instead?
@@ -150,6 +201,15 @@ pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
 
     // Allocate the result on the stack, that's a must anyway.
     U3072::load_from_be(hash_result.as_slice())
+}
+
+// u = H(PAD(A) | PAD(B))
+#[must_use]
+pub fn compute_u<D: Digest>(a_pub: &[u8], b_pub: &[u8]) -> U3072 {
+    let mut u = D::new();
+    u.update(a_pub);
+    u.update(b_pub);
+    U3072::load_from_be(&u.finalize())
 }
 
 #[cfg(test)]
@@ -274,15 +334,13 @@ mod test {
         let verifier = server.process_reply(&SRP_b, SRP_V, &SRP_A).unwrap();
         // Ah, the hashing for m1 breaks from the implementation in 'srp'?
         // https://github.com/RustCrypto/PAKEs/issues/152
-
         let m2 = verifier.proof();
         let premaster_secret = verifier.key();
         assert_eq!(premaster_secret, SRP_S); // matches.
         // assert!(verifier.verify_client(&SRP_m2).is_ok());
         //assert_eq!(m2, SRP_m2);
         // verifier.verify_client(reply) -> checks against m1
-        //
-
+        // ------------------------------------------------------------------------
         // Done calculating the reference side
 
         let our_server = SrpServer::<Sha512>::new(&groups::GROUP_3072);
@@ -294,7 +352,18 @@ mod test {
         assert_eq!(U3072::load_from_be(&our_b_pub), U3072::load_from_be(&SRP_B));
 
         // next up is calculating the shared secret.
-        //
+        let mut our_shared_secret = [0u8; 384];
+        let r = our_server.compute_shared_secret(
+            &our_b_pub,
+            &SRP_b,
+            &SRP_V,
+            &SRP_A,
+            &mut our_shared_secret,
+        );
+        assert!(r.is_ok());
+        assert_eq!(our_shared_secret, SRP_S);
+
+        // Next up, calculate the proofs?
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
@@ -465,12 +534,19 @@ mod test {
     ];
 }
 
+use crypto_bigint::impl_modulus;
+use crypto_bigint::modular::ConstMontyParams;
+impl_modulus!(
+    Srp3072Modulus,
+    U3072,
+    "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF"
+);
+pub type Srp3072ConstMontyForm =
+    crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, { U3072::LIMBS }>;
+
 pub mod groups {
     use super::*;
     use lazy_static::lazy_static;
-
-    use crypto_bigint::impl_modulus;
-    use crypto_bigint::modular::ConstMontyParams;
 
     lazy_static! {
         static ref GROUP_3072_N: U3072 = U3072::from_be_slice(&[
@@ -503,11 +579,13 @@ pub mod groups {
             0xe0, 0xfd, 0x10, 0x8e, 0x4b, 0x82, 0xd1, 0x20, 0xa9, 0x3a, 0xd2, 0xca, 0xff, 0xff,
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         ]);
+        static ref GROUP_3072_NZ: NonZero<U3072> = NonZero::new(*GROUP_3072_N).unwrap();
         //static ref GROUP_3072_K: U3072 = compute_k(5, &GROUP_3072_N);
         // https://datatracker.ietf.org/doc/html/rfc5054#page-16
         pub static ref GROUP_3072: SrpGroup = SrpGroup {
             g: 5,
             n: &GROUP_3072_N,
+            nz: &GROUP_3072_NZ,
             //k: &GROUP_3072_K,
         };
 
@@ -515,14 +593,6 @@ pub mod groups {
 
 
     }
-
-    impl_modulus!(
-        Srp3072Modulus,
-        U3072,
-        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF"
-    );
-    pub type Srp3072ConstMontyForm =
-        crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, { U3072::LIMBS }>;
 
     lazy_static! {
         pub static ref SRP_3072_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> =
