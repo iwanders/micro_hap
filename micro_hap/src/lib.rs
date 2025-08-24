@@ -192,6 +192,27 @@ pub struct ControlChannel {
     pub key: [u8; pairing::CHACHA20_POLY1305_KEY_BYTES],
     pub nonce: u64,
 }
+impl ControlChannel {
+    pub fn decrypt(&mut self, buffer: &mut [u8]) -> Result<(), chacha20poly1305::Error> {
+        todo!();
+        /*
+        use chacha20poly1305::aead::generic_array::typenum::Unsigned;
+        use chacha20poly1305::{
+            AeadInPlace, ChaCha20Poly1305, Nonce,
+            aead::{AeadCore, KeyInit},
+        };
+        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+        let cipher = ChaCha20Poly1305::new_from_slice(&self.key).expect("key should work");
+        // Create the nonce
+        let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        // Finally, create the plaintext.
+        let associated_data = &[];
+        cipher.decrypt_in_place(&nonce, associated_data, &mut buffer)*/
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
 #[derive(Clone, Debug, Default)]

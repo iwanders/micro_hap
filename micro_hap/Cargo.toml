@@ -37,7 +37,7 @@ crypto-bigint = "0.6.1"
 
 # For more crypto stuff
 hkdf = "0.12.4"
-chacha20poly1305 = "0.10.1"
+chacha20poly1305 = { version = "0.10.1", default-features = false }
 
 #
 zerocopy = { version = "0.8.26", features = ["derive"] }
