@@ -55,6 +55,8 @@ pub enum HapBleError {
     BufferOverrun,
     /// Overrun on allocation space
     AllocationOverrun,
+    /// Something went wrong with decryption or encryption.
+    EncryptionError,
 }
 
 impl From<crate::tlv::TLVError> for HapBleError {
@@ -77,8 +79,14 @@ impl From<HapBleError> for trouble_host::Error {
             HapBleError::UnexpectedRequest => trouble_host::Error::Other,
             HapBleError::InvalidValue => trouble_host::Error::InvalidValue,
             HapBleError::BufferOverrun => trouble_host::Error::OutOfMemory,
+            HapBleError::EncryptionError => trouble_host::Error::NoPermits,
             HapBleError::AllocationOverrun => trouble_host::Error::OutOfMemory,
         }
+    }
+}
+impl From<chacha20poly1305::Error> for HapBleError {
+    fn from(_: chacha20poly1305::Error) -> HapBleError {
+        HapBleError::EncryptionError
     }
 }
 
@@ -909,13 +917,31 @@ impl HapPeripheralContext {
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
-        if self.pair_ctx.borrow().session.security_active {
+        let security_active = self.pair_ctx.borrow().session.security_active;
+        let mut tmp_buffer = [0u8; 1024];
+        let data = if security_active {
+            warn!("handle_write_incoming raw {:0>2x?}", data);
             // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
             // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
             // Yes, these are encrypted.
             //
-            todo!("need to implement decryption");
-        }
+            // Collect the context
+            let buffer = &mut tmp_buffer;
+            let mut pair_ctx = self.pair_ctx.borrow_mut();
+
+            // Copy the payload into the buffer
+            buffer.fill(0);
+            // parsed.copy_body(&mut *buffer)?;
+            buffer[0..data.len()].copy_from_slice(data);
+
+            pair_ctx
+                .session
+                .c_to_a
+                .decrypt(&mut buffer[0..data.len()])?
+        } else {
+            data
+        };
+        warn!("handle_write_incoming {:0>2x?}", data);
 
         let header = pdu::RequestHeader::parse_pdu(data)?;
         warn!("Write header {:x?}", header);
@@ -978,6 +1004,9 @@ impl HapPeripheralContext {
                 } else {
                     todo!("Need dispatch to correct method");
                 }
+            }
+            pdu::OpCode::Info => {
+                todo!("Implement info opcode, what to do here?");
             }
             _ => {
                 return {
