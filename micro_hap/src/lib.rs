@@ -20,7 +20,7 @@ use bitfield_struct::bitfield;
 pub mod pairing;
 pub mod tlv;
 
-pub mod srp;
+pub mod crypto;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311

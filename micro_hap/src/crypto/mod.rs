@@ -1,0 +1,50 @@
+pub mod aead;
+pub mod srp;
+
+pub type HomekitSrp<'a> = srp::SrpServer<'a, sha2::Sha512>;
+pub fn homekit_srp() -> srp::SrpServer<'static, sha2::Sha512> {
+    HomekitSrp::new(&srp::groups::GROUP_3072)
+}
+
+pub fn hkdf_sha512(
+    key: &[u8],
+    salt: &[u8],
+    info: &[u8],
+    result: &mut [u8],
+) -> Result<(), hkdf::InvalidLength> {
+    use sha2::Sha512;
+    let hk = hkdf::Hkdf::<Sha512>::new(Some(&salt[..]), &key);
+    hk.expand(&info, result)
+}
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_hkdf_sha512() {
+        crate::test::init();
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPCryptoTest.c#L345
+        let hkdf_ikm: &[u8] = &[
+            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
+            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
+        ];
+        let hkdf_info: &[u8] = &[0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9];
+        let hkdf_salt: &[u8] = &[
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0b, 0x0c,
+        ];
+        let hkdf_okm: &[u8] = &[
+            0x83, 0x23, 0x90, 0x08, 0x6c, 0xda, 0x71, 0xfb, 0x47, 0x62, 0x5b, 0xb5, 0xce, 0xb1,
+            0x68, 0xe4, 0xc8, 0xe2, 0x6a, 0x1a, 0x16, 0xed, 0x34, 0xd9, 0xfc, 0x7f, 0xe9, 0x2c,
+            0x14, 0x81, 0x57, 0x93, 0x38, 0xda, 0x36, 0x2c, 0xb8, 0xd9, 0xf9, 0x25, 0xd7, 0xcb,
+        ];
+
+        let key = hkdf_ikm;
+        let salt = hkdf_salt;
+        let info = hkdf_info;
+        let mut output = [0u8; 42];
+        let r = hkdf_sha512(key, salt, info, &mut output);
+        assert!(r.is_ok());
+
+        assert_eq!(hkdf_okm, &output);
+    }
+}
