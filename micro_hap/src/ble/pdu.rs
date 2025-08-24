@@ -196,6 +196,13 @@ pub struct CharacteristicReadRequest {
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct InfoRequest {
+    pub header: RequestHeader,
+    pub char_id: CharId,
+}
+
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(u8)]
 enum WriteRequestBodyValue {
     Value = BleTLVType::Value as u8,
@@ -324,6 +331,75 @@ pub enum BleTLVType {
     /// HAP-Param-HAP-Valid-Values-Range-Descriptor
     HAPValidValuesRangeDescriptor = 0x12,
 }
+impl From<BleTLVType> for u8 {
+    fn from(value: BleTLVType) -> Self {
+        value as u8
+    }
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L15
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
+#[repr(u8)]
+pub enum InfoResponseTLVType {
+    /**
+     * HAP-Param-Current-State-Number.
+     * 2 bytes.
+     */
+    StateNumber = 0x01,
+
+    /**
+     * HAP-Param-Current-Config-Number.
+     * 2 bytes.
+     */
+    ConfigNumber = 0x02,
+
+    /**
+     * HAP-Param-Device-Identifier.
+     * 6 bytes.
+     */
+    DeviceIdentifier = 0x03,
+
+    /**
+     * HAP-Param-Feature-Flags.
+     * 1 byte.
+     */
+    FeatureFlags = 0x04,
+
+    /**
+     * HAP-Param-Model-Name.
+     * UTF-8 string, maximum 255 bytes.
+     */
+    ModelName = 0x05,
+
+    /**
+     * HAP-Param-Protocol-Version.
+     * UTF-8 string, maximum 255 bytes.
+     */
+    ProtocolVersion = 0x06,
+
+    /**
+     * HAP-Param-Status-Flag.
+     * 1 byte.
+     */
+    StatusFlag = 0x07,
+
+    /**
+     * HAP-Param-Category-Identifier.
+     * 2 bytes.
+     */
+    CategoryIdentifier = 0x08,
+
+    /**
+     * HAP-Param-Setup-Hash.
+     * 4 bytes.
+     */
+    SetupHash = 0x09,
+}
+impl From<InfoResponseTLVType> for u8 {
+    fn from(value: InfoResponseTLVType) -> Self {
+        value as u8
+    }
+}
 
 // heh
 pub struct BodyBuilder<'a> {
@@ -347,8 +423,12 @@ impl<'a> BodyBuilder<'a> {
     pub fn end(&self) -> usize {
         self.position
     }
-    pub fn add_u16(mut self, t: BleTLVType, value: u16) -> Self {
-        self.push_slice(t as u8, &[value]);
+    pub fn add_u8<T: Into<u8>>(mut self, t: T, value: u8) -> Self {
+        self.push_slice(t.into(), &[value]);
+        self
+    }
+    pub fn add_u16<T: Into<u8>>(mut self, t: T, value: u16) -> Self {
+        self.push_slice(t.into(), &[value]);
         self
     }
     pub fn add_u16s(mut self, t: BleTLVType, value: &[u16]) -> Self {
@@ -385,6 +465,16 @@ impl<'a> BodyBuilder<'a> {
             format.as_bytes(),
         );
 
+        self
+    }
+
+    pub fn add_info_device_id(mut self, id: &crate::DeviceId) -> Self {
+        self.push_slice(InfoResponseTLVType::DeviceIdentifier as u8, id.as_bytes());
+        self
+    }
+
+    pub fn add_slice<T: Into<u8>>(mut self, t: T, data: &[u8]) -> Self {
+        self.push_slice(t.into(), data);
         self
     }
 
@@ -564,6 +654,10 @@ mod test {
             0x01,
         ];
         let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
+        info!("parsed: {:?}", parsed);
+
+        let payload = [0x00, 0x12, 0x03, 0x11, 0x00];
+        let parsed = InfoRequest::parse_pdu(&payload);
         info!("parsed: {:?}", parsed);
     }
 

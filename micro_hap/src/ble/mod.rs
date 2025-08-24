@@ -877,6 +877,69 @@ impl HapPeripheralContext {
         }
     }
 
+    pub async fn info_request(
+        &mut self,
+        req: &pdu::InfoRequest,
+    ) -> Result<BufferResponse, HapBleError> {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L71
+        let char_id = req.char_id; // its unaligned, so copy it before we use it.
+        if let Some(chr) = self.get_attribute_by_char(char_id) {
+            if chr.uuid == crate::characteristic::SERVICE_SIGNATURE.into() {
+                // Hardcode this for now, we'll make something smarter later.
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+
+                let pair_ctx = self.pair_ctx.borrow();
+                let setup_hash = crate::adv::calculate_setup_hash(
+                    &pair_ctx.accessory.device_id,
+                    &pair_ctx.accessory.setup_id,
+                );
+                let len = BodyBuilder::new_at(*buffer, len)
+                    // 1 is good enough for the ip side, probably also for bluetooth?
+                    .add_u16(pdu::InfoResponseTLVType::StateNumber, 1)
+                    // Config number, we should increment this every reconfiguration I think? Ignore for now.
+                    .add_u16(pdu::InfoResponseTLVType::ConfigNumber, 1)
+                    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L136
+                    .add_info_device_id(&pair_ctx.accessory.device_id)
+                    // Feature flags, 2 is software authentication only.
+                    .add_u8(pdu::InfoResponseTLVType::FeatureFlags, 2)
+                    // Next is param-model. is that always a string?
+                    .add_slice(
+                        pdu::InfoResponseTLVType::ModelName,
+                        pair_ctx.accessory.model.as_bytes(),
+                    )
+                    // And then protocol version.
+                    .add_slice(
+                        pdu::InfoResponseTLVType::ProtocolVersion,
+                        "2.2.0".as_bytes(),
+                    )
+                    // Status flag... https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L924
+                    // Lets just report not paired all the time: 1.
+                    // Lets try paired now, since we're in a secure session? 0
+                    .add_u8(pdu::InfoResponseTLVType::StatusFlag, 1)
+                    // Category
+                    .add_u16(
+                        pdu::InfoResponseTLVType::CategoryIdentifier,
+                        pair_ctx.accessory.category,
+                    )
+                    // Finally, the setup hash... Does this value matter?
+                    .add_slice(pdu::InfoResponseTLVType::SetupHash, &setup_hash)
+                    .end();
+                Ok(BufferResponse(len))
+            } else {
+                error!(
+                    "Got info for characteristic that is not yet handled: {:?}",
+                    char_id
+                );
+                todo!();
+            }
+        } else {
+            error!("Got info read for unknown characteristic: {:?}", char_id);
+            todo!();
+        }
+    }
+
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
         //&self,
         data: &[u8],
@@ -1006,7 +1069,14 @@ impl HapPeripheralContext {
                 }
             }
             pdu::OpCode::Info => {
-                todo!("Implement info opcode, what to do here?");
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L623
+                // we don't have this in the recording?!?
+                if !security_active {
+                    return Err(HapBleError::EncryptionError);
+                }
+                let req = pdu::InfoRequest::parse_pdu(data)?;
+                info!("Info req: {:?}", req);
+                self.info_request(&req).await?
             }
             _ => {
                 return {
@@ -1131,7 +1201,7 @@ impl HapPeripheralContext {
                     event.into_payload().reply(reply).await?;
                     return Ok(None);
                 } else {
-                    todo!("got unhandled write");
+                    todo!("unhandled event");
                 }
             }
             remainder => Ok(Some(remainder)),

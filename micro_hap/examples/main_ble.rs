@@ -104,13 +104,21 @@ mod ble_bas_peripheral {
         .unwrap();
 
         // Setup the accessory information.
-        let value = micro_hap::AccessoryInformationStatic {
+        let static_information = micro_hap::AccessoryInformationStatic {
             name: "micro_hap",
+            device_id: micro_hap::DeviceId([
+                DEVICE_ADDRESS[0],
+                DEVICE_ADDRESS[1],
+                DEVICE_ADDRESS[2],
+                DEVICE_ADDRESS[3],
+                DEVICE_ADDRESS[4],
+                DEVICE_ADDRESS[5],
+            ]),
             ..Default::default()
         };
         let _ = server
             .accessory_information
-            .set_information_static(&server, &value)
+            .set_information_static(&server, &static_information)
             .unwrap();
 
         let pair_ctx = {
@@ -170,7 +178,7 @@ mod ble_bas_peripheral {
 
         let _ = join(ble_task(runner), async {
             loop {
-                match advertise(name, &mut peripheral, &server).await {
+                match advertise(name, &mut peripheral, &server, &static_information).await {
                     Ok(conn) => {
                         // Increase the data length to 251 bytes per package, default is like 27.
                         conn.update_data_length(&stack, 251, 2120)
@@ -328,18 +336,13 @@ mod ble_bas_peripheral {
         name: &'values str,
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
         server: &'server Server<'values>,
+        static_info: &micro_hap::AccessoryInformationStatic,
     ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
         // ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
         let adv_config = micro_hap::adv::AdvertisementConfig {
-            device_id: micro_hap::adv::DeviceId([
-                DEVICE_ADDRESS[0],
-                DEVICE_ADDRESS[1],
-                DEVICE_ADDRESS[2],
-                DEVICE_ADDRESS[3],
-                DEVICE_ADDRESS[4],
-                DEVICE_ADDRESS[5],
-            ]),
-            accessory_category: 7,
+            device_id: static_info.device_id,
+            setup_id: static_info.setup_id,
+            accessory_category: static_info.category,
             ..Default::default()
         };
         let hap_adv = adv_config.to_advertisement();

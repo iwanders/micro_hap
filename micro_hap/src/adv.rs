@@ -1,11 +1,8 @@
 const COMPANY_IDENTIFIER_CODE: u16 = 0x004c;
-use heapless::String;
 use sha2::{Digest, Sha512};
 use trouble_host::prelude::AdStructure;
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
-pub struct DeviceId(pub [u8; 6]);
+use crate::{DeviceId, SetupId};
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -26,7 +23,7 @@ pub struct AdvertisementConfig {
     pub config_number: u8,
 
     /// The setup id, made up of four alphanumeric characters.
-    pub setup_id: String<4>,
+    pub setup_id: SetupId,
 }
 
 impl Default for AdvertisementConfig {
@@ -37,7 +34,7 @@ impl Default for AdvertisementConfig {
             accessory_category: 1,
             config_number: 1,
             global_state: 1,
-            setup_id: "ABCD".try_into().unwrap(),
+            setup_id: Default::default(),
         }
     }
 }
@@ -54,25 +51,30 @@ pub struct HapAdvertisement {
     // Trouble adds the LEN, ADT and CoID bytes.
     data: [u8; 23 - 1 - 1 - 2],
 }
+
+pub fn calculate_setup_hash(device_id: &DeviceId, setup_id: &SetupId) -> [u8; 4] {
+    // E1:91:1A:70:85:AA
+    // Well... yikes, they want the colons.
+    // Concatenate the Setup Id and the Device ID.
+    let mut concat: [u8; 4 + 6 * 2 + 5] = Default::default();
+    concat[0..4].copy_from_slice(&setup_id.0);
+
+    for (i, v) in device_id.0.iter().enumerate() {
+        let [h, l] = u8_to_uppercase_hex(*v);
+        concat[4 + i * 3] = h;
+        concat[4 + i * 3 + 1] = l;
+        if i != 5 {
+            concat[4 + i * 3 + 2] = b':';
+        }
+    }
+
+    let res = Sha512::digest(&concat);
+    [res[0], res[1], res[2], res[3]]
+}
+
 impl AdvertisementConfig {
     pub fn calculate_setup_hash(&self) -> [u8; 4] {
-        // E1:91:1A:70:85:AA
-        // Well... yikes, they want the colons.
-        // Concatenate the Setup Id and the Device ID.
-        let mut concat: [u8; 4 + 6 * 2 + 5] = Default::default();
-        concat[0..4].copy_from_slice(&self.setup_id.as_bytes());
-
-        for (i, v) in self.device_id.0.iter().enumerate() {
-            let [h, l] = u8_to_uppercase_hex(*v);
-            concat[4 + i * 3] = h;
-            concat[4 + i * 3 + 1] = l;
-            if i != 5 {
-                concat[4 + i * 3 + 2] = b':';
-            }
-        }
-
-        let res = Sha512::digest(&concat);
-        [res[0], res[1], res[2], res[3]]
+        calculate_setup_hash(&self.device_id, &self.setup_id)
     }
 
     pub fn to_advertisement(&self) -> HapAdvertisement {

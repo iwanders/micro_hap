@@ -82,6 +82,11 @@ pub struct AccessoryInformationStatic {
     pub name: &'static str,
     pub manufacturer: &'static str,
     pub firmware_revision: &'static str,
+    pub category: u16,
+
+    pub device_id: DeviceId,
+
+    pub setup_id: SetupId,
 }
 impl Default for AccessoryInformationStatic {
     fn default() -> Self {
@@ -93,6 +98,9 @@ impl Default for AccessoryInformationStatic {
             name: "MicroHap",
             manufacturer: "TestManufacturer",
             firmware_revision: "0.0.1",
+            category: 7,
+            device_id: DeviceId([1, 2, 3, 4, 5, 6]),
+            setup_id: Default::default(),
         }
     }
 }
@@ -104,6 +112,25 @@ pub struct CharId(pub u16);
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct DeviceId(pub [u8; 6]);
+impl Default for DeviceId {
+    fn default() -> Self {
+        DeviceId([1, 2, 3, 4, 5, 6])
+    }
+}
+
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[repr(transparent)]
+pub struct SetupId(pub [u8; 4]);
+impl Default for SetupId {
+    fn default() -> Self {
+        SetupId([b'A', b'B', b'C', b'D'])
+    }
+}
 
 /// Properties for a service.
 #[bitfield(u16)]

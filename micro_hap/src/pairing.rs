@@ -404,6 +404,7 @@ pub struct PairContext {
     pub setup: PairSetup,
     pub info: SetupInfo,
     pub session: crate::Session,
+    pub accessory: crate::AccessoryInformationStatic,
 }
 impl Default for PairContext {
     fn default() -> Self {
@@ -412,6 +413,7 @@ impl Default for PairContext {
             setup: Default::default(),
             info: Default::default(),
             session: Default::default(),
+            accessory: Default::default(),
         }
     }
 }
