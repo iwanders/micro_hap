@@ -856,12 +856,15 @@ impl HapPeripheralContext {
                     .end();
                 Ok(BufferResponse(len))
             } else if chr.uuid == crate::characteristic::PAIRING_FEATURES.into() {
+                //info!("pairing features");
                 let mut buffer = self.buffer.borrow_mut();
                 let reply = req.header.to_success();
                 let len = reply.write_into_length(*buffer)?;
                 // Software authentication is 0x2, this is non-const in the reference implementation though.
                 let len = BodyBuilder::new_at(*buffer, len)
-                    .add_value(&2u8.as_bytes())
+                    // Changed to null match the reference.
+                    .add_value(&0u8.as_bytes())
+                    //.add_value(&2u8.as_bytes())
                     .end();
                 Ok(BufferResponse(len))
             } else {
@@ -1424,6 +1427,24 @@ mod test {
             // Got:
             // 2, 86, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 79, 0, 0, 0, 7, 2, 32, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 85, 0, 0, 0, 10, 2, 1, 0, 12, 7, 4, 0, 0, 39, 1, 0, 0
             //                                                                                                                                                                                         ^^
+
+            assert_eq!(&*resp_buffer, outgoing_data);
+        }
+        {
+            let incoming_data: &[u8] = &[0x00, 0x03, 0x58, 0x24, 0x00];
+            let handle = 0x24;
+            let outgoing_data: &[u8] = &[0x02, 0x58, 0x00, 0x03, 0x00, 0x01, 0x01, 0x00];
+            let r = ctx
+                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+                .await?;
+
+            let mut outgoing = [0u8; 1024];
+            let resp = ctx.handle_read_outgoing(handle).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+
+            // This is different
+            //   left: [2, 88, 0, 3, 0, 1, 1, 2]
+            //   right: [2, 88, 0, 3, 0, 1, 1, 0]
 
             assert_eq!(&*resp_buffer, outgoing_data);
         }
