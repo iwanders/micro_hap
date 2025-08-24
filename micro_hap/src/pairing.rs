@@ -24,7 +24,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
 
-use crate::crypto::{aead, aead::CHACHA20_POLY1305_KEY_BYTES, hkdf_sha512, homekit_srp};
+use crate::crypto::{
+    aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_verify, hkdf_sha512, homekit_srp,
+};
 
 #[derive(Debug, Copy, Clone)]
 pub enum PairingError {
@@ -35,6 +37,7 @@ pub enum PairingError {
     BadPublicKey,
     BadProof,
     BadDecryption,
+    BadSignature,
 }
 
 impl From<TLVError> for PairingError {
@@ -55,6 +58,8 @@ impl From<chacha20poly1305::Error> for PairingError {
 
 pub const X25519_SCALAR_BYTES: usize = 32;
 pub const X25519_BYTES: usize = 32;
+
+pub const ED25519_BYTES: usize = 64;
 
 pub const SRP_PUBLIC_KEY_BYTES: usize = 384;
 pub const SRP_PREMASTER_SECRET_BYTES: usize = 384;
@@ -77,6 +82,8 @@ pub const CONTROL_CHANNEL_CONTROLLER: &'static str = "ControllerEncrypt-Control"
 
 // Message stage specific nonces
 pub const PAIR_SETUP_M5_NONCE: &'static str = "PS-Msg05";
+pub const PAIR_SETUP_M5_SIGN_SALT: &'static str = "Pair-Setup-Controller-Sign-Salt";
+pub const PAIR_SETUP_M5_SIGN_INFO: &'static str = "Pair-Setup-Controller-Sign-Info";
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -395,6 +402,8 @@ typed_tlv!(TLVFlags, TLVType::Flags);
 typed_tlv!(TLVProof, TLVType::Proof);
 typed_tlv!(TLVPublicKey, TLVType::PublicKey);
 typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
+typed_tlv!(TLVIdentifier, TLVType::Identifier);
+typed_tlv!(TLVSignature, TLVType::Signature);
 
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
@@ -576,35 +585,64 @@ pub fn pair_setup_process_m5(
 
     // Write the data to the buffer first to ensure contiguous data
 
-    // NONCOMPLIANCE: Bad use of ephemeral B, but we don't need that anymore and its available memory.
-    encrypted_data.copy_body(&mut ctx.server.pair_setup.B)?;
+    // NONCOMPLIANCE: use of ephemeral B, but we don't need that anymore at this point and it's available memory.
+    // left holds the encrypted & decrypted data, with leaves right as a scratchpad. Encrypted data is 154 bytes, the
+    // B size is 384, so that leaves 230 for the right side.
+    let (mut left, mut right) = ctx.server.pair_setup.B.split_at_mut(encrypted_data.len());
+    encrypted_data.copy_body(left)?;
     let key = &ctx.server.pair_setup.session_key;
-    let data = &mut ctx.server.pair_setup.B[0..encrypted_data.len()];
+    let data = left;
     let decrypted = aead::decrypt(data, key, &PAIR_SETUP_M5_NONCE.as_bytes())?;
     info!("decrypted: {:0>2x?}", decrypted);
 
-    //
-    // let data = aead::decrypt(buffer, key, nonce_bytes);
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
-    // Decrypt the encrypted data.
+    let mut identifier = TLVIdentifier::tied(&decrypted);
+    let mut public_key = TLVPublicKey::tied(&decrypted);
+    let mut signature = TLVSignature::tied(&decrypted);
+    TLVReader::new(&decrypted).require_into(&mut [
+        &mut identifier,
+        &mut public_key,
+        &mut signature,
+    ])?;
+    info!("identifier: {:0>2x?}", identifier);
+    info!("public_key: {:0>2x?}", public_key);
+    info!("signature: {:0>2x?}", signature);
 
-    ctx.setup.state = state;
+    // NONCOMPLIANCE not checking the sizes of the above things.
+
+    // Now we are here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L963
+    // Are those alloc & alloc unaligned consecutive?
+    // And we're all setup to do more more hashing of things.
+    // ltpk  long term pairing key?
+    const X_LENGTH: usize = 32;
+
+    let key = &ctx.server.pair_setup.K;
+    let salt = &PAIR_SETUP_M5_SIGN_SALT.as_bytes();
+    let info = &PAIR_SETUP_M5_SIGN_INFO.as_bytes();
+    hkdf_sha512(key, salt, info, &mut right[0..X_LENGTH])?;
+
+    identifier.copy_body(&mut right[X_LENGTH..X_LENGTH + identifier.len()])?;
+    let public_key_start = X_LENGTH + identifier.len();
+    let public_key_end = public_key_start + public_key.len();
+    public_key.copy_body(&mut right[public_key_start..public_key_end])?;
+
+    let sig_start = public_key_end;
+    let sig_end = public_key_end + signature.len();
+    signature.copy_body(&mut right[sig_start..sig_end])?;
+
+    let iosdevice_info = &right[0..X_LENGTH + identifier.len() + public_key.len()];
+    info!("iosdevice_info: {:0>2x?}", iosdevice_info);
+
+    // Now we need to verify that;
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L988-L991
+    let public_key_buffer = &right[public_key_start..public_key_end];
+    let signature_buffer = &right[sig_start..sig_end];
+    if !ed25519_verify(iosdevice_info, public_key_buffer, signature_buffer) {
+        return Err(PairingError::BadSignature);
+    }
+
+    // Next up is saving the pairing id and long term pairing key.
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L999
+
     Ok(())
 }
 

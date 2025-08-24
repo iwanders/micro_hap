@@ -1,4 +1,5 @@
 pub mod aead;
+pub mod ed25519;
 pub mod srp;
 
 pub type HomekitSrp<'a> = srp::SrpServer<'a, sha2::Sha512>;

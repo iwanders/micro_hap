@@ -42,7 +42,6 @@ impl ControlChannel {
         type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
         let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
         nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
-        let nonce = Nonce::from_slice(&nonce_bytes);
 
         let r = decrypt(buffer, &self.key, &nonce_bytes)?;
 
