@@ -684,8 +684,6 @@ pub fn pair_setup_process_get_m4(
 
     // oh, now we need something with hkdf_sha512...
 
-    // pub const SRP_HKDF_SALT: &'static str = "Pair-Setup-Encrypt-Salt";
-    // pub const SRP_HKDF_INFO: &'static str = "Pair-Setup-Encrypt-Info";
     hkdf_sha512(
         &ctx.server.pair_setup.K,
         PAIR_SETUP_ENCRYPT_SALT.as_bytes(),

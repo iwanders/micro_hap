@@ -182,6 +182,14 @@ impl BleProperties {
             properties: ble::CharacteristicProperties::new(),
         }
     }
+    pub fn with_format(self, format: ble::sig::Format) -> Self {
+        let mut ble_format = self.format;
+        ble_format.format = format;
+        Self {
+            format: ble_format,
+            ..self
+        }
+    }
     pub fn with_format_opaque(self) -> Self {
         let mut format = self.format;
         format.format = ble::sig::Format::Opaque;

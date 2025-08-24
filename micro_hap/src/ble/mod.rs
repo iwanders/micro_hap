@@ -34,9 +34,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L48
 // seems to have the best overview?
 //
-// We probably have to handle this fragmentation stuff as well?
-//
-//
+
+// We currently get an InfoRequest, followed the reference implementation, but the phone still disconnects.
+// The phone never sends this request though, so we must be doing something different.
+
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -481,7 +482,7 @@ impl PairingService {
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.features.handle)
-                        .with_format_opaque()
+                        .with_format(crate::ble::sig::Format::U8)
                         .with_properties(CharacteristicProperties::new().with_read_open(true)),
                 ),
             })
@@ -898,7 +899,8 @@ impl HapPeripheralContext {
                     // 1 is good enough for the ip side, probably also for bluetooth?
                     .add_u16(pdu::InfoResponseTLVType::StateNumber, 1)
                     // Config number, we should increment this every reconfiguration I think? Ignore for now.
-                    .add_u16(pdu::InfoResponseTLVType::ConfigNumber, 1)
+                    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L1058
+                    .add_u8(pdu::InfoResponseTLVType::ConfigNumber, 1)
                     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L136
                     .add_info_device_id(&pair_ctx.accessory.device_id)
                     // Feature flags, 2 is software authentication only.
@@ -1275,7 +1277,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_service_requests() -> Result<(), HapBleError> {
+    async fn test_message_exchanges() -> Result<(), HapBleError> {
         crate::test::init();
         let name = "micro_hap";
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
@@ -1359,35 +1361,86 @@ mod test {
         // Test service signature response ------------
         {
             let incoming_data: &[u8] = &[0x00, 0x06, 0x0d, 0x10, 0x00];
-            let incoming_handle = 0x11;
+            let handle = 0x11;
 
             let outgoing_data: &[u8] = &[
                 0x02, 0x0d, 0x00, 0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00,
             ];
             let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, incoming_handle)
+                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
             let mut outgoing = [0u8; 1024];
-            let resp = ctx.handle_read_outgoing(0x11).await?;
+            let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
 
             assert_eq!(&*resp_buffer, outgoing_data);
         }
-        // End test  ----------------------------------
+        {
+            let incoming_data: &[u8] = &[0x00, 0x01, 0x9c, 0x11, 0x00];
+            let handle = 0x11;
+
+            let outgoing_data: &[u8] = &[
+                0x02, 0x9c, 0x00, 0x35, 0x00, 0x04, 0x10, 0x91, 0x52, 0x76, 0xbb, 0x26, 0x00, 0x00,
+                0x80, 0x00, 0x10, 0x00, 0x00, 0xa5, 0x00, 0x00, 0x00, 0x07, 0x02, 0x10, 0x00, 0x06,
+                0x10, 0x91, 0x52, 0x76, 0xbb, 0x26, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0xa2,
+                0x00, 0x00, 0x00, 0x0a, 0x02, 0x10, 0x00, 0x0c, 0x07, 0x1b, 0x00, 0x00, 0x27, 0x01,
+                0x00, 0x00,
+            ];
+            let r = ctx
+                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+                .await?;
+
+            let mut outgoing = [0u8; 1024];
+            let resp = ctx.handle_read_outgoing(handle).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+
+            assert_eq!(&*resp_buffer, outgoing_data);
+        }
+        //   ----------------------------------
+
+        // Check pairing features  ------------
+        {
+            let incoming_data: &[u8] = &[0x00, 0x01, 0x56, 0x24, 0x00];
+            let handle = 0x24;
+            let outgoing_data: &[u8] = &[
+                0x02, 0x56, 0x00, 0x35, 0x00, 0x04, 0x10, 0x91, 0x52, 0x76, 0xbb, 0x26, 0x00, 0x00,
+                0x80, 0x00, 0x10, 0x00, 0x00, 0x4f, 0x00, 0x00, 0x00, 0x07, 0x02, 0x20, 0x00, 0x06,
+                0x10, 0x91, 0x52, 0x76, 0xbb, 0x26, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x55,
+                0x00, 0x00, 0x00, 0x0a, 0x02, 0x01, 0x00, 0x0c, 0x07, 0x04, 0x00, 0x00, 0x27, 0x01,
+                0x00, 0x00,
+            ];
+            let r = ctx
+                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+                .await?;
+
+            let mut outgoing = [0u8; 1024];
+            let resp = ctx.handle_read_outgoing(handle).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+
+            // This is different
+            // Expected:
+            // 2, 86, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 79, 0, 0, 0, 7, 2, 32, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 85, 0, 0, 0, 10, 2, 1, 0, 12, 7, 27, 0, 0, 39, 1, 0, 0
+            // Got:
+            // 2, 86, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 79, 0, 0, 0, 7, 2, 32, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 85, 0, 0, 0, 10, 2, 1, 0, 12, 7, 4, 0, 0, 39, 1, 0, 0
+            //                                                                                                                                                                                         ^^
+
+            assert_eq!(&*resp_buffer, outgoing_data);
+        }
+        //   ----------------------------------
 
         // Incoming info request  ------------
         {
             let incoming_data: &[u8] = &[0x00, 0x12, 0xbe, 0x11, 0x00];
-            let incoming_handle = 0x11;
+            let handle = 0x11;
 
             // We don't know what outgoing should be here.
             let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, incoming_handle)
+                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
             let mut outgoing = [0u8; 1024];
-            let resp = ctx.handle_read_outgoing(0x11).await?;
+            let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
         }
