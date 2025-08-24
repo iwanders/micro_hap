@@ -582,6 +582,8 @@ struct Reply {
     payload: BufferResponse,
     handle: u16,
 }
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub struct BufferResponse(pub usize);
 
 pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
@@ -589,6 +591,7 @@ pub struct HapPeripheralContext {
     pair_ctx: core::cell::RefCell<&'static mut crate::pairing::PairContext>,
 
     prepared_reply: Option<Reply>,
+    should_encrypt_reply: bool,
 
     information_service: crate::Service,
     protocol_service: crate::Service,
@@ -630,12 +633,7 @@ impl HapPeripheralContext {
         }
         None
     }
-}
 
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub struct BufferResponse(pub usize);
-
-impl HapPeripheralContext {
     pub fn new(
         buffer: &'static mut [u8],
         pair_ctx: &'static mut crate::pairing::PairContext,
@@ -648,6 +646,7 @@ impl HapPeripheralContext {
             buffer: buffer.into(),
             pair_ctx: pair_ctx.into(),
             prepared_reply: None,
+            should_encrypt_reply: false,
             information_service: information_service.populate_support()?,
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
@@ -961,13 +960,36 @@ impl HapPeripheralContext {
         // self.buffer.borrow().map(|z| &z[0..reply.payload.0])
         core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
     }
+
+    pub fn encrypted_reply(
+        &mut self,
+        value: BufferResponse,
+    ) -> Result<BufferResponse, HapBleError> {
+        let should_encrypt = self.should_encrypt_reply;
+        if should_encrypt {
+            // Perform the encryption, then respond with the buffer that is encrypted.
+            let mut ctx = self.pair_ctx.borrow_mut();
+            let mut buff = self.buffer.borrow_mut();
+            info!("Encrypting reply: {:0>2x?}", &buff[0..value.0]);
+
+            let res = ctx.session.a_to_c.encrypt(&mut **buff, value.0)?;
+            info!("Encrypted reply: {:0>2x?}", &res);
+
+            Ok(BufferResponse(res.len()))
+        } else {
+            Ok(value)
+        }
+    }
+
     pub async fn handle_read_outgoing(
         &mut self,
         handle: u16,
     ) -> Result<Option<core::cell::Ref<'_, [u8]>>, HapBleError> {
         if self.prepared_reply.as_ref().map(|e| e.handle) == Some(handle) {
             let reply = self.prepared_reply.take().unwrap();
-            Ok(Some(self.get_response(reply.payload)))
+            // Ensure that we send the encrypted data!
+            let buffered_response = self.encrypted_reply(reply.payload)?;
+            Ok(Some(self.get_response(buffered_response)))
         } else {
             Ok(None)
         }
@@ -981,6 +1003,7 @@ impl HapPeripheralContext {
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
         let security_active = self.pair_ctx.borrow().session.security_active;
+        self.should_encrypt_reply = security_active;
         let mut tmp_buffer = [0u8; 1024];
         let data = if security_active {
             warn!("handle_write_incoming raw {:0>2x?}", data);
