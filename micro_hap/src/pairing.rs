@@ -439,12 +439,12 @@ pub fn pair_setup_handle_incoming(
             info!("not started, so m1");
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
-            let mut flags = TLVFlags::tied(&data);
+            //let mut flags = TLVFlags::tied(&data);
             info!("before read into, data: {:0>2x?}", data);
-            TLVReader::new(&data).require_into(&mut [&mut method, &mut state, &mut flags])?;
+            TLVReader::new(&data).require_into(&mut [&mut method, &mut state])?;
 
             info!("pair_setup_process_m1 next");
-            pair_setup_process_m1(ctx, method, state, flags)
+            pair_setup_process_m1(ctx, method, state)
         }
         PairState::SentM2 => {
             info!("Stage M3 begin");
@@ -491,7 +491,6 @@ pub fn pair_setup_process_m1(
     ctx: &mut PairContext,
     method: TLVMethod,
     state: TLVState,
-    flags: TLVFlags,
 ) -> Result<(), PairingError> {
     let method = method.try_from::<PairingMethod>()?;
     info!("hit setup process m1");
@@ -500,7 +499,8 @@ pub fn pair_setup_process_m1(
     // info!("flags: {:?}", flags);
 
     ctx.setup.method = *method;
-    ctx.server.flags = PairingFlags::from_bits(flags.to_u32()?);
+    // NONCOMPLIANCE: flags present is not set to false.
+    //ctx.server.flags = PairingFlags::from_bits(flags.to_u32()?);
     ctx.setup.state = *state.try_from::<PairState>()?;
 
     Ok(())
@@ -615,11 +615,13 @@ pub fn pair_setup_process_get_m2(
     writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
 
     // Make flags
+    /*
     let flags = PairingFlags::new()
         .with_split(is_split)
         .with_transient(is_transient);
 
     writer = writer.add_entry(TLVType::Flags, &flags)?;
+    */
 
     Ok(writer.end())
 }
