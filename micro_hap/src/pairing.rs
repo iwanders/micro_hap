@@ -24,7 +24,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
 
-use crate::crypto::{hkdf_sha512, homekit_srp};
+use crate::crypto::{aead::CHACHA20_POLY1305_KEY_BYTES, hkdf_sha512, homekit_srp};
 
 #[derive(Debug, Copy, Clone)]
 pub enum PairingError {
@@ -47,7 +47,6 @@ impl From<hkdf::InvalidLength> for PairingError {
     }
 }
 
-pub const CHACHA20_POLY1305_KEY_BYTES: usize = 32;
 pub const X25519_SCALAR_BYTES: usize = 32;
 pub const X25519_BYTES: usize = 32;
 

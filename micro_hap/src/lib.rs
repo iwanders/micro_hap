@@ -21,6 +21,7 @@ pub mod pairing;
 pub mod tlv;
 
 pub mod crypto;
+use crypto::aead::ControlChannel;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
@@ -183,34 +184,6 @@ impl Attribute {
     }
     pub fn ble_mut(&mut self) -> &mut BleProperties {
         self.ble.as_mut().unwrap()
-    }
-}
-
-//  HAPSessionChannelState
-#[derive(Clone, Debug, Default)]
-pub struct ControlChannel {
-    pub key: [u8; pairing::CHACHA20_POLY1305_KEY_BYTES],
-    pub nonce: u64,
-}
-impl ControlChannel {
-    pub fn decrypt(&mut self, buffer: &mut [u8]) -> Result<(), chacha20poly1305::Error> {
-        todo!();
-        /*
-        use chacha20poly1305::aead::generic_array::typenum::Unsigned;
-        use chacha20poly1305::{
-            AeadInPlace, ChaCha20Poly1305, Nonce,
-            aead::{AeadCore, KeyInit},
-        };
-        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
-        let cipher = ChaCha20Poly1305::new_from_slice(&self.key).expect("key should work");
-        // Create the nonce
-        let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
-        nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
-        let nonce = Nonce::from_slice(&nonce_bytes);
-
-        // Finally, create the plaintext.
-        let associated_data = &[];
-        cipher.decrypt_in_place(&nonce, associated_data, &mut buffer)*/
     }
 }
 
