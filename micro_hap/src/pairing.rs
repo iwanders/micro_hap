@@ -24,7 +24,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
 
-use crate::crypto::{aead::CHACHA20_POLY1305_KEY_BYTES, hkdf_sha512, homekit_srp};
+use crate::crypto::{aead, aead::CHACHA20_POLY1305_KEY_BYTES, hkdf_sha512, homekit_srp};
 
 #[derive(Debug, Copy, Clone)]
 pub enum PairingError {
@@ -34,6 +34,7 @@ pub enum PairingError {
     IncorrectLength,
     BadPublicKey,
     BadProof,
+    BadDecryption,
 }
 
 impl From<TLVError> for PairingError {
@@ -44,6 +45,11 @@ impl From<TLVError> for PairingError {
 impl From<hkdf::InvalidLength> for PairingError {
     fn from(_e: hkdf::InvalidLength) -> PairingError {
         PairingError::IncorrectLength
+    }
+}
+impl From<chacha20poly1305::Error> for PairingError {
+    fn from(_e: chacha20poly1305::Error) -> PairingError {
+        PairingError::BadDecryption
     }
 }
 
@@ -68,6 +74,9 @@ pub const PAIR_SETUP_ENCRYPT_INFO: &'static str = "Pair-Setup-Encrypt-Info";
 pub const CONTROL_CHANNEL_SALT: &'static str = "SplitSetupSalt";
 pub const CONTROL_CHANNEL_ACCESSORY: &'static str = "AccessoryEncrypt-Control";
 pub const CONTROL_CHANNEL_CONTROLLER: &'static str = "ControllerEncrypt-Control";
+
+// Message stage specific nonces
+pub const PAIR_SETUP_M5_NONCE: &'static str = "PS-Msg05";
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -385,6 +394,7 @@ typed_tlv!(TLVState, TLVType::State);
 typed_tlv!(TLVFlags, TLVType::Flags);
 typed_tlv!(TLVProof, TLVType::Proof);
 typed_tlv!(TLVPublicKey, TLVType::PublicKey);
+typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
 
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
@@ -397,6 +407,7 @@ pub enum PairState {
     SentM2 = 2,
     ReceivedM3 = 3,
     SentM4 = 4,
+    ReceivedM5 = 5,
 }
 
 pub struct PairContext {
@@ -454,6 +465,15 @@ pub fn pair_setup_handle_incoming(
             TLVReader::new(&data).require_into(&mut [&mut state, &mut public_key, &mut proof])?;
             ctx.setup.state = PairState::ReceivedM3;
             pair_setup_process_m3(ctx, state, public_key, proof)
+        }
+        PairState::SentM4 => {
+            info!("HAPPairingPairSetupProcessM5 & pair_setup_process_m5");
+            let mut state = TLVState::tied(&data);
+
+            let mut encrypted_data = TLVEncryptedData::tied(&data);
+            TLVReader::new(&data).require_into(&mut [&mut state, &mut encrypted_data])?;
+            ctx.setup.state = PairState::ReceivedM5;
+            pair_setup_process_m5(ctx, state, encrypted_data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -535,6 +555,55 @@ pub fn pair_setup_process_m3(
     proof.copy_body(&mut ctx.server.pair_setup.m1)?;
 
     // And update the state.
+    ctx.setup.state = state;
+    Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L833
+// HAPPairingPairSetupProcessM5
+pub fn pair_setup_process_m5(
+    ctx: &mut PairContext,
+    state: TLVState,
+    encrypted_data: TLVEncryptedData,
+) -> Result<(), PairingError> {
+    info!("Pair Setup M5: Exchange Request.");
+
+    let state = *state.try_from::<PairState>()?;
+    if state != PairState::ReceivedM5 {
+        return Err(PairingError::IncorrectState);
+    }
+    info!("encrypted_data: {:?}", encrypted_data);
+
+    // Write the data to the buffer first to ensure contiguous data
+
+    // NONCOMPLIANCE: Bad use of ephemeral B, but we don't need that anymore and its available memory.
+    encrypted_data.copy_body(&mut ctx.server.pair_setup.B)?;
+    let key = &ctx.server.pair_setup.session_key;
+    let data = &mut ctx.server.pair_setup.B[0..encrypted_data.len()];
+    let decrypted = aead::decrypt(data, key, &PAIR_SETUP_M5_NONCE.as_bytes())?;
+    info!("decrypted: {:0>2x?}", decrypted);
+
+    //
+    // let data = aead::decrypt(buffer, key, nonce_bytes);
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+    // Decrypt the encrypted data.
+
     ctx.setup.state = state;
     Ok(())
 }

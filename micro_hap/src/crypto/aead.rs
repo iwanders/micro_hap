@@ -5,6 +5,28 @@ use chacha20poly1305::{
     aead::{AeadCore, KeyInit},
 };
 
+pub fn decrypt<'a>(
+    buffer: &'a mut [u8],
+    key: &[u8],
+    nonce: &[u8],
+) -> Result<&'a [u8], chacha20poly1305::Error> {
+    type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+    // Unwrap is safe because the key has a constant length and is correctly sized.
+    let cipher = ChaCha20Poly1305::new_from_slice(&key).map_err(|_| chacha20poly1305::Error)?;
+
+    // Create the nonce
+    let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+    // Non conformant nonce, put the value at the right instead.
+    nonce_bytes[NonceSize::USIZE - nonce.len()..].copy_from_slice(nonce);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Decrypt.
+    let associated_data = &[];
+    let mut buffer = BufferSlice::whole(buffer);
+    cipher.decrypt_in_place(&nonce, associated_data, &mut buffer)?;
+    Ok(buffer.into_buffer_ref())
+}
+
 //  HAPSessionChannelState
 #[derive(Clone, Debug, Default)]
 pub struct ControlChannel {
@@ -16,24 +38,19 @@ impl ControlChannel {
         &mut self,
         buffer: &'a mut [u8],
     ) -> Result<&'a [u8], chacha20poly1305::Error> {
-        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
-        // Unwrap is safe because the key has a constant length and is correctly sized.
-        let cipher = ChaCha20Poly1305::new_from_slice(&self.key).unwrap();
-
         // Create the nonce
-        let nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+        let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // Decrypt.
-        let associated_data = &[];
-        let mut buffer = BufferSlice::whole(buffer);
-        cipher.decrypt_in_place(&nonce, associated_data, &mut buffer)?;
+        let r = decrypt(buffer, &self.key, &nonce_bytes)?;
 
         // Increment the nonce.
         self.nonce += 1;
 
         // Convert the buffer back into the ref.
-        Ok(buffer.into_buffer_ref())
+        Ok(r)
     }
     pub fn encrypt<'a>(
         &mut self,
@@ -47,7 +64,8 @@ impl ControlChannel {
         let mut buffer = BufferSlice::partial(buffer, payload_length);
 
         // Create the nonce
-        let nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+        nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Decrypt.
@@ -174,8 +192,7 @@ mod test {
         let payload_len = 5;
         buffer[0..payload_len].copy_from_slice(&plaintext);
 
-        // let buffer = BufferSlice::partial(&mut buffer, payload_len);
-
+        let mut channel = ControlChannel { key, nonce: 0 };
         let encrypted = channel.encrypt(&mut buffer, payload_len).unwrap();
         assert_eq!(encrypted, &ciphertext);
     }

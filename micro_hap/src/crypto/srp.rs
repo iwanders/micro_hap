@@ -74,10 +74,10 @@ pub struct SrpServer<'a, D: Digest> {
 
 impl<'a, D: Digest> SrpServer<'a, D> {
     /// Create new server state.
-    pub fn new(params: &'a SrpGroup) -> Self {
+    pub const fn new(params: &'a SrpGroup) -> Self {
         Self {
             params,
-            d: Default::default(),
+            d: PhantomData::<D>,
         }
     }
 
