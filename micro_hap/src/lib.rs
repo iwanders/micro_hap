@@ -90,7 +90,7 @@ impl Default for AccessoryInformationStatic {
             serial_number: "1234567890ABC",
             //service_instance: 0,
             model: "AmazingDevice",
-            name: "Trouble_HAP",
+            name: "MicroHap",
             manufacturer: "TestManufacturer",
             firmware_revision: "0.0.1",
         }

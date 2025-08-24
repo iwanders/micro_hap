@@ -870,13 +870,13 @@ impl HapPeripheralContext {
     }
 
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
-        &self,
+        //&self,
+        data: &[u8],
         event: ReadEvent<'stack, '_, P>,
-        reply: Reply,
     ) -> Result<(), trouble_host::Error> {
         // let buffer = self.buffer.borrow();
 
-        let data = self.get_response(reply.payload);
+        //let data = self.get_response(reply.payload);
         let reply = trouble_host::att::AttRsp::Read { data: &data };
         warn!("Replying with: {:02x?}", reply);
         // We see this print,
@@ -889,6 +889,104 @@ impl HapPeripheralContext {
     fn get_response(&self, reply: BufferResponse) -> core::cell::Ref<'_, [u8]> {
         // self.buffer.borrow().map(|z| &z[0..reply.payload.0])
         core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
+    }
+    pub async fn handle_read_outgoing(
+        &mut self,
+        handle: u16,
+    ) -> Result<Option<core::cell::Ref<'_, [u8]>>, HapBleError> {
+        if self.prepared_reply.as_ref().map(|e| e.handle) == Some(handle) {
+            let reply = self.prepared_reply.take().unwrap();
+            Ok(Some(self.get_response(reply.payload)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn handle_write_incoming<'hap, 'support>(
+        &mut self,
+        hap: &HapServices<'hap>,
+        support: &crate::pairing::PairSupport<'support>,
+        data: &[u8],
+        handle: u16,
+    ) -> Result<Option<BufferResponse>, HapBleError> {
+        if self.pair_ctx.borrow().session.security_active {
+            // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
+            // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
+            // Yes, these are encrypted.
+            //
+            todo!("need to implement decryption");
+        }
+
+        let header = pdu::RequestHeader::parse_pdu(data)?;
+        warn!("Write header {:x?}", header);
+
+        #[allow(unreachable_code)]
+        let resp = match header.opcode {
+            pdu::OpCode::ServiceSignatureRead => {
+                let req = pdu::ServiceSignatureReadRequest::parse_pdu(data)?;
+                self.service_signature_request(&req).await?
+            }
+            pdu::OpCode::CharacteristicSignatureRead => {
+                // second one is on [0, 1, 44, 2, 2]
+                let req = pdu::CharacteristicSignatureReadRequest::parse_pdu(data)?;
+                warn!("Got req: {:?}", req);
+                self.characteristic_signature_request(&req).await?
+            }
+            pdu::OpCode::CharacteristicRead => {
+                let req = pdu::CharacteristicReadRequest::parse_pdu(data)?;
+                warn!("Got req: {:?}", req);
+                self.characteristic_read_request(&req).await?
+            }
+            pdu::OpCode::CharacteristicWrite => {
+                if handle == hap.pairing.pair_setup.handle {
+                    info!("write raw req event data: {:02x?}", data);
+                    let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
+                    info!("got write on pair setup with: {:?}", parsed);
+
+                    // Write the body to our internal buffer here.
+                    let mut buffer = self.buffer.borrow_mut();
+                    buffer.fill(0);
+                    parsed.copy_body(&mut *buffer)?;
+                    let mut pair_ctx = self.pair_ctx.borrow_mut();
+                    crate::pairing::pair_setup_handle_incoming(&mut **pair_ctx, support, &*buffer)
+                        .map_err(|_| HapBleError::InvalidValue)?;
+
+                    // So now we craft the reply.
+
+                    // let resp = parsed.header.header.to_success();
+                    // let len = resp.write_into_length(*buffer)?;
+
+                    let full_len = buffer.len();
+                    let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
+
+                    // Put the reply in the second half.
+                    let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
+                        &mut **pair_ctx,
+                        support,
+                        &mut second_half,
+                    )
+                    .map_err(|_| HapBleError::InvalidValue)?;
+
+                    let reply = parsed.header.header.to_success();
+                    let len = reply.write_into_length(first_half)?;
+
+                    let len = BodyBuilder::new_at(first_half, len)
+                        .add_value(&second_half[0..outgoing_len])
+                        .end();
+
+                    BufferResponse(len)
+                } else {
+                    todo!("Need dispatch to correct method");
+                }
+            }
+            _ => {
+                return {
+                    error!("Failed to handle: {:?}", header);
+                    Err(HapBleError::UnexpectedRequest.into())
+                };
+            }
+        };
+        Ok(Some(resp))
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
@@ -938,28 +1036,16 @@ impl HapPeripheralContext {
                     warn!("Reading pairing.pairings ");
                 }
 
-                if self.prepared_reply.as_ref().map(|e| e.handle) == Some(event.handle()) {
-                    info!("Replying with prepared reply");
-                    let reply = self.prepared_reply.take().unwrap();
-
-                    self.reply_read_payload(event, reply).await?;
+                if let Some(buffer_thing) = self.handle_read_outgoing(event.handle()).await? {
+                    Self::reply_read_payload(&*buffer_thing, event).await?;
 
                     return Ok(None);
                 }
+
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
                 warn!("Raw write data {:0>2x?}", event.data());
-                if self.pair_ctx.borrow().session.security_active {
-                    // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
-                    // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
-                    // Yes, these are encrypted.
-                    //
-                    todo!("need to implement decryption");
-                }
-
-                let header = pdu::RequestHeader::parse_pdu(event.data())?;
-                warn!("Write header {:x?}", header);
 
                 if event.handle() == hap.information.hardware_revision.handle {
                     warn!("Writing information.hardware_revision {:?}", event.data());
@@ -1005,86 +1091,19 @@ impl HapPeripheralContext {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
 
-                //Ok(Some(GattEvent::Write(event)))
-                //
-                #[allow(unreachable_code)]
-                let resp = match header.opcode {
-                    pdu::OpCode::ServiceSignatureRead => {
-                        let req = pdu::ServiceSignatureReadRequest::parse_pdu(event.data())?;
-                        self.service_signature_request(&req).await?
-                    }
-                    pdu::OpCode::CharacteristicSignatureRead => {
-                        // second one is on [0, 1, 44, 2, 2]
-                        let req = pdu::CharacteristicSignatureReadRequest::parse_pdu(event.data())?;
-                        warn!("Got req: {:?}", req);
-                        self.characteristic_signature_request(&req).await?
-                    }
-                    pdu::OpCode::CharacteristicRead => {
-                        let req = pdu::CharacteristicReadRequest::parse_pdu(event.data())?;
-                        warn!("Got req: {:?}", req);
-                        self.characteristic_read_request(&req).await?
-                    }
-                    pdu::OpCode::CharacteristicWrite => {
-                        if event.handle() == hap.pairing.pair_setup.handle {
-                            info!("write raw req event data: {:02x?}", event.data());
-                            let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&event.data())?;
-                            info!("got write on pair setup with: {:?}", parsed);
+                let resp = self.handle_write_incoming(hap, support, &event.data(), event.handle());
+                if let Some(resp) = resp.await? {
+                    self.prepared_reply = Some(Reply {
+                        payload: resp,
+                        handle: event.handle(),
+                    });
 
-                            // Write the body to our internal buffer here.
-                            let mut buffer = self.buffer.borrow_mut();
-                            buffer.fill(0);
-                            parsed.copy_body(&mut *buffer)?;
-                            let mut pair_ctx = self.pair_ctx.borrow_mut();
-                            crate::pairing::pair_setup_handle_incoming(
-                                &mut **pair_ctx,
-                                support,
-                                &*buffer,
-                            )
-                            .map_err(|_| HapBleError::InvalidValue)?;
-
-                            // So now we craft the reply.
-
-                            // let resp = parsed.header.header.to_success();
-                            // let len = resp.write_into_length(*buffer)?;
-
-                            let full_len = buffer.len();
-                            let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
-
-                            // Put the reply in the second half.
-                            let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
-                                &mut **pair_ctx,
-                                support,
-                                &mut second_half,
-                            )
-                            .map_err(|_| HapBleError::InvalidValue)?;
-
-                            let reply = parsed.header.header.to_success();
-                            let len = reply.write_into_length(first_half)?;
-
-                            let len = BodyBuilder::new_at(first_half, len)
-                                .add_value(&second_half[0..outgoing_len])
-                                .end();
-
-                            BufferResponse(len)
-                        } else {
-                            todo!("Need dispatch to correct method");
-                        }
-                    }
-                    _ => {
-                        return {
-                            error!("Failed to handle: {:?}", header);
-                            Err(HapBleError::UnexpectedRequest.into())
-                        };
-                    }
-                };
-                self.prepared_reply = Some(Reply {
-                    payload: resp,
-                    handle: event.handle(),
-                });
-
-                let reply = trouble_host::att::AttRsp::Write;
-                event.into_payload().reply(reply).await?;
-                return Ok(None);
+                    let reply = trouble_host::att::AttRsp::Write;
+                    event.into_payload().reply(reply).await?;
+                    return Ok(None);
+                } else {
+                    todo!("got unhandled write");
+                }
             }
             remainder => Ok(Some(remainder)),
         }
