@@ -739,6 +739,7 @@ pub fn pair_setup_process_get_m4(
 
     // NONCOMPLIANCE: Not informing the application the pairing procedure succeeded.
     // NONCOMPLIANCE: Not telling the ble transport the session is accepted.
+    //                https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPeripheralManager.c#L1666
 
     Ok(writer.end())
 }

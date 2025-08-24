@@ -127,7 +127,7 @@ mod test {
         init();
         let device_id = [0xE1, 0x91, 0x1A, 0x70, 0x85, 0xAA];
         let config = AdvertisementConfig {
-            setup_id: "7OSX".try_into().unwrap(),
+            setup_id: SetupId([b'7', b'O', b'S', b'X']),
             device_id: DeviceId(device_id),
             ..Default::default()
         };
@@ -136,7 +136,7 @@ mod test {
 
         let device_id = [0xC8, 0xD8, 0x58, 0xC6, 0x63, 0xF5];
         let config = AdvertisementConfig {
-            setup_id: "7OSX".try_into().unwrap(),
+            setup_id: SetupId([b'7', b'O', b'S', b'X']),
             device_id: DeviceId(device_id),
             ..Default::default()
         };

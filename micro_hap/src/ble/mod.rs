@@ -916,7 +916,7 @@ impl HapPeripheralContext {
                     // Status flag... https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L924
                     // Lets just report not paired all the time: 1.
                     // Lets try paired now, since we're in a secure session? 0
-                    .add_u8(pdu::InfoResponseTLVType::StatusFlag, 1)
+                    .add_u8(pdu::InfoResponseTLVType::StatusFlag, 0)
                     // Category
                     .add_u16(
                         pdu::InfoResponseTLVType::CategoryIdentifier,
@@ -1095,7 +1095,7 @@ impl HapPeripheralContext {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L623
                 // we don't have this in the recording?!?
                 if !security_active {
-                    return Err(HapBleError::EncryptionError);
+                    //return Err(HapBleError::EncryptionError);
                 }
                 let req = pdu::InfoRequest::parse_pdu(data)?;
                 info!("Info req: {:?}", req);
@@ -1109,6 +1109,27 @@ impl HapPeripheralContext {
             }
         };
         Ok(Some(resp))
+    }
+
+    #[cfg(test)]
+    // helper function to store the reply into the prepared reply.
+    async fn handle_write_incoming_test<'hap, 'support>(
+        &mut self,
+        hap: &HapServices<'hap>,
+        support: &crate::pairing::PairSupport<'support>,
+        data: &[u8],
+        handle: u16,
+    ) -> Result<Option<BufferResponse>, HapBleError> {
+        let resp = self.handle_write_incoming(hap, support, &data, handle);
+        if let Some(resp) = resp.await? {
+            self.prepared_reply = Some(Reply {
+                payload: resp,
+                handle: handle,
+            });
+            Ok(Some(resp))
+        } else {
+            panic!("testing something unhandled?")
+        }
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
@@ -1236,12 +1257,7 @@ impl HapPeripheralContext {
 mod test {
     use super::*;
     use static_cell::StaticCell;
-    fn init() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::max())
-            .try_init();
-    }
+
     #[gatt_server]
     struct Server {
         accessory_information: AccessoryInformationService,
@@ -1260,7 +1276,7 @@ mod test {
 
     #[tokio::test]
     async fn test_service_requests() -> Result<(), HapBleError> {
-        init();
+        crate::test::init();
         let name = "micro_hap";
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
@@ -1304,6 +1320,17 @@ mod test {
             &server.pairing,
         )?;
 
+        let counter = core::cell::RefCell::new(0);
+        let random_buffer = vec![0, 0, 0, 0];
+        let rng = move || {
+            let mut c = counter.borrow_mut();
+            let v = random_buffer[*c];
+            *c += 1;
+            v
+        };
+
+        let support = crate::pairing::PairSupport { rng: &rng };
+
         let service_signature_req = [0, 6, 0x3a, 0x10, 0];
         let service_signature_req =
             pdu::ServiceSignatureReadRequest::parse_pdu(&service_signature_req)?;
@@ -1329,12 +1356,47 @@ mod test {
         // we need the PDU types, and interpret based on that.
         let _ = resp;
 
+        // Test service signature response ------------
+        {
+            let incoming_data: &[u8] = &[0x00, 0x06, 0x0d, 0x10, 0x00];
+            let incoming_handle = 0x11;
+
+            let outgoing_data: &[u8] = &[
+                0x02, 0x0d, 0x00, 0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00,
+            ];
+            let r = ctx
+                .handle_write_incoming_test(&hap, &support, incoming_data, incoming_handle)
+                .await?;
+
+            let mut outgoing = [0u8; 1024];
+            let resp = ctx.handle_read_outgoing(0x11).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+
+            assert_eq!(&*resp_buffer, outgoing_data);
+        }
+        // End test  ----------------------------------
+
+        // Incoming info request  ------------
+        {
+            let incoming_data: &[u8] = &[0x00, 0x12, 0xbe, 0x11, 0x00];
+            let incoming_handle = 0x11;
+
+            // We don't know what outgoing should be here.
+            let r = ctx
+                .handle_write_incoming_test(&hap, &support, incoming_data, incoming_handle)
+                .await?;
+
+            let mut outgoing = [0u8; 1024];
+            let resp = ctx.handle_read_outgoing(0x11).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+        }
         Ok(())
     }
 
     #[test]
     fn test_characteristics() {
-        init();
+        crate::test::init();
         let v = CharacteristicProperties::new()
             .with_read(true)
             .with_read_open(true)
