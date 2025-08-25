@@ -1411,11 +1411,9 @@ mod test {
             let outgoing_data: &[u8] = &[
                 0x02, 0x0d, 0x00, 0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
-            let mut outgoing = [0u8; 1024];
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
 
@@ -1432,11 +1430,9 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x10, 0x00, 0x0c, 0x07, 0x1b, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
-            let mut outgoing = [0u8; 1024];
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
 
@@ -1455,11 +1451,9 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x01, 0x00, 0x0c, 0x07, 0x04, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
-            let mut outgoing = [0u8; 1024];
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
 
@@ -1476,11 +1470,9 @@ mod test {
             let incoming_data: &[u8] = &[0x00, 0x03, 0x58, 0x24, 0x00];
             let handle = 0x24;
             let outgoing_data: &[u8] = &[0x02, 0x58, 0x00, 0x03, 0x00, 0x01, 0x01, 0x00];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
-            let mut outgoing = [0u8; 1024];
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
 
@@ -1499,11 +1491,9 @@ mod test {
             let handle = 0x11;
 
             // We don't know what outgoing should be here.
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle)
                 .await?;
 
-            let mut outgoing = [0u8; 1024];
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -1549,8 +1539,7 @@ mod test {
                 0x0b, 0xa1, 0xce, 0xdb, 0xc0, 0x99, 0x3c, 0x16, 0x02, 0x10, 0x3d, 0xc2, 0x81, 0xab,
                 0x08, 0xed, 0x4d, 0x8c, 0x52, 0x0c, 0xb2, 0x5f, 0xc2, 0x51, 0x9c, 0x1f,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
@@ -1604,8 +1593,7 @@ mod test {
                 0xb6, 0xe4, 0xea, 0x0b, 0x31, 0xe2, 0xfd, 0xcd, 0x01, 0x2b, 0xaa, 0x73, 0x78, 0x7c,
                 0x3f, 0xfe, 0x14, 0x3b, 0xdc, 0x19,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
@@ -1643,8 +1631,7 @@ mod test {
                 0x54, 0xe8, 0xf1, 0xb9, 0x17, 0xa3, 0x81, 0xfe, 0x70, 0x50, 0x06, 0x7a, 0x9f, 0xd1,
                 0x29, 0x85, 0x55, 0x77, 0x63, 0x9e, 0x04,
             ];
-            let r = ctx
-                .handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_setup)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
