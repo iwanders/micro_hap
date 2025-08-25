@@ -38,6 +38,7 @@ pub enum PairingError {
     BadProof,
     BadDecryption,
     BadSignature,
+    UuidError,
 }
 
 impl From<TLVError> for PairingError {
@@ -88,14 +89,31 @@ pub const PAIR_SETUP_M5_SIGN_INFO: &'static str = "Pair-Setup-Controller-Sign-In
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct PairingId(pub uuid::Uuid);
+impl PairingId {
+    pub fn parse_str(input_bytes: &[u8]) -> Result<PairingId, PairingError> {
+        Ok(PairingId(
+            uuid::Uuid::try_parse_ascii(input_bytes).map_err(|_| PairingError::UuidError)?,
+        ))
+    }
+}
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairingPublicKey(pub [u8; 32]);
+impl PairingPublicKey {
+    pub fn from(bytes: &[u8]) -> Result<Self, PairingError> {
+        let mut r = Self::default();
+        if bytes.len() != r.0.len() {
+            return Err(PairingError::IncorrectLength);
+        }
+        r.0.copy_from_slice(bytes);
+        Ok(r)
+    }
+}
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Pairing {
     pub id: PairingId,
-    // NONCOMPLIANCE; Why do we have a numIdentifierBytes here??
+    // NONCOMPLIANCE; Why do we have a numIdentifierBytes here if it is constant?
     pub public_key: PairingPublicKey,
     pub permissions: u8,
 }
@@ -446,6 +464,13 @@ type RandomFunction<'a> = &'a dyn Fn() -> u8;
 pub struct PairSupport<'a> {
     pub rng: RandomFunction<'a>,
 }
+impl<'a> PairSupport<'a> {
+    pub fn store_pairing(&self, pairing: &Pairing) -> Result<(), PairingError> {
+        // NONCOMPLIANCE store something!
+        error!("skiping storing of pairing");
+        Ok(())
+    }
+}
 
 // HAPPairingPairSetupHandleWrite
 pub fn pair_setup_handle_incoming(
@@ -482,7 +507,7 @@ pub fn pair_setup_handle_incoming(
             let mut encrypted_data = TLVEncryptedData::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut state, &mut encrypted_data])?;
             ctx.setup.state = PairState::ReceivedM5;
-            pair_setup_process_m5(ctx, state, encrypted_data)
+            pair_setup_process_m5(ctx, support, state, encrypted_data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -572,6 +597,7 @@ pub fn pair_setup_process_m3(
 // HAPPairingPairSetupProcessM5
 pub fn pair_setup_process_m5(
     ctx: &mut PairContext,
+    support: &PairSupport,
     state: TLVState,
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
@@ -620,8 +646,11 @@ pub fn pair_setup_process_m5(
     let info = &PAIR_SETUP_M5_SIGN_INFO.as_bytes();
     hkdf_sha512(key, salt, info, &mut right[0..X_LENGTH])?;
 
-    identifier.copy_body(&mut right[X_LENGTH..X_LENGTH + identifier.len()])?;
-    let public_key_start = X_LENGTH + identifier.len();
+    let identifier_start = X_LENGTH;
+    let identifier_end = X_LENGTH + identifier.len();
+    identifier.copy_body(&mut right[identifier_start..identifier_end])?;
+
+    let public_key_start = identifier_start + identifier.len();
     let public_key_end = public_key_start + public_key.len();
     public_key.copy_body(&mut right[public_key_start..public_key_end])?;
 
@@ -642,6 +671,19 @@ pub fn pair_setup_process_m5(
 
     // Next up is saving the pairing id and long term pairing key.
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L999
+
+    //Pairing
+    let identifier_buffer = &right[identifier_start..identifier_end];
+    let id = PairingId::parse_str(identifier_buffer)?;
+    info!("identifier: {:?}", id);
+    let public_key = PairingPublicKey::from(public_key_buffer)?;
+
+    let pairing = Pairing {
+        id,
+        public_key,
+        permissions: 1,
+    };
+    support.store_pairing(&pairing)?;
 
     Ok(())
 }
