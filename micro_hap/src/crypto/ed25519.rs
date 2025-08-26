@@ -1,26 +1,79 @@
 use ed25519_dalek::Signature;
-use ed25519_dalek::{PUBLIC_KEY_LENGTH, Verifier, VerifyingKey};
+use ed25519_dalek::{
+    PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, SIGNATURE_LENGTH, Signer, SigningKey, Verifier,
+    VerifyingKey,
+};
 
+type SecretKeyBuffer = [u8; SECRET_KEY_LENGTH];
+type PublicKeyBuffer = [u8; PUBLIC_KEY_LENGTH];
+
+/// Verify that the data is signed with the private key associated to the public key, returns Ok if the signature
+/// is correct, Err otherwise.
+/// Data should NOT be used if this function returns an Err.
+/// If the sizes of any of the slices are incorrect, this function returns Err without any further information.
 #[must_use]
-pub fn ed25519_verify(data: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
-    let mut public_key_buffer = [0u8; PUBLIC_KEY_LENGTH];
+pub fn ed25519_verify(
+    public_key: &[u8],
+    data: &[u8],
+    signature: &[u8],
+) -> Result<(), ed25519_dalek::SignatureError> {
     if public_key.len() != PUBLIC_KEY_LENGTH {
-        return false;
+        return Err(ed25519_dalek::SignatureError::new());
     }
-    public_key_buffer.copy_from_slice(public_key);
+    let public_key_buffer: &PublicKeyBuffer = public_key
+        .try_into()
+        .map_err(|_| ed25519_dalek::SignatureError::new())?;
+
     let verifying_key = VerifyingKey::from_bytes(&public_key_buffer);
     let verifying_key = if let Ok(verifying_key) = verifying_key {
         verifying_key
     } else {
-        return false;
+        return Err(ed25519_dalek::SignatureError::new());
     };
     let sig = Signature::from_slice(signature);
     let sig = if let Ok(sig) = sig {
         sig
     } else {
-        return false;
+        return Err(ed25519_dalek::SignatureError::new());
     };
-    verifying_key.verify(data, &sig).is_ok()
+    verifying_key.verify(data, &sig)
+}
+
+pub fn ed25519_create_public(
+    secret_key: &[u8],
+    public_key: &mut [u8],
+) -> Result<(), ed25519_dalek::SignatureError> {
+    if public_key.len() != PUBLIC_KEY_LENGTH {
+        return Err(ed25519_dalek::SignatureError::new());
+    }
+
+    let as_array: &SecretKeyBuffer = secret_key
+        .try_into()
+        .map_err(|_| ed25519_dalek::SignatureError::new())?;
+    let signing_key: SigningKey = SigningKey::from_bytes(as_array);
+    let verifying_key: VerifyingKey = signing_key.verifying_key();
+    public_key.copy_from_slice(verifying_key.as_bytes());
+    Ok(())
+}
+
+pub fn ed25519_sign(
+    secret_key: &[u8],
+    data: &[u8],
+    signature: &mut [u8],
+) -> Result<(), ed25519_dalek::SignatureError> {
+    let as_array: &SecretKeyBuffer = secret_key
+        .try_into()
+        .map_err(|_| ed25519_dalek::SignatureError::new())?;
+    let signing_key: SigningKey = SigningKey::from_bytes(as_array);
+    let signature_typed = signing_key.sign(&data);
+
+    let signature_bytes = signature_typed.to_bytes();
+    if signature.len() != signature_bytes.len() {
+        return Err(ed25519_dalek::SignatureError::new());
+    }
+
+    signature.copy_from_slice(signature_bytes.as_slice());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -32,7 +85,7 @@ mod test {
         crate::test::init();
         // https://datatracker.ietf.org/doc/html/rfc8032#section-7.1
         //
-        let _secret_key: &[u8] = &[
+        let secret_key: &[u8] = &[
             0x4c, 0xcd, 0x08, 0x9b, 0x28, 0xff, 0x96, 0xda, 0x9d, 0xb6, 0xc3, 0x46, 0xec, 0x11,
             0x4e, 0x0f, 0x5b, 0x8a, 0x31, 0x9f, 0x35, 0xab, 0xa6, 0x24, 0xda, 0x8c, 0xf6, 0xed,
             0x4f, 0xb8, 0xa6, 0xfb,
@@ -54,7 +107,15 @@ mod test {
             0xb0, 0x0d, 0x29, 0x16, 0x12, 0xbb, 0x0c, 0x00,
         ];
 
-        assert!(ed25519_verify(&msg, &public_key, &signature));
+        assert!(ed25519_verify(&public_key, &msg, &signature).is_ok());
+
+        let mut pub_key_created = [0u8; PUBLIC_KEY_LENGTH];
+        assert!(ed25519_create_public(&secret_key, &mut pub_key_created).is_ok());
+        assert_eq!(&pub_key_created, public_key);
+
+        let mut signature_created = [0u8; SIGNATURE_LENGTH];
+        assert!(ed25519_sign(&secret_key, &msg, &mut signature_created).is_ok());
+        assert_eq!(&signature_created, signature);
     }
 
     #[test]
@@ -78,6 +139,23 @@ mod test {
             0x7c, 0x8f, 0xd7, 0x4c, 0x67, 0x5b, 0xc8, 0x91, 0xd1, 0xb5, 0x54, 0x3a, 0x2c, 0x54,
             0x87, 0x1f, 0x67, 0x5c, 0xee, 0xd6, 0xed, 0x0d,
         ];
-        assert!(ed25519_verify(&data, &public_key, &signature));
+        assert!(ed25519_verify(&public_key, &data, &signature).is_ok());
+    }
+    #[test]
+    fn test_ed25519_public_key_derviation() {
+        let secret_key: &[u8] = &[
+            0x15, 0xf5, 0xa7, 0xdb, 0xa0, 0x11, 0x21, 0xea, 0x23, 0xea, 0x88, 0x7f, 0x0a, 0x14,
+            0xb0, 0x27, 0xb6, 0xe6, 0xd4, 0x2d, 0xd1, 0x5b, 0xc9, 0x59, 0x19, 0x94, 0xbc, 0x22,
+            0xee, 0x52, 0xfa, 0xa9,
+        ];
+
+        let expected_public_key: [u8; _] = [
+            0xa1, 0x83, 0x6d, 0xb8, 0xc5, 0xf8, 0xb1, 0x27, 0x1c, 0xbc, 0xe2, 0xdf, 0x72, 0xeb,
+            0x78, 0x9b, 0x55, 0x48, 0x6e, 0x53, 0x6c, 0x11, 0xe1, 0x5b, 0xb3, 0x9c, 0x65, 0xc9,
+            0x26, 0x79, 0x16, 0x5a,
+        ];
+        let mut pub_key_created = [0u8; PUBLIC_KEY_LENGTH];
+        assert!(ed25519_create_public(&secret_key, &mut pub_key_created).is_ok());
+        assert_eq!(pub_key_created, expected_public_key);
     }
 }
