@@ -309,7 +309,15 @@ mod ble_bas_peripheral {
                         gn.random::<u8>()
                     };
 
-                    let support = micro_hap::pairing::PairSupport { rng: &rng };
+                    let support = micro_hap::pairing::PairSupport {
+                        rng: &rng,
+                        // Just 32 random bytes.
+                        ed_ltsk: [
+                            182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235,
+                            192, 207, 15, 80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204,
+                            159, 230,
+                        ],
+                    };
 
                     let fallthrough_event = hap_context
                         .process_gatt_event(&server.as_hap(), &support, event)

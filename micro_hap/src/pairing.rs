@@ -62,6 +62,8 @@ pub const X25519_BYTES: usize = 32;
 
 pub const ED25519_BYTES: usize = 64;
 
+pub const ED25519_LTSK: usize = 32;
+
 pub const SRP_PUBLIC_KEY_BYTES: usize = 384;
 pub const SRP_PREMASTER_SECRET_BYTES: usize = 384;
 pub const SRP_SECRET_KEY_BYTES: usize = 32;
@@ -435,6 +437,7 @@ pub enum PairState {
     ReceivedM3 = 3,
     SentM4 = 4,
     ReceivedM5 = 5,
+    SentM6 = 6,
 }
 
 pub struct PairContext {
@@ -463,10 +466,12 @@ type RandomFunction<'a> = &'a dyn Fn() -> u8;
 /// Helper support for the pairing situations.
 pub struct PairSupport<'a> {
     pub rng: RandomFunction<'a>,
+    pub ed_ltsk: [u8; ED25519_LTSK],
 }
 impl<'a> PairSupport<'a> {
     pub fn store_pairing(&self, pairing: &Pairing) -> Result<(), PairingError> {
         // NONCOMPLIANCE store something!
+        let _ = pairing;
         error!("skiping storing of pairing");
         Ok(())
     }
@@ -532,6 +537,11 @@ pub fn pair_setup_handle_outgoing(
             // Advance the state, and write M2.
             ctx.setup.state = PairState::SentM4;
             pair_setup_process_get_m4(ctx, support, data)
+        }
+        PairState::ReceivedM5 => {
+            // Advance the state, and write M6.
+            ctx.setup.state = PairState::SentM6;
+            pair_setup_process_get_m6(ctx, support, data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -614,7 +624,7 @@ pub fn pair_setup_process_m5(
     // NONCOMPLIANCE: use of ephemeral B, but we don't need that anymore at this point and it's available memory.
     // left holds the encrypted & decrypted data, with leaves right as a scratchpad. Encrypted data is 154 bytes, the
     // B size is 384, so that leaves 230 for the right side.
-    let (mut left, mut right) = ctx.server.pair_setup.B.split_at_mut(encrypted_data.len());
+    let (left, right) = ctx.server.pair_setup.B.split_at_mut(encrypted_data.len());
     encrypted_data.copy_body(left)?;
     let key = &ctx.server.pair_setup.session_key;
     let data = left;
@@ -665,9 +675,8 @@ pub fn pair_setup_process_m5(
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L988-L991
     let public_key_buffer = &right[public_key_start..public_key_end];
     let signature_buffer = &right[sig_start..sig_end];
-    if !ed25519_verify(iosdevice_info, public_key_buffer, signature_buffer) {
-        return Err(PairingError::BadSignature);
-    }
+    ed25519_verify(public_key_buffer, iosdevice_info, signature_buffer)
+        .map_err(|_| PairingError::BadSignature)?;
 
     // Next up is saving the pairing id and long term pairing key.
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L999
@@ -893,6 +902,39 @@ pub fn pair_setup_process_get_m4(
     Ok(writer.end())
 }
 
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1041
+pub fn pair_setup_process_get_m6(
+    ctx: &mut PairContext,
+    support: &PairSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    let _ = support;
+    info!("Pair Setup M6: Exchange Response.");
+
+    // We need a sub-TLV writer.
+    // We need our own device id.
+    // We need ed_LTSK, ed25519_Long_Term_Secret_Key?
+    // We need the public key for that, which is what we send.
+    // This is basically the counterpart to m5, but then just from our side.
+    // We encrypt this sub-tlv parser.
+    // Then we reset the pair setup data.
+
+    // NONCOMPLIANCE, though this shouldn't matter, we get the ed_ltsk key from the support and it's not generated
+    // if it doesn't exist, it's hardcoded.
+    //
+
+    let device_id_str = ctx.accessory.device_id.to_device_id_string();
+
+    // NONCOMPLIANCE: Again (ab) using the B buffer.
+    let scratch = &mut ctx.server.pair_setup.B;
+    let mut writer = TLVWriter::new(scratch);
+    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+    writer = writer.add_slice(TLVType::Identifier, device_id_str.as_bytes())?;
+    todo!();
+
+    Ok(writer.end())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -926,7 +968,10 @@ mod test {
             v
         };
 
-        let support = PairSupport { rng: &rng };
+        let support = PairSupport {
+            rng: &rng,
+            ed_ltsk: Default::default(),
+        };
 
         pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_0)?;
 

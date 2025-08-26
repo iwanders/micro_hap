@@ -1299,6 +1299,8 @@ mod test {
         // Setup the accessory information.
         let value = crate::AccessoryInformationStatic {
             name,
+            // Possibly device id 57:3B:20:A7:E7:C4 ?
+            device_id: crate::DeviceId([0x57, 0x3b, 0x20, 0xA7, 0xE7, 0xC4]),
             ..Default::default()
         };
         let _ = server
@@ -1355,6 +1357,13 @@ mod test {
             0x1a, 0xc3, 0x2a, 0x60, 0x28, 0x83,
         ];
 
+        // ed_LTSK random bytes:
+        let ed_ltsk = [
+            0x15, 0xf5, 0xa7, 0xdb, 0xa0, 0x11, 0x21, 0xea, 0x23, 0xea, 0x88, 0x7f, 0x0a, 0x14,
+            0xb0, 0x27, 0xb6, 0xe6, 0xd4, 0x2d, 0xd1, 0x5b, 0xc9, 0x59, 0x19, 0x94, 0xbc, 0x22,
+            0xee, 0x52, 0xfa, 0xa9,
+        ];
+
         let mut ctx = HapPeripheralContext::new(
             buffer,
             pair_ctx,
@@ -1376,7 +1385,7 @@ mod test {
             v
         };
 
-        let support = crate::pairing::PairSupport { rng: &rng };
+        let support = crate::pairing::PairSupport { rng: &rng, ed_ltsk };
 
         let service_signature_req = [0, 6, 0x3a, 0x10, 0];
         let service_signature_req =
