@@ -25,7 +25,8 @@ use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
 
 use crate::crypto::{
-    aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_verify, hkdf_sha512, homekit_srp,
+    aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
+    ed25519::ed25519_verify, hkdf_sha512, homekit_srp,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -63,6 +64,7 @@ pub const X25519_BYTES: usize = 32;
 pub const ED25519_BYTES: usize = 64;
 
 pub const ED25519_LTSK: usize = 32;
+pub const ED25519_LTPK: usize = 32;
 
 pub const SRP_PUBLIC_KEY_BYTES: usize = 384;
 pub const SRP_PREMASTER_SECRET_BYTES: usize = 384;
@@ -87,6 +89,10 @@ pub const CONTROL_CHANNEL_CONTROLLER: &'static str = "ControllerEncrypt-Control"
 pub const PAIR_SETUP_M5_NONCE: &'static str = "PS-Msg05";
 pub const PAIR_SETUP_M5_SIGN_SALT: &'static str = "Pair-Setup-Controller-Sign-Salt";
 pub const PAIR_SETUP_M5_SIGN_INFO: &'static str = "Pair-Setup-Controller-Sign-Info";
+
+pub const PAIR_SETUP_M6_NONCE: &'static str = "PS-Msg06";
+pub const PAIR_SETUP_M6_SIGN_SALT: &'static str = "Pair-Setup-Accessory-Sign-Salt";
+pub const PAIR_SETUP_M6_SIGN_INFO: &'static str = "Pair-Setup-Accessory-Sign-Info";
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -772,7 +778,7 @@ pub fn pair_setup_process_get_m2(
 
     writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
 
-    // Make flags
+    // Make flags, we only needed this during the software authentication approach from the start.
     /*
     let flags = PairingFlags::new()
         .with_split(is_split)
@@ -922,15 +928,84 @@ pub fn pair_setup_process_get_m6(
     // NONCOMPLIANCE, though this shouldn't matter, we get the ed_ltsk key from the support and it's not generated
     // if it doesn't exist, it's hardcoded.
     //
+    // NONCOMPLIANCE: Again (ab) using the B buffer.
+    let scratch = &mut ctx.server.pair_setup.B;
 
     let device_id_str = ctx.accessory.device_id.to_device_id_string();
 
-    // NONCOMPLIANCE: Again (ab) using the B buffer.
-    let scratch = &mut ctx.server.pair_setup.B;
-    let mut writer = TLVWriter::new(scratch);
+    let mut writer = TLVWriter::new(data);
     writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
-    writer = writer.add_slice(TLVType::Identifier, device_id_str.as_bytes())?;
-    todo!();
+
+    // Make the public key and append that.
+    let mut public_key = [0u8; ED25519_LTPK];
+    ed25519_create_public(&support.ed_ltsk, &mut public_key)
+        .map_err(|_| PairingError::IncorrectLength)?;
+
+    // Next, create the aspects to sign.
+    //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1123
+    const X_LENGTH: usize = 32;
+    // Concatenation of hash, pairing id, long term public key.
+
+    let identifier = device_id_str.0.as_bytes();
+
+    let hash_start = 0;
+    let hash_end = X_LENGTH;
+    let identifier_start = X_LENGTH;
+    let identifier_end = X_LENGTH + identifier.len();
+    let public_key_start = identifier_start + identifier.len();
+    let public_key_end = public_key_start + public_key.len();
+    let sig_start = public_key_end;
+    let sig_end = public_key_end + ED25519_BYTES;
+
+    // Write the hash, first section.
+    let key = &ctx.server.pair_setup.K;
+    let salt = &PAIR_SETUP_M6_SIGN_SALT.as_bytes();
+    let info = &PAIR_SETUP_M6_SIGN_INFO.as_bytes();
+    hkdf_sha512(key, salt, info, &mut scratch[hash_start..hash_end])?;
+
+    // Write the device id as a string.
+    scratch[identifier_start..identifier_end].copy_from_slice(identifier);
+
+    // Write the long term pairing key.
+    scratch[public_key_start..public_key_end].copy_from_slice(&public_key);
+
+    // Sign it all
+    {
+        let secret_key = &support.ed_ltsk;
+        let (data, signature) = scratch.split_at_mut(sig_start);
+        ed25519_sign(secret_key, data, &mut signature[0..ED25519_BYTES])
+            .map_err(|_| PairingError::IncorrectLength)?;
+    }
+
+    let (pre_calc, subwriter_scratch) = scratch.split_at_mut(sig_end);
+
+    let mut subwriter = TLVWriter::new(subwriter_scratch);
+    subwriter = subwriter.add_slice(TLVType::Identifier, device_id_str.as_bytes())?;
+    subwriter = subwriter.add_slice(TLVType::PublicKey, &public_key)?;
+    subwriter = subwriter.add_slice(TLVType::Signature, &pre_calc[sig_start..sig_end])?;
+    let subwriter_length = subwriter.end();
+
+    // Should be:
+    // [01, 11, 35, 37, 3a, 33, 42, 3a, 32, 30, 3a, 41, 37, 3a, 45, 37, 3a, 43, 34, 03, 20, a1, 83, 6d, b8, c5, f8, b1, 27, 1c, bc, e2, df, 72, eb, 78, 9b, 55, 48, 6e, 53, 6c, 11, e1, 5b, b3, 9c, 65, c9, 26, 79, 16, 5a, 0a, 40, 56, 55, d7, 95, ca, 96, 8a, 30, 92, 64, e0, 0e, 6f, d8, 61, e4, fe, 96, d3, f5, e4, e5, 7b, e4, 22, 72, 38, f1, 36, 01, ef, 38, 04, 63, e5, db, 9b, 88, d3, af, 05, e5, d7, 52, 84, 1d, dd, ad, dd, d4, 37, d1, 92, 3e, 48, 06, 23, 5b, 97, d2, 6c, 7e, ef, 09]
+    // Currently is:
+    // [01, 11, 30, 31, 3a, 30, 32, 3a, 30, 33, 3a, 30, 34, 3a, 30, 35, 3a, 30, 36, 03, 20, a1, 83, 6d, b8, c5, f8, b1, 27, 1c, bc, e2, df, 72, eb, 78, 9b, 55, 48, 6e, 53, 6c, 11, e1, 5b, b3, 9c, 65, c9, 26, 79, 16, 5a, 0a, 40, e6, e8, 0d, 5b, 7c, 7e, 76, 05, 34, e8, 19, b8, 51, ad, 76, cf, 7a, 5a, ae, c8, ca, 48, 8e, ff, d5, 18, cc, 97, 92, 23, cd, 7d, dd, 04, 8d, 43, a8, 9a, ea, 8f, 65, f7, b2, fc, c3, 92, 66, 31, 48, 74, 2c, f7, 32, d6, 0c, da, 1c, ba, 36, c0, 74, 42, 44, 09]
+
+    // let mut copied_plaintext = [0u8; 1024];
+    // let mut plain_slice = &mut copied_plaintext[0..subwriter_length];
+    // plain_slice.copy_from_slice(&subwriter_scratch[0..subwriter_length]);
+    // info!("plain: {:0>2x?}", plain_slice);
+
+    // Now we need to encrypt the data in the subwriter.
+    let key = &ctx.server.pair_setup.session_key;
+    info!("key: {key:?}");
+    let encrypted_sub = aead::encrypt(
+        subwriter_scratch,
+        subwriter_length,
+        key,
+        &PAIR_SETUP_M6_NONCE.as_bytes(),
+    )?;
+
+    writer = writer.add_slice(TLVType::EncryptedData, &encrypted_sub)?;
 
     Ok(writer.end())
 }
@@ -1211,5 +1286,29 @@ mod test {
             public_B,
             incoming_1,
         }
+    }
+
+    #[test]
+    fn test_pairing_m6_decoded() {
+        crate::test::init();
+        // Not really a test, but I need to look into this payload, this is the easiest.
+        let encrypted_data = [
+            192, 45, 171, 153, 243, 156, 47, 235, 64, 180, 136, 231, 140, 158, 15, 122, 19, 226,
+            74, 90, 215, 102, 201, 43, 69, 214, 114, 119, 129, 18, 172, 87, 21, 141, 177, 174, 98,
+            122, 105, 12, 238, 248, 235, 49, 61, 57, 191, 107, 31, 200, 22, 87, 11, 6, 240, 86, 69,
+            135, 250, 51, 146, 154, 105, 60, 235, 73, 200, 156, 6, 251, 190, 191, 236, 247, 96,
+            186, 11, 235, 77, 138, 190, 98, 154, 231, 22, 220, 161, 97, 72, 61, 43, 120, 17, 117,
+            239, 226, 176, 99, 254, 108, 58, 134, 140, 28, 34, 157, 207, 58, 184, 97, 56, 24, 51,
+            9, 84, 232, 241, 185, 23, 163, 129, 254, 112, 80, 6, 122, 159, 209, 41, 133, 85, 119,
+            99, 158, 4,
+        ];
+        let mut decryption_buffer = encrypted_data;
+        let key = &[
+            206, 14, 137, 60, 232, 100, 218, 42, 115, 83, 32, 92, 144, 95, 155, 29, 45, 243, 225,
+            216, 68, 212, 247, 91, 8, 128, 116, 85, 71, 189, 114, 64,
+        ];
+        let decrypted =
+            aead::decrypt(&mut decryption_buffer, key, &PAIR_SETUP_M6_NONCE.as_bytes()).unwrap();
+        info!("decrypted: {:0>2x?}", decrypted);
     }
 }

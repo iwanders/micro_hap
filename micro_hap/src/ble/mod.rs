@@ -1320,6 +1320,8 @@ mod test {
             static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
             STATE.init_with(crate::pairing::PairContext::default)
         };
+        pair_ctx.accessory = value;
+
         // We need real commissioning for this.
         // from recording 2025_08_24_1639.
         pair_ctx.info.salt = [

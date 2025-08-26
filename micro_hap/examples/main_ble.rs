@@ -118,13 +118,14 @@ mod ble_bas_peripheral {
         };
         let _ = server
             .accessory_information
-            .set_information_static(&server, &static_information)
+            .set_information_static(&server, &static_information) // don't forget to also assign to the pair ctx.
             .unwrap();
 
         let pair_ctx = {
             static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
             STATE.init_with(micro_hap::pairing::PairContext::default)
         };
+        pair_ctx.accessory = static_information;
         // We need real commissioning for this, such that the verifier matches the setup code.
         pair_ctx.info.salt = [
             0xb3, 0x5b, 0x84, 0xc4, 0x04, 0x8b, 0x2d, 0x91, 0x35, 0xc4, 0xaf, 0xa3, 0x6d, 0xf6,
