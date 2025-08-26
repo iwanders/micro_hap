@@ -27,6 +27,29 @@ pub fn decrypt<'a>(
     Ok(buffer.into_buffer_ref())
 }
 
+pub fn encrypt<'a>(
+    buffer: &'a mut [u8],
+    payload_length: usize,
+    key: &[u8],
+    nonce: &[u8],
+) -> Result<&'a [u8], chacha20poly1305::Error> {
+    type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+    // Unwrap is safe because the key has a constant length and is correctly sized.
+    let cipher = ChaCha20Poly1305::new_from_slice(&key).map_err(|_| chacha20poly1305::Error)?;
+
+    // Create the nonce
+    let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
+    // Non conformant nonce, put the value at the right instead.
+    nonce_bytes[NonceSize::USIZE - nonce.len()..].copy_from_slice(nonce);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Decrypt.
+    let associated_data = &[];
+    let mut buffer = BufferSlice::partial(buffer, payload_length);
+    cipher.encrypt_in_place(&nonce, associated_data, &mut buffer)?;
+    Ok(buffer.into_buffer_ref())
+}
+
 //  HAPSessionChannelState
 #[derive(Clone, Debug, Default)]
 pub struct ControlChannel {
@@ -56,26 +79,17 @@ impl ControlChannel {
         buffer: &'a mut [u8],
         payload_length: usize,
     ) -> Result<&'a [u8], chacha20poly1305::Error> {
-        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
-        // Unwrap is safe because the key has a constant length and is correctly sized.
-        let cipher = ChaCha20Poly1305::new_from_slice(&self.key).unwrap();
-
-        let mut buffer = BufferSlice::partial(buffer, payload_length);
-
         // Create the nonce
+        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
         let mut nonce_bytes: [u8; NonceSize::USIZE] = Default::default();
         nonce_bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
-        let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // Decrypt.
-        let associated_data = &[];
-        cipher.encrypt_in_place(&nonce, associated_data, &mut buffer)?;
+        let r = encrypt(buffer, payload_length, &self.key, &nonce_bytes)?;
 
         // Increment the nonce.
         self.nonce += 1;
-
         // Convert the buffer back into the ref.
-        Ok(buffer.into_buffer_ref())
+        Ok(r)
     }
 }
 
@@ -148,6 +162,8 @@ mod test {
             0x82, 0x25, 0xd1, 0xa4, 0x1f, 0x0a, 0xd5, 0xe0, 0xef, 0xe8, 0xb2, 0x48, 0x32, 0xa2,
             0x7c, 0xb6, 0x62, 0x39, 0x74, 0xb6, 0x31,
         ];
+        let orig_ciphertext = ciphertext;
+
         type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
         let cipher = ChaCha20Poly1305::new_from_slice(&key).expect("key should work");
         // let nonce_integer: u64 = 0;
@@ -162,8 +178,22 @@ mod test {
             .expect("decryption should work");
 
         assert_eq!(&buffer.as_ref(), &[0x00u8, 0x12, 0x03, 0x11, 0x00]);
-        info!("ciphertext now: {:0>2x?}", buffer.as_ref());
-        info!("ciphertext now: {:0>2x?}", ciphertext);
+        // info!("ciphertext now: {:0>2x?}", buffer.as_ref());
+        // info!("ciphertext now: {:0>2x?}", ciphertext);
+
+        let mut decrypted_data_buffer = [0u8; 1024];
+        decrypted_data_buffer[0..orig_ciphertext.len()].copy_from_slice(&orig_ciphertext);
+        let decrypted_data = decrypt(
+            &mut decrypted_data_buffer[0..orig_ciphertext.len()],
+            &key,
+            &nonce_bytes,
+        )
+        .unwrap();
+        assert_eq!(&decrypted_data, &[0x00u8, 0x12, 0x03, 0x11, 0x00]);
+
+        // And encrypt it back.
+        let encrypted_data = encrypt(&mut decrypted_data_buffer, 5, &key, &nonce_bytes).unwrap();
+        assert_eq!(&encrypted_data, &orig_ciphertext);
     }
 
     #[test]
