@@ -122,6 +122,34 @@ impl Default for DeviceId {
         DeviceId([1, 2, 3, 4, 5, 6])
     }
 }
+impl DeviceId {
+    // These functions are tested in the advertisement setup hash.
+    fn u8_to_uppercase_hex(v: u8) -> [u8; 2] {
+        const LOOKUP: &[u8; 16] = b"0123456789ABCDEF";
+        let low = v & 0xF;
+        let high = (v >> 4) & 0xF;
+        [LOOKUP[high as usize], LOOKUP[low as usize]]
+    }
+
+    fn to_device_id_string(&self) -> DeviceIdString {
+        let mut concat = [0u8; 6 * 2 + 5];
+        for (i, v) in self.0.iter().enumerate() {
+            let [h, l] = Self::u8_to_uppercase_hex(*v);
+            concat[0 + i * 3] = h;
+            concat[0 + i * 3 + 1] = l;
+            if i != 5 {
+                concat[0 + i * 3 + 2] = b':';
+            }
+        }
+        DeviceIdString(concat)
+    }
+}
+pub struct DeviceIdString(pub [u8; 6 * 2 + 5]);
+impl DeviceIdString {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]

@@ -39,14 +39,6 @@ impl Default for AdvertisementConfig {
     }
 }
 
-fn u8_to_uppercase_hex(v: u8) -> [u8; 2] {
-    const LOOKUP: &[u8; 16] = b"0123456789ABCDEF";
-
-    let low = v & 0xF;
-    let high = (v >> 4) & 0xF;
-    [LOOKUP[high as usize], LOOKUP[low as usize]]
-}
-
 pub struct HapAdvertisement {
     // Trouble adds the LEN, ADT and CoID bytes.
     data: [u8; 23 - 1 - 1 - 2],
@@ -59,14 +51,7 @@ pub fn calculate_setup_hash(device_id: &DeviceId, setup_id: &SetupId) -> [u8; 4]
     let mut concat: [u8; 4 + 6 * 2 + 5] = Default::default();
     concat[0..4].copy_from_slice(&setup_id.0);
 
-    for (i, v) in device_id.0.iter().enumerate() {
-        let [h, l] = u8_to_uppercase_hex(*v);
-        concat[4 + i * 3] = h;
-        concat[4 + i * 3 + 1] = l;
-        if i != 5 {
-            concat[4 + i * 3 + 2] = b':';
-        }
-    }
+    concat[4..].copy_from_slice(device_id.to_device_id_string().as_bytes());
 
     let res = Sha512::digest(&concat);
     [res[0], res[1], res[2], res[3]]
@@ -115,16 +100,10 @@ impl HapAdvertisement {
 #[cfg(test)]
 mod test {
 
-    fn init() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::max())
-            .try_init();
-    }
     use super::*;
     #[test]
     fn test_setup_hash() {
-        init();
+        crate::test::init();
         let device_id = [0xE1, 0x91, 0x1A, 0x70, 0x85, 0xAA];
         let config = AdvertisementConfig {
             setup_id: SetupId([b'7', b'O', b'S', b'X']),
