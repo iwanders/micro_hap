@@ -6,7 +6,7 @@ pub enum TLVError {
     /// Not enough data to parse.
     NotEnoughData,
     /// Missing an expected entry.
-    MissingEntry,
+    MissingEntry(u8),
     /// Parse error (like an unexpectedly sized integer)
     UnexpectedValue,
     /// Exhausted the buffer while trying to write to it.
@@ -18,7 +18,7 @@ impl From<TLVError> for trouble_host::Error {
         match e {
             TLVError::NotEnoughData => trouble_host::Error::OutOfMemory,
             TLVError::BufferOverrun => trouble_host::Error::OutOfMemory,
-            TLVError::MissingEntry => trouble_host::Error::InvalidValue,
+            TLVError::MissingEntry(_) => trouble_host::Error::InvalidValue,
             TLVError::UnexpectedValue => trouble_host::Error::InvalidValue,
         }
     }
@@ -133,7 +133,7 @@ impl<'a> TLVReader<'a> {
         self.read_into(tlvs)?;
         for t in tlvs.iter() {
             if t.is_none() {
-                return Err(TLVError::MissingEntry);
+                return Err(TLVError::MissingEntry(t.type_id));
             }
         }
         Ok(())

@@ -433,6 +433,7 @@ pub mod tlv {
     typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
     typed_tlv!(TLVIdentifier, TLVType::Identifier);
     typed_tlv!(TLVSignature, TLVType::Signature);
+    typed_tlv!(TLVSessionId, TLVType::SessionID);
 }
 use tlv::*;
 

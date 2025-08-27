@@ -64,7 +64,7 @@ impl From<crate::tlv::TLVError> for HapBleError {
     fn from(e: crate::tlv::TLVError) -> HapBleError {
         match e {
             crate::tlv::TLVError::NotEnoughData => HapBleError::InvalidValue,
-            crate::tlv::TLVError::MissingEntry => HapBleError::InvalidValue,
+            crate::tlv::TLVError::MissingEntry(_) => HapBleError::InvalidValue,
             crate::tlv::TLVError::UnexpectedValue => HapBleError::InvalidValue,
             crate::tlv::TLVError::BufferOverrun => HapBleError::BufferOverrun,
         }
