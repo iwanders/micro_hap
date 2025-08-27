@@ -1062,26 +1062,27 @@ impl HapPeripheralContext {
             pdu::OpCode::CharacteristicWrite => {
                 info!("handle is: {}", handle);
                 info!("pair setup handle is {}", hap.pairing.pair_setup.handle);
-                if handle == hap.pairing.pair_setup.handle {
-                    info!("write raw req event data: {:02x?}", data);
-                    let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
-                    info!("got write on pair setup with: {:?}", parsed);
+                info!("write raw req event data: {:02x?}", data);
+                let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
+                info!("got write on pair setup with: {:?}", parsed);
 
-                    // Write the body to our internal buffer here.
-                    let mut buffer = self.buffer.borrow_mut();
-                    buffer.fill(0);
-                    parsed.copy_body(&mut *buffer)?;
-                    let mut pair_ctx = self.pair_ctx.borrow_mut();
-                    crate::pairing::pair_setup_handle_incoming(&mut **pair_ctx, support, &*buffer)
-                        .map_err(|_| HapBleError::InvalidValue)?;
+                // Write the body to our internal buffer here.
+                let mut buffer = self.buffer.borrow_mut();
+                buffer.fill(0);
+                parsed.copy_body(&mut *buffer)?;
+                let mut pair_ctx = self.pair_ctx.borrow_mut();
 
-                    // So now we craft the reply.
+                // So now we craft the reply, technically this could happen on the read... should it happen on the read?
 
-                    // let resp = parsed.header.header.to_success();
-                    // let len = resp.write_into_length(*buffer)?;
-
-                    let full_len = buffer.len();
-                    let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
+                let full_len = buffer.len();
+                let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
+                let outgoing_len = if handle == hap.pairing.pair_setup.handle {
+                    crate::pairing::pair_setup_handle_incoming(
+                        &mut **pair_ctx,
+                        support,
+                        &*first_half,
+                    )
+                    .map_err(|_| HapBleError::InvalidValue)?;
 
                     // Put the reply in the second half.
                     let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
@@ -1090,18 +1091,30 @@ impl HapPeripheralContext {
                         &mut second_half,
                     )
                     .map_err(|_| HapBleError::InvalidValue)?;
+                    outgoing_len
+                } else if handle == hap.pairing.pair_verify.handle {
+                    crate::pair_verify::handle_incoming(&mut **pair_ctx, support, &*first_half)
+                        .map_err(|_| HapBleError::InvalidValue)?;
 
-                    let reply = parsed.header.header.to_success();
-                    let len = reply.write_into_length(first_half)?;
-
-                    let len = BodyBuilder::new_at(first_half, len)
-                        .add_value(&second_half[0..outgoing_len])
-                        .end();
-
-                    BufferResponse(len)
+                    // Put the reply in the second half.
+                    let outgoing_len = crate::pair_verify::handle_outgoing(
+                        &mut **pair_ctx,
+                        support,
+                        &mut second_half,
+                    )
+                    .map_err(|_| HapBleError::InvalidValue)?;
+                    outgoing_len
                 } else {
                     todo!("Need dispatch to correct method");
-                }
+                };
+                let reply = parsed.header.header.to_success();
+                let len = reply.write_into_length(first_half)?;
+
+                let len = BodyBuilder::new_at(first_half, len)
+                    .add_value(&second_half[0..outgoing_len])
+                    .end();
+
+                BufferResponse(len)
             }
             pdu::OpCode::Info => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L623
@@ -1133,6 +1146,8 @@ impl HapPeripheralContext {
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
         let resp = self.handle_write_incoming(hap, support, &data, handle);
+
+        info!("pair verify handle: {:?}", hap.pairing.pair_verify.handle());
         if let Some(resp) = resp.await? {
             self.prepared_reply = Some(Reply {
                 payload: resp,
@@ -1511,7 +1526,9 @@ mod test {
         }
 
         // Writing to pair setup.  ------------
-        let handle_pair_setup = 84; // huh?
+        // it would be nice if we understood why the handle ids are different.
+        let handle_pair_setup = 84;
+        let handle_pair_verify = 87;
         // m1 & m2
         {
             let incoming_data: &[u8] = &[
@@ -1646,6 +1663,41 @@ mod test {
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // next up it reads a bunch of service and characteristic instance descriptor values. ALl of them in fact.
+
+        // Writing to pair verify.  ------------
+        // Then, we see a write request to pair verify.
+        //
+        {
+            // Pair verify.
+            let incoming_data: &[u8] = &[
+                0x00, 0x02, 0x34, 0x23, 0x00, 0x2a, 0x00, 0x01, 0x25, 0x06, 0x01, 0x01, 0x03, 0x20,
+                0x1d, 0x74, 0xbd, 0x6a, 0x38, 0xdb, 0xea, 0x23, 0x6c, 0x1a, 0xcb, 0x88, 0x9a, 0xa7,
+                0xb9, 0x6d, 0xde, 0x7f, 0x9c, 0xd5, 0x78, 0x34, 0x34, 0x12, 0xed, 0x1f, 0xf0, 0xac,
+                0xf1, 0x02, 0x99, 0x01, 0x09, 0x01, 0x01,
+            ];
+            let outgoing: &[u8] = &[
+                0x02, 0x34, 0x00, 0x8e, 0x00, 0x01, 0x8c, 0x06, 0x01, 0x02, 0x03, 0x20, 0x8f, 0x47,
+                0x6d, 0xf6, 0x0c, 0xec, 0xdb, 0xe9, 0xc7, 0xf5, 0x4a, 0x6c, 0x2a, 0x6d, 0xbf, 0xd7,
+                0x1e, 0xef, 0xd7, 0xf4, 0xf6, 0xf2, 0x73, 0xae, 0xf9, 0x5a, 0x41, 0xfc, 0x93, 0xec,
+                0xa2, 0x0e, 0x05, 0x65, 0xbb, 0x5e, 0xc0, 0x3f, 0x8d, 0xb9, 0x8a, 0x1c, 0xd6, 0x47,
+                0xc7, 0x83, 0x11, 0xe4, 0x26, 0xff, 0xd1, 0xbe, 0x30, 0xed, 0x7a, 0xef, 0xa0, 0x2c,
+                0xed, 0x09, 0xe5, 0x17, 0xf0, 0x81, 0x0f, 0xaa, 0xc5, 0xd4, 0x93, 0x68, 0x5e, 0x32,
+                0xc2, 0xf1, 0x48, 0xcb, 0xde, 0x0c, 0x03, 0x82, 0xd2, 0xbf, 0xa4, 0x9a, 0xb4, 0xe7,
+                0x91, 0x77, 0x43, 0xa0, 0xd5, 0x72, 0x76, 0x08, 0xa1, 0x0f, 0x73, 0xa0, 0x84, 0x7b,
+                0x42, 0xac, 0x79, 0x24, 0xaf, 0x0c, 0xf8, 0x22, 0x0e, 0x53, 0x25, 0x0d, 0xb2, 0xb1,
+                0x98, 0xc0, 0x6b, 0xd2, 0xee, 0x1a, 0xaa, 0x9b, 0xb9, 0x7e, 0x6f, 0xab, 0x12, 0xa2,
+                0xcf, 0x69, 0x7e, 0x04, 0xb0, 0x61, 0x0a,
+            ];
+            ctx.handle_write_incoming_test(&hap, &support, incoming_data, handle_pair_verify)
+                .await?;
+
+            let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);

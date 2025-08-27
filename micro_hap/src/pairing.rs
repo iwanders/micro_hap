@@ -201,6 +201,7 @@ impl Default for ServerPairSetup {
 pub struct PairServer {
     pub flags: PairingFlags,
     pub pair_setup: ServerPairSetup,
+    pub pair_verify: PairVerify,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
@@ -393,43 +394,47 @@ impl Default for SetupInfo {
 #[repr(transparent)]
 pub struct SetupCode(pub [u8; 11]);
 
-/// Helper macro to make typed newtype wrappers around TLV
-macro_rules! typed_tlv {
-    ( $name:ident, $tlv_type:expr  ) => {
-        #[derive(PartialEq, Eq, Debug, Clone)]
-        pub struct $name<'a>(TLV<'a>);
-        impl<'a> $name<'a> {
-            pub fn tied(data: &'a [u8]) -> Self {
-                Self(TLV::tied(data, $tlv_type))
+pub mod tlv {
+    use super::*;
+    /// Helper macro to make typed newtype wrappers around TLV
+    macro_rules! typed_tlv {
+        ( $name:ident, $tlv_type:expr  ) => {
+            #[derive(PartialEq, Eq, Debug, Clone)]
+            pub struct $name<'a>(TLV<'a>);
+            impl<'a> $name<'a> {
+                pub fn tied(data: &'a [u8]) -> Self {
+                    Self(TLV::tied(data, $tlv_type))
+                }
+                pub fn tlv_type(&self) -> TLVType {
+                    $tlv_type
+                }
             }
-            pub fn tlv_type(&self) -> TLVType {
-                $tlv_type
-            }
-        }
-        impl<'a> core::ops::Deref for $name<'a> {
-            type Target = TLV<'a>;
+            impl<'a> core::ops::Deref for $name<'a> {
+                type Target = TLV<'a>;
 
-            fn deref(&self) -> &Self::Target {
-                &self.0
+                fn deref(&self) -> &Self::Target {
+                    &self.0
+                }
             }
-        }
-        impl<'a> core::ops::DerefMut for $name<'a> {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
+            impl<'a> core::ops::DerefMut for $name<'a> {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    &mut self.0
+                }
             }
-        }
-    };
+        };
+    }
+
+    // And then make the concrete TLV types.
+    typed_tlv!(TLVMethod, TLVType::Method);
+    typed_tlv!(TLVState, TLVType::State);
+    typed_tlv!(TLVFlags, TLVType::Flags);
+    typed_tlv!(TLVProof, TLVType::Proof);
+    typed_tlv!(TLVPublicKey, TLVType::PublicKey);
+    typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
+    typed_tlv!(TLVIdentifier, TLVType::Identifier);
+    typed_tlv!(TLVSignature, TLVType::Signature);
 }
-
-// And then make the concrete TLV types.
-typed_tlv!(TLVMethod, TLVType::Method);
-typed_tlv!(TLVState, TLVType::State);
-typed_tlv!(TLVFlags, TLVType::Flags);
-typed_tlv!(TLVProof, TLVType::Proof);
-typed_tlv!(TLVPublicKey, TLVType::PublicKey);
-typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
-typed_tlv!(TLVIdentifier, TLVType::Identifier);
-typed_tlv!(TLVSignature, TLVType::Signature);
+use tlv::*;
 
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,

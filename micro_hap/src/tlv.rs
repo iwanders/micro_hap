@@ -362,9 +362,9 @@ mod test {
 
         let payload = [0, 1, 0, 6, 1, 1, 19, 4, 16, 128, 0, 1, 0, 0, 0, 0, 0, 0];
 
-        let mut method = crate::pairing::TLVMethod::tied(&payload);
-        let mut state = crate::pairing::TLVState::tied(&payload);
-        let mut flags = crate::pairing::TLVFlags::tied(&payload);
+        let mut method = crate::pairing::tlv::TLVMethod::tied(&payload);
+        let mut state = crate::pairing::tlv::TLVState::tied(&payload);
+        let mut flags = crate::pairing::tlv::TLVFlags::tied(&payload);
         info!("before read into, data: {:0>2x?}", payload);
         TLVReader::new(&payload).require_into(&mut [&mut method, &mut state, &mut flags])?;
         info!("method {:?}", method);
