@@ -15,6 +15,7 @@ use uuid;
 const PAIR_VERIFY_M2_SALT: &'static str = "Pair-Verify-Encrypt-Salt";
 const PAIR_VERIFY_M2_INFO: &'static str = "Pair-Verify-Encrypt-Info";
 const PAIR_VERIFY_M2_NONCE: &'static str = "PV-Msg02";
+const PAIR_VERIFY_M3_NONCE: &'static str = "PV-Msg03";
 
 // HAPPairingPairVerifyHandleWrite
 pub fn handle_incoming(
@@ -50,8 +51,16 @@ pub fn handle_incoming(
             ])?;
 
             info!("pair_verify_process_m1 next");
-            ctx.server.pair_verify.setup.state = PairState::ReceivedM1;
             pair_verify_process_m1(ctx, method, state, public_key, session_id, encrypted_data)
+        }
+        PairState::SentM2 => {
+            for v in TLVReader::new(&data) {
+                info!("v: {:?}", v);
+            }
+            let mut state = TLVState::tied(&data);
+            let mut encrypted_data = TLVEncryptedData::tied(&data);
+            TLVReader::new(&data).read_into(&mut [&mut state, &mut encrypted_data])?;
+            pair_verify_process_m3(ctx, state, encrypted_data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -68,7 +77,7 @@ pub fn handle_outgoing(
 ) -> Result<usize, PairingError> {
     match ctx.server.pair_verify.setup.state {
         PairState::ReceivedM1 => {
-            ctx.setup.state = PairState::SentM2;
+            ctx.server.pair_verify.setup.state = PairState::SentM2;
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1136
             // Advance the state, and write M2.
             if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
@@ -99,6 +108,7 @@ pub fn pair_verify_process_m1(
     if state != PairState::ReceivedM1 {
         return Err(PairingError::IncorrectState);
     }
+    ctx.server.pair_verify.setup.state = PairState::ReceivedM1;
 
     let mut use_method = PairingMethod::PairVerify;
     if method.is_some() {
@@ -158,7 +168,7 @@ pub fn pair_verify_process_get_m2(
 
     let mut writer = TLVWriter::new(data);
 
-    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+    writer = writer.add_entry(TLVType::State, &ctx.server.pair_verify.setup.state)?;
     writer = writer.add_slice(TLVType::PublicKey, &ctx.server.pair_verify.cv_pk)?;
 
     // Next up, the whole subwriter dance again.
@@ -226,4 +236,40 @@ pub fn pair_verify_process_get_m2(
     // info!("plain: {:0>2x?}", &subwriter_scratch[0..subwriter_length]);
 
     Ok(writer.end())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L708
+// HAPPairingPairVerifyProcessM3
+pub fn pair_verify_process_m3(
+    ctx: &mut PairContext,
+    state: TLVState,
+    encrypted_data: TLVEncryptedData,
+) -> Result<(), PairingError> {
+    info!("Pair Verify M3: Verify Start Request");
+
+    let state = *state.try_from::<PairState>()?;
+    if state != PairState::ReceivedM3 {
+        return Err(PairingError::IncorrectState);
+    }
+    ctx.server.pair_verify.setup.state = PairState::ReceivedM3;
+
+    // Write the data to the buffer first to ensure contiguous data
+
+    // NONCOMPLIANCE: use of ephemeral B, but we don't need that anymore at this point and it's available memory.
+    // left holds the encrypted & decrypted data, with leaves right as a scratchpad. Encrypted data is 154 bytes, the
+    // B size is 384, so that leaves 230 for the right side.
+    let (left, right) = ctx.server.pair_setup.B.split_at_mut(encrypted_data.len());
+    encrypted_data.copy_body(left)?;
+    let key = &ctx.server.pair_verify.session_key;
+    let data = left;
+    let decrypted = aead::decrypt(data, key, &PAIR_VERIFY_M3_NONCE.as_bytes())?;
+    info!("decrypted: {:0>2x?}", decrypted);
+
+    let mut identifier = TLVIdentifier::tied(&decrypted);
+    let mut signature = TLVSignature::tied(&decrypted);
+    TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
+
+    // need to retrieve pairing that we created during the setup now.
+
+    Ok(())
 }
