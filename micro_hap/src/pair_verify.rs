@@ -61,10 +61,14 @@ pub fn handle_outgoing(
 ) -> Result<usize, PairingError> {
     match ctx.server.pair_verify.setup.state {
         PairState::ReceivedM1 => {
+            ctx.setup.state = PairState::SentM2;
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1136
             // Advance the state, and write M2.
-            // ctx.setup.state = PairState::SentM2;
-            todo!();
-            // pair_setup_process_get_m2(ctx, support, data)
+            if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
+                todo!();
+            } else {
+                pair_verify_process_get_m2(ctx, support, data)
+            }
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -100,7 +104,7 @@ pub fn pair_verify_process_m1(
     }
 
     ctx.server.pair_verify.setup.method = use_method;
-    public_key.copy_body(&mut ctx.server.pair_verify.cv_pk);
+    public_key.copy_body(&mut ctx.server.pair_verify.cv_pk)?;
 
     if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
         //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
@@ -109,4 +113,26 @@ pub fn pair_verify_process_m1(
     }
 
     Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L352
+// HAPPairingPairVerifyGetM2
+pub fn pair_verify_process_get_m2(
+    ctx: &mut PairContext,
+    support: &PairSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    info!("Pair Verify M2: Verify Start Response.");
+    // NONCOMPLIANCE: not checking if an error is set, or if the session is already active.
+
+    // Populate cv_SK from random.
+    ctx.server.pair_verify.cv_sk.fill_with(|| (support.rng)());
+
+    // What is HAP_X25519_scalarmult_base(session->state.pairVerify.cv_PK, session->state.pairVerify.cv_SK); ? :/
+
+    todo!();
+
+    let mut writer = TLVWriter::new(data);
+
+    Ok(writer.end())
 }

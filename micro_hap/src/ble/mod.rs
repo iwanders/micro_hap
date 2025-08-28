@@ -1672,7 +1672,23 @@ mod test {
 
         // Writing to pair verify.  ------------
         // Then, we see a write request to pair verify.
-        //
+        // Update the random for for the m2 cv_SK;
+
+        let counter = core::cell::RefCell::new(0);
+        let random_buffer = vec![
+            0xe5, 0xb9, 0xee, 0xdd, 0x57, 0xd0, 0x40, 0x13, 0xf3, 0xaa, 0x88, 0xd9, 0x4b, 0x0d,
+            0x51, 0xee, 0x92, 0x58, 0x9d, 0xfd, 0xa1, 0x5f, 0x96, 0x65, 0x2f, 0xee, 0x88, 0xd6,
+            0x3e, 0x0c, 0x83, 0xc4,
+        ];
+        let rng = move || {
+            let mut c = counter.borrow_mut();
+            let v = random_buffer[*c];
+            *c += 1;
+            v
+        };
+        let mut support = support;
+        support.rng = &rng;
+
         {
             // Pair verify.
             let incoming_data: &[u8] = &[
