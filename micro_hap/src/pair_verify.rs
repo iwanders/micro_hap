@@ -20,7 +20,7 @@ const PAIR_VERIFY_M3_NONCE: &'static str = "PV-Msg03";
 // HAPPairingPairVerifyHandleWrite
 pub fn handle_incoming(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
@@ -72,7 +72,7 @@ pub fn handle_incoming(
 // HAPPairingPairVerifyHandleRead
 pub fn handle_outgoing(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     match ctx.server.pair_verify.setup.state {
@@ -136,14 +136,17 @@ pub fn pair_verify_process_m1(
 // HAPPairingPairVerifyGetM2
 pub fn pair_verify_process_get_m2(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Verify M2: Verify Start Response.");
     // NONCOMPLIANCE: not checking if an error is set, or if the session is already active.
 
     // Populate cv_SK from random.
-    ctx.server.pair_verify.cv_sk.fill_with(|| (support.rng)());
+    ctx.server
+        .pair_verify
+        .cv_sk
+        .fill_with(|| support.get_random());
 
     // What is HAP_X25519_scalarmult_base(session->state.pairVerify.cv_PK, session->state.pairVerify.cv_SK); ? :/
     // That makes the Public key from our private secret!
@@ -201,7 +204,7 @@ pub fn pair_verify_process_get_m2(
     {
         let (to_sign, mut area_for_signature) = scratch.split_at_mut(ios_cvpk_idx.end);
         ed25519_sign(
-            &support.ed_ltsk,
+            support.get_ltsk(),
             &to_sign,
             &mut area_for_signature[0..ED25519_BYTES],
         )

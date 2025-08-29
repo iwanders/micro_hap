@@ -94,7 +94,7 @@ pub const PAIR_SETUP_M6_NONCE: &'static str = "PS-Msg06";
 pub const PAIR_SETUP_M6_SIGN_SALT: &'static str = "Pair-Setup-Accessory-Sign-Salt";
 pub const PAIR_SETUP_M6_SIGN_INFO: &'static str = "Pair-Setup-Accessory-Sign-Info";
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[repr(transparent)]
 pub struct PairingId(pub uuid::Uuid);
 impl PairingId {
@@ -105,7 +105,7 @@ impl PairingId {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub struct PairingPublicKey(pub [u8; 32]);
 impl PairingPublicKey {
     pub fn from(bytes: &[u8]) -> Result<Self, PairingError> {
@@ -471,6 +471,18 @@ impl Default for PairContext {
     }
 }
 
+pub trait PairSupport {
+    /// Retrieve the long term secret key.
+    fn get_ltsk(&self) -> &[u8; ED25519_LTSK];
+    /// Produce a random byte, this should be from a cryptographically secure source.
+    fn get_random(&mut self) -> u8;
+    /// Store a new pairing.
+    fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
+    /// Retrieve a pairing, or None if it doesn't exist.
+    fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError>;
+}
+
+/*
 /// Function signature for the random generator. It's not FnMut for convenience in case we need to add more to the
 /// support, use interior mutability if necessary.
 type RandomFunction<'a> = &'a dyn Fn() -> u8;
@@ -487,12 +499,12 @@ impl<'a> PairSupport<'a> {
         error!("skiping storing of pairing");
         Ok(())
     }
-}
+}*/
 
 // HAPPairingPairSetupHandleWrite
 pub fn pair_setup_handle_incoming(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
@@ -536,7 +548,7 @@ pub fn pair_setup_handle_incoming(
 // HAPPairingPairSetupHandleRead
 pub fn pair_setup_handle_outgoing(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     match ctx.setup.state {
@@ -619,7 +631,7 @@ pub fn pair_setup_process_m3(
 // HAPPairingPairSetupProcessM5
 pub fn pair_setup_process_m5(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     state: TLVState,
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
@@ -712,7 +724,7 @@ pub fn pair_setup_process_m5(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
 pub fn pair_setup_process_get_m2(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Setup M2: SRP Start Response.");
@@ -760,7 +772,7 @@ pub fn pair_setup_process_get_m2(
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L256
 
     // fill b with random;
-    ctx.server.pair_setup.b.fill_with(|| (support.rng)());
+    ctx.server.pair_setup.b.fill_with(|| support.get_random());
     // Then, we derive the public key B.
 
     let server = homekit_srp();
@@ -799,7 +811,7 @@ pub fn pair_setup_process_get_m2(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L430
 pub fn pair_setup_process_get_m4(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     let _ = support;
@@ -917,7 +929,7 @@ pub fn pair_setup_process_get_m4(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1041
 pub fn pair_setup_process_get_m6(
     ctx: &mut PairContext,
-    support: &PairSupport,
+    support: &mut impl PairSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     let _ = support;
@@ -944,7 +956,7 @@ pub fn pair_setup_process_get_m6(
 
     // Make the public key and append that.
     let mut public_key = [0u8; ED25519_LTPK];
-    ed25519_create_public(&support.ed_ltsk, &mut public_key)
+    ed25519_create_public(support.get_ltsk(), &mut public_key)
         .map_err(|_| PairingError::IncorrectLength)?;
 
     // Next, create the aspects to sign.
@@ -977,7 +989,7 @@ pub fn pair_setup_process_get_m6(
 
     // Sign it all
     {
-        let secret_key = &support.ed_ltsk;
+        let secret_key = support.get_ltsk();
         let (data, signature) = scratch.split_at_mut(sig_start);
         ed25519_sign(secret_key, data, &mut signature[0..ED25519_BYTES])
             .map_err(|_| PairingError::IncorrectLength)?;
@@ -1017,8 +1029,40 @@ pub fn pair_setup_process_get_m6(
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
+
+    #[derive(Debug, Clone, Default)]
+    pub struct TestPairSupport {
+        pub ed_ltsk: [u8; ED25519_LTSK],
+        pub random: std::collections::VecDeque<u8>,
+        pub pairings: std::collections::HashMap<PairingId, Pairing>,
+    }
+    impl TestPairSupport {
+        pub fn add_random(&mut self, v: &[u8]) {
+            self.random.extend(v.iter())
+        }
+    }
+    impl PairSupport for TestPairSupport {
+        fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
+            &self.ed_ltsk
+        }
+
+        fn get_random(&mut self) -> u8 {
+            self.random
+                .pop_front()
+                .expect("test pair support ran out of random")
+        }
+
+        fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+            self.pairings.insert(pairing.id, *pairing);
+            Ok(())
+        }
+
+        fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
+            Ok(self.pairings.get(id))
+        }
+    }
 
     #[test]
     fn test_pairing_flags() {
@@ -1040,25 +1084,14 @@ mod test {
         let mut ctx = PairContext::default();
         ctx.info = recorded.setup_info;
 
-        let counter = core::cell::RefCell::new(0);
-        let random_buffer = recorded.random_b.clone();
-        let rng = move || {
-            let mut c = counter.borrow_mut();
-            let v = random_buffer[*c];
-            *c += 1;
-            v
-        };
+        let mut support = TestPairSupport::default();
+        support.add_random(&recorded.random_b);
 
-        let support = PairSupport {
-            rng: &rng,
-            ed_ltsk: Default::default(),
-        };
-
-        pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_0)?;
+        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_0)?;
 
         let mut buffer = [0u8; 1024];
 
-        pair_setup_handle_outgoing(&mut ctx, &support, &mut buffer)?;
+        pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer)?;
 
         info!("recorded.public_B: {:x?}", recorded.public_B);
         info!("srvr.pair_setup.B: {:x?}", ctx.server.pair_setup.B);
@@ -1067,11 +1100,11 @@ mod test {
         assert_eq!(recorded.public_B, ctx.server.pair_setup.B);
 
         // This is M3: SRP Verify Request.
-        pair_setup_handle_incoming(&mut ctx, &support, &recorded.incoming_1)?;
+        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_1)?;
         let mut buffer = [0u8; 1024];
 
         // This is M4: SRP verify response.
-        let l = pair_setup_handle_outgoing(&mut ctx, &support, &mut buffer)?;
+        let l = pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer)?;
         let response = &buffer[0..l];
         info!("m4 response: {:0>2x?}", &response);
         let expected_response = [

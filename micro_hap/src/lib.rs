@@ -132,7 +132,7 @@ impl DeviceId {
         [LOOKUP[high as usize], LOOKUP[low as usize]]
     }
 
-    fn to_device_id_string(&self) -> DeviceIdString {
+    pub fn to_device_id_string(&self) -> DeviceIdString {
         let mut concat = [0u8; 6 * 2 + 5];
         for (i, v) in self.0.iter().enumerate() {
             let [h, l] = Self::u8_to_uppercase_hex(*v);

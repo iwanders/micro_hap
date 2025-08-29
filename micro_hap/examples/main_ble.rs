@@ -38,6 +38,33 @@ mod ble_bas_peripheral {
         }
     }
 
+    use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
+    #[derive(Debug, Clone, Default)]
+    pub struct ActualPairSupport {
+        pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
+        pub pairings:
+            std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
+    }
+    impl micro_hap::pairing::PairSupport for ActualPairSupport {
+        fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
+            &self.ed_ltsk
+        }
+
+        fn get_random(&mut self) -> u8 {
+            use rand::prelude::*;
+            rand::rng().random::<u8>()
+        }
+
+        fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+            self.pairings.insert(pairing.id, *pairing);
+            Ok(())
+        }
+
+        fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
+            Ok(self.pairings.get(id))
+        }
+    }
+
     /// Battery service
     // #[gatt_service(uuid = service::BATTERY)]
     // struct BatteryService {
@@ -303,25 +330,17 @@ mod ble_bas_peripheral {
                     // This step is also performed at drop(), but writing it explicitly is necessary
                     // in order to ensure reply is sent.
 
-                    let rng = core::cell::RefCell::new(rand::rng());
-                    use rand::Rng;
-                    let rng = move || {
-                        let mut gn = rng.borrow_mut();
-                        gn.random::<u8>()
-                    };
-
-                    let support = micro_hap::pairing::PairSupport {
-                        rng: &rng,
-                        // Just 32 random bytes.
+                    let mut support = ActualPairSupport {
                         ed_ltsk: [
                             182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235,
                             192, 207, 15, 80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204,
                             159, 230,
                         ],
+                        ..Default::default()
                     };
 
                     let fallthrough_event = hap_context
-                        .process_gatt_event(&server.as_hap(), &support, event)
+                        .process_gatt_event(&server.as_hap(), &mut support, event)
                         .await?;
 
                     if let Some(event) = fallthrough_event {
