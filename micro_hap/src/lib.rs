@@ -24,9 +24,6 @@ pub mod tlv;
 pub mod crypto;
 use crypto::aead::ControlChannel;
 
-// This seems to not facilitate type erasure?
-use heapless::pool::arc::Arc;
-
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //
@@ -304,56 +301,5 @@ mod test {
             .is_test(true)
             .filter_level(log::LevelFilter::max())
             .try_init();
-    }
-
-    #[test]
-    fn test_arc_pool() {
-        use core::ptr::addr_of_mut;
-        use heapless::{
-            arc_pool,
-            pool::arc::{Arc, ArcBlock},
-        };
-
-        arc_pool!(MyArcPool: u128);
-
-        // cannot allocate without first giving memory blocks to the pool
-        assert!(MyArcPool.alloc(42).is_err());
-
-        // (some `no_std` runtimes have safe APIs to create `&'static mut` references)
-        let block: &'static mut ArcBlock<u128> = unsafe {
-            static mut BLOCK: ArcBlock<u128> = ArcBlock::new();
-            addr_of_mut!(BLOCK).as_mut().unwrap()
-        };
-
-        MyArcPool.manage(block);
-
-        let arc: Arc<MyArcPool> = MyArcPool.alloc(1).unwrap();
-
-        // number of smart pointers is limited to the number of blocks managed by the pool
-        let res = MyArcPool.alloc(2);
-        assert!(res.is_err());
-
-        #[derive(Debug, Copy, Clone)]
-        pub struct Foo;
-        pub trait Bar {
-            fn thing(&self) {
-                info!("thing");
-            }
-        }
-        impl Bar for Foo {};
-
-        /*
-        arc_pool!(MyFooArcPool: dyn core::any::Any);
-        let block: &'static mut ArcBlock<Foo> = unsafe {
-            static mut BLOCK: ArcBlock<Foo> = ArcBlock::new();
-            addr_of_mut!(BLOCK).as_mut().unwrap()
-        };
-
-        MyFooArcPool.manage(block);
-
-        let arc: Arc<MyFooArcPool> = MyFooArcPool.alloc(Foo).unwrap();
-
-        */
-        //let arc: Arc<dyn Bar> = arc.into();
     }
 }

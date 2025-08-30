@@ -1,7 +1,6 @@
 use ed25519_dalek::Signature;
 use ed25519_dalek::{
-    PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, SIGNATURE_LENGTH, Signer, SigningKey, Verifier,
-    VerifyingKey,
+    PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, Signer, SigningKey, Verifier, VerifyingKey,
 };
 
 type SecretKeyBuffer = [u8; SECRET_KEY_LENGTH];
@@ -79,6 +78,7 @@ pub fn ed25519_sign(
 #[cfg(test)]
 mod test {
     use super::*;
+    use ed25519_dalek::SIGNATURE_LENGTH;
 
     #[test]
     fn test_ed25519_test2() {

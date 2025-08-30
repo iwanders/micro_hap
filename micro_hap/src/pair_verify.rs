@@ -10,8 +10,7 @@ use crate::pairing::{
     ED25519_BYTES, PairContext, PairState, PairSupport, PairingError, PairingId, PairingMethod,
     TLVType, X25519_BYTES, tlv::*,
 };
-use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
-use uuid;
+use crate::tlv::{TLVReader, TLVWriter};
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L972
 
@@ -117,6 +116,7 @@ pub fn pair_verify_process_m1(
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
     info!("Pair Verify M1: Verify Start Request");
+    let _ = (session_id, encrypted_data);
 
     let state = *state.try_from::<PairState>()?;
     if state != PairState::ReceivedM1 {
@@ -124,7 +124,7 @@ pub fn pair_verify_process_m1(
     }
     ctx.server.pair_verify.setup.state = PairState::ReceivedM1;
 
-    let mut use_method = PairingMethod::PairVerify;
+    let use_method = PairingMethod::PairVerify;
     if method.is_some() {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L185
         todo!();
@@ -191,7 +191,6 @@ pub fn pair_verify_process_get_m2(
     // Next up, the whole subwriter dance again.
 
     // Next, create the aspects to sign.
-    const X_LENGTH: usize = 32;
     // Concatenation of: accessory public, pairing id, ios device public key.
 
     let device_id_str = ctx.accessory.device_id.to_device_id_string();
@@ -216,7 +215,7 @@ pub fn pair_verify_process_get_m2(
 
     // Next we sign what we got up to here.
     {
-        let (to_sign, mut area_for_signature) = scratch.split_at_mut(ios_cvpk_idx.end);
+        let (to_sign, area_for_signature) = scratch.split_at_mut(ios_cvpk_idx.end);
         ed25519_sign(
             support.get_ltsk(),
             &to_sign,
@@ -224,7 +223,7 @@ pub fn pair_verify_process_get_m2(
         )
         .map_err(|_| PairingError::IncorrectLength)?;
     }
-    let (original_data, mut subwriter_scratch) = scratch.split_at_mut(signature_idx.end);
+    let (original_data, subwriter_scratch) = scratch.split_at_mut(signature_idx.end);
 
     let mut subwriter = TLVWriter::new(subwriter_scratch);
     subwriter = subwriter.add_slice(TLVType::Identifier, identifier)?;
@@ -346,6 +345,7 @@ pub fn pair_verify_start_session(
     ctx: &mut PairContext,
     support: &mut impl PairSupport,
 ) -> Result<(), PairingError> {
+    let _ = support;
     ctx.session = Default::default();
     hkdf_sha512(
         &ctx.server.pair_verify.cv_key,
