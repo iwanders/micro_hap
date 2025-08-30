@@ -164,7 +164,7 @@ impl AccessoryInformationService {
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(2),
+                iid: CharId(1),
                 user_description: None,
                 ble: Some(BleProperties::from_handle(self.service_instance.handle)),
             })
@@ -178,7 +178,8 @@ impl AccessoryInformationService {
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.identify.handle)
-                        .with_properties(CharacteristicProperties::new().with_write(true)),
+                        .with_properties(CharacteristicProperties::new().with_write(true))
+                        .with_format(sig::Format::Boolean),
                 ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -1995,7 +1996,7 @@ mod test {
             let resp = ctx.handle_read_outgoing(handle_identify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
-            //assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(&*resp_buffer, outgoing);
             // TODO: iid 2 is reused!!!!
         }
         Ok(())
