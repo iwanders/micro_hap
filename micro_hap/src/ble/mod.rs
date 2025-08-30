@@ -5,7 +5,7 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
-use crate::BleProperties;
+use crate::{BleProperties, DataSource};
 use bitfield_struct::bitfield;
 
 use crate::{CharId, SvcId};
@@ -139,7 +139,7 @@ pub struct AccessoryInformationService {
     /// Firmware revision string; "<major>.<minor>.<revision>"
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=7u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::FIRMWARE_REVISION, read, write)]
-    pub firmware_revision: GattString<16>,
+    pub firmware_revision: FacadeDummyType,
 
     //0x0053
     /// Describes hardware revision string; "<major>.<minor>.<revision>"
@@ -334,11 +334,11 @@ impl AccessoryInformationService {
             &util::GattString::try_from(value.manufacturer)
                 .map_err(|_| Error::InsufficientSpace)?,
         )?;
-        self.firmware_revision.set(
-            server,
-            &util::GattString::try_from(value.firmware_revision)
-                .map_err(|_| Error::InsufficientSpace)?,
-        )?;
+        // self.firmware_revision.set(
+        //     server,
+        //     &util::GattString::try_from(value.firmware_revision)
+        //         .map_err(|_| Error::InsufficientSpace)?,
+        // )?;
         Ok(())
     }
 }
@@ -360,9 +360,9 @@ pub struct ProtocolInformationService {
     service_signature: FacadeDummyType,
 
     /// Version string.
-    #[characteristic(uuid=characteristic::VERSION, value="2.2.0".try_into().unwrap(), read, write)]
+    #[characteristic(uuid=characteristic::VERSION, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x12u16.to_le_bytes())]
-    version: GattString<16>,
+    version: FacadeDummyType,
 }
 impl HapBleService for ProtocolInformationService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
@@ -408,7 +408,8 @@ impl HapBleService for ProtocolInformationService {
                         BleProperties::from_handle(self.version.handle)
                             .with_format(sig::Format::StringUtf8)
                             .with_properties(CharacteristicProperties::new().with_read(true)),
-                    ),
+                    )
+                    .with_data(crate::DataSource::Constant("2.2.0".as_bytes())),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -497,7 +498,8 @@ impl HapBleService for PairingService {
                         BleProperties::from_handle(self.features.handle)
                             .with_format(crate::ble::sig::Format::U8)
                             .with_properties(CharacteristicProperties::new().with_read_open(true)),
-                    ),
+                    )
+                    .with_data(crate::DataSource::Constant(&[0])),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -690,6 +692,15 @@ impl HapPeripheralContext {
         .into_iter()
         .chain(self.user_services.iter())
     }
+    fn services_mut(&mut self) -> impl Iterator<Item = &mut crate::Service> {
+        [
+            &mut self.information_service,
+            &mut self.protocol_service,
+            &mut self.pairing_service,
+        ]
+        .into_iter()
+        .chain(self.user_services.iter_mut())
+    }
 
     pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Attribute> {
         for s in self.services() {
@@ -717,6 +728,17 @@ impl HapPeripheralContext {
         }
         None
     }
+    pub fn get_service_by_uuid_mut(
+        &mut self,
+        srv: &crate::uuid::Uuid,
+    ) -> Option<&mut crate::Service> {
+        for s in self.services_mut() {
+            if &s.uuid == srv {
+                return Some(s);
+            }
+        }
+        None
+    }
 
     pub fn new(
         buffer: &'static mut [u8],
@@ -737,6 +759,18 @@ impl HapPeripheralContext {
             user_services: Default::default(),
         })
     }
+
+    pub fn assign_static_data(&mut self, data: &AccessoryInformationStatic) {
+        use crate::{characteristic, service};
+        if let Some(ref mut svc) =
+            self.get_service_by_uuid_mut(&service::ACCESSORY_INFORMATION.into())
+        {
+            svc.get_attribute_by_uuid_mut(&characteristic::FIRMWARE_REVISION.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.firmware_revision.as_bytes()))
+        }
+    }
+
     pub fn add_service(&mut self, srv: &impl HapBleService) -> Result<(), HapBleError> {
         self.user_services
             .push(srv.populate_support()?)
@@ -776,31 +810,6 @@ impl HapPeripheralContext {
         let svc = self.get_service_by_svc(req_svc);
 
         if let Some(svc) = svc {
-            // WHat is the actual output?
-            // Something something TLV...
-            //
-            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEService%2BSignature.c#L10
-            // which then goes into
-            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L600
-            // and linked services in
-            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L640
-            // NONCOMPLIANCE: Ignoring linked services.
-            // I have no idea what a linked service is yet... so lets ehm, just ignore that?
-            // read was:
-            // 00 06 93 10 00
-            // Reply was
-            //    02 93 00 06 00 0f 02 04 00 10 00
-            // So Payload is 6 body length, then 0f 02 04 and no linked svc.
-            // What does this service property do!?
-            //   [2, 81, 0, 6, 0, f, 2, 4, 0, 10, 0]
-            //
-            // protocol.service signature;
-            // good: 02  5b  00  06  00  0f  02  04  00  10  00
-            // ours: 02, cd, 00, 06, 00, 0f, 02, 00, 00, 10, 00
-            // now   02, 43, 00, 06, 00, 0f, 02, 00, 00, 10, 00
-            //       02, 69, 00, 06, 00, 0f, 02, 00, 00, 10, 00
-            // now   02, 4d, 00, 06, 00, 0f, 02, 04, 00, 10, 00
-            // check!
             let len = BodyBuilder::new_at(*buffer, len)
                 .add_u16(BleTLVType::HAPServiceProperties, svc.properties.0)
                 .add_u16s(BleTLVType::HAPLinkedServices, &[])
@@ -819,107 +828,6 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
 
-        // To hdump  00 01  c8  11  00
-        // reply:       02  c8  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
-        //          00, 01, 05, 02, 02
-        //              02, 05, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        //                  tid st <len  >
-        //                                 <chr                                                                 > <svcid         ><svctype                                                               ><properties    >
-        //
-        // Bad:       00 01 d2 02 52
-        //              02  d2  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  02  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
-        // from 2025_08_15_1817_homekitadk_pair_success;
-        // Good:      00 01 b4 11 00
-        //              02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
-        //                                                                                                                  ^^
-        // good;
-        // 07  02  10  00
-        //         ^^^^^^  is the SVC id.
-        //
-        //
-        //
-        // more bad
-        //              02, 21, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 02, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        //
-        //
-        // On pair-verify;
-        // good: 02  6d  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4e  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
-        // bad:  02, f8, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        //       02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        //      [02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
-        //       02, ed, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        // bad:
-        //  [2025-08-16T20:50:24Z WARN  micro_hap::ble] Writing pairing.pair_verify  [0, 1, 132, 35, 0] 0x:  00 01 84 23 00
-        //  [2025-08-16T20:50:24Z WARN  micro_hap::ble] Replying with: Read { data: [02, 84, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // good:
-        //
-        //
-        // Pair setup reply good is:
-        //
-        // 02  de  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4c  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
-        // Our pair setup reply is:
-        //[02, c6, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
-        //[02, 5e, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
-        //                                                                                                                                                                                         ^^^^^^
-        //
-        // Version ours:
-        //  02, 96, 00, 35, 00, 04, 10, 3b, 94, f9, 85, 6a, fd, c3, ba, 40, 43, 7f, ac, 11, 88, ab, 34, 07, 02, 01, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 3e, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 04, 00, 00, 27, 01, 00, 00
-        // version theirs
-        //  02  39  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  37  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  19  00  00  27  01  00  00
-        //
-        //
-        // --
-        // protocol.service signature.
-        // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[00, 01, 80, 11, 00]
-        // [2025-08-16T22:20:56Z WARN  micro_hap::ble] Replying with: Read { data: [
-        // 02, 80, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // 02, 80, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00
-        // Actual:
-        //    00 01 b4 11 00
-        // 02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
-        // --                                                                                                                                                                                          ^^
-        // That one is good now.
-        //
-        //
-        // ==== With fixed service permissions
-        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[00, 01, 2a, 11, 00]
-        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Replying with: Read { data:
-        // [02, 2a, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // truth:
-        //                                                                                    00  01  b4  11  00
-        //  02  b4  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  a5  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  1b  00  00  27  01  00  00
-        // Checks out.
-        //
-        // Writing protocol.version  [0, 1, 174, 18, 0]
-        // [2025-08-16T23:04:21Z WARN  micro_hap::ble] Replying with: Read { data: [
-        //  02, ae, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 37, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 00, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // truth:
-        //  02  39  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  37  00  00  00  07  02  10  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  a2  00  00  00  0a  02  10  00  0c  07  19  00  00  27  01  00  00
-        // -->                                                                                                                                                                                          ^^
-        // now:
-        // [02, 94, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 37, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
-        // Checks out.
-        //
-        //
-        //
-        //
-        // Writing pairing.pair_setup  [0, 1, 21, 34, 0]
-        // [2025-08-16T23:10:08Z WARN  micro_hap::ble] Replying with: Read { data:
-        // [02, 15, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4c, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // truth:
-        // Does pair verify first! Not pair setup??
-        //  02  de  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4c  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
-        // Checks out though.
-        //
-        // Writing pairing.pair_verify  [0, 1, 62, 35, 0]
-        //
-        // [2025-08-16T23:10:08Z WARN  micro_hap::ble] Replying with: Read { data:
-        // [02, 3e, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 4e, 00, 00, 00, 07, 02, 20, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, 55, 00, 00, 00, 0a, 02, 03, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00] }
-        // Truth:
-        //  02  6d  00  35  00  04  10  91  52  76  bb  26  00  00  80  00  10  00  00  4e  00  00  00  07  02  20  00  06  10  91  52  76  bb  26  00  00  80  00  10  00  00  55  00  00  00  0a  02  03  00  0c  07  1b  00  00  27  01  00  00
-        // checks out.
-        //
-
         if let Some(chr) = self.get_attribute_by_char(req.char_id) {
             let mut buffer = self.buffer.borrow_mut();
             // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
@@ -934,7 +842,7 @@ impl HapPeripheralContext {
                 .add_service(srv.iid) // what is this set to?
                 .add_service_uuid(&srv.uuid)
                 .add_characteristic_properties(chr.ble_ref().properties)
-                //                .add_optional_user_description(&chr.user_description)
+                // .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
                 .end();
 
@@ -950,36 +858,23 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         // Well ehm, what do we do here?
         let char_id = req.char_id; // its unaligned, so copy it before we use it.
+        use crate::DataSource;
         if let Some(chr) = self.get_attribute_by_char(char_id) {
-            if chr.uuid == crate::characteristic::VERSION.into() {
-                // Hardcode this for now, we'll make something smarter later.
-                let mut buffer = self.buffer.borrow_mut();
-                let reply = req.header.to_success();
-                let len = reply.write_into_length(*buffer)?;
-
-                let len = BodyBuilder::new_at(*buffer, len)
-                    // Something here that writes "2.2.0"
-                    .add_value(&"2.2.0".as_bytes())
-                    .end();
-                Ok(BufferResponse(len))
-            } else if chr.uuid == crate::characteristic::PAIRING_FEATURES.into() {
-                //info!("pairing features");
-                let mut buffer = self.buffer.borrow_mut();
-                let reply = req.header.to_success();
-                let len = reply.write_into_length(*buffer)?;
-                // Software authentication is 0x2, this is non-const in the reference implementation though.
-                let len = BodyBuilder::new_at(*buffer, len)
-                    // Changed to null match the reference.
-                    .add_value(&0u8.as_bytes())
-                    //.add_value(&2u8.as_bytes())
-                    .end();
-                Ok(BufferResponse(len))
-            } else {
-                error!(
-                    "Got read for characteristic that is not yet handled: {:?}",
-                    char_id
-                );
-                todo!();
+            match chr.data_source {
+                DataSource::Nop => {
+                    error!("Got NOP data on char_id: 0x{:0>2x?}", char_id);
+                    Ok(BufferResponse(0))
+                }
+                DataSource::AccessoryInterface => {
+                    todo!()
+                }
+                DataSource::Constant(data) => {
+                    let mut buffer = self.buffer.borrow_mut();
+                    let reply = req.header.to_success();
+                    let len = reply.write_into_length(*buffer)?;
+                    let len = BodyBuilder::new_at(*buffer, len).add_value(data).end();
+                    Ok(BufferResponse(len))
+                }
             }
         } else {
             error!("Got read for unknown characteristic: {:?}", char_id);
@@ -1452,15 +1347,16 @@ mod test {
         .unwrap();
 
         // Setup the accessory information.
-        let value = crate::AccessoryInformationStatic {
+        let accessory_static_data = crate::AccessoryInformationStatic {
             name,
             // Possibly device id 57:3B:20:A7:E7:C4 ?
             device_id: crate::DeviceId([0x57, 0x3b, 0x20, 0xA7, 0xE7, 0xC4]),
+            firmware_revision: "1",
             ..Default::default()
         };
         let _ = server
             .accessory_information
-            .set_information_static(&server, &value)
+            .set_information_static(&server, &accessory_static_data)
             .unwrap();
 
         let hap = server.as_hap();
@@ -1477,7 +1373,7 @@ mod test {
             static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
             STATE.init_with(crate::pairing::PairContext::default)
         };
-        pair_ctx.accessory = value;
+        pair_ctx.accessory = accessory_static_data;
 
         // We need real commissioning for this.
         // from recording 2025_08_24_1639.
@@ -1531,6 +1427,7 @@ mod test {
             &server.pairing,
         )?;
         ctx.add_service(&server.lightbulb)?;
+        ctx.assign_static_data(&accessory_static_data);
 
         ctx.print_handles();
         /*
@@ -2359,7 +2256,7 @@ mod test {
         }
 
         // Now we read the firmware revision string!
-        if false {
+        if true {
             let incoming_data: &[u8] = &[
                 0x08, 0x0e, 0xc5, 0xff, 0x16, 0x22, 0x78, 0x24, 0xb6, 0xfc, 0x81, 0x4e, 0xf8, 0x28,
                 0x14, 0x67, 0xa8, 0xb1, 0xed, 0x6b, 0xb9,
@@ -2380,7 +2277,7 @@ mod test {
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             let _ = outgoing;
-            // assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(&*resp_buffer, outgoing);
         }
 
         Ok(())

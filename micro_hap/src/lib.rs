@@ -197,6 +197,17 @@ impl Service {
         }
         None
     }
+    pub fn get_attribute_by_uuid_mut(
+        &mut self,
+        attribute_uuid: &uuid::Uuid,
+    ) -> Option<&mut Attribute> {
+        for a in self.attributes.iter_mut() {
+            if &a.uuid == attribute_uuid {
+                return Some(a);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -272,6 +283,9 @@ impl Attribute {
             data_source,
             ..self
         }
+    }
+    pub fn set_data(&mut self, data_source: DataSource) {
+        self.data_source = data_source;
     }
 
     pub fn ble_ref(&self) -> &BleProperties {
