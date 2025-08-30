@@ -22,7 +22,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // is actually in a single packet.
 
 // Maybe the instance ids and the like need to be monotonically increasing? Which is not explicitly stated.
-// changing ids definitely fixed things.
+// changing ids definitely fixed things. Do they need to be 16 aligned on the service start??
 //
 // We're now on the pair verify characteristic response not being accepted.
 //
@@ -230,13 +230,20 @@ impl AccessoryInformationService {
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
+        // let z = CharacteristicProperties::from_bits(0x10);
+        // info!("z: {:?}", z);
+        // panic!();
         service
             .attributes
             .push(crate::Attribute {
                 uuid: characteristic::HARDWARE_REVISION.into(),
                 iid: CharId(8),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.hardware_revision.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.hardware_revision.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -652,6 +659,20 @@ impl HapPeripheralContext {
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
         })
+    }
+
+    pub fn print_handles(&self) {
+        for k in [
+            &self.information_service,
+            &self.protocol_service,
+            &self.pairing_service,
+        ] {
+            for a in k.attributes.iter() {
+                let attr_id = a.iid;
+                let handle = a.ble_ref().handle;
+                info!("iid 0x{:0>2x?}, handle: 0x{:0>2x?}", attr_id, handle);
+            }
+        }
     }
 
     pub async fn service_signature_request(
@@ -1389,6 +1410,7 @@ mod test {
             &server.pairing,
         )?;
 
+        ctx.print_handles();
         /*
                 let counter = core::cell::RefCell::new(0);
                 let rng = move || {
@@ -1532,6 +1554,7 @@ mod test {
         // it would be nice if we understood why the handle ids are different.
         let handle_pair_setup = 84;
         let handle_pair_verify = 87;
+        let handle_hardware_revision = 0x36;
         // m1 & m2
         {
             let incoming_data: &[u8] = &[
@@ -1715,7 +1738,7 @@ mod test {
         }
 
         {
-            // Pair verify. m3?
+            // Pair verify. m3 & m4
             let incoming_data: &[u8] = &[
                 0x00, 0x02, 0xa9, 0x23, 0x00, 0x82, 0x00, 0x01, 0x7d, 0x05, 0x78, 0x74, 0xda, 0xba,
                 0x6e, 0x05, 0x61, 0x68, 0xce, 0x07, 0x34, 0x28, 0xa6, 0xda, 0xb7, 0x4d, 0x78, 0x73,
@@ -1733,6 +1756,42 @@ mod test {
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Secure session is now active!
+
+        // Next request is on the hardware revision endpoint.
+        {
+            // Write on the hardware revision service.
+            let incoming_data: &[u8] = &[
+                0xdf, 0x33, 0x41, 0x57, 0x50, 0x87, 0xeb, 0x71, 0x98, 0xb2, 0x88, 0x5a, 0xf4, 0xa1,
+                0xe2, 0xbe, 0xf3, 0xe1, 0x55, 0x43, 0x65,
+            ];
+            let outgoing: &[u8] = &[
+                0x28, 0xd7, 0x57, 0x2c, 0x76, 0x03, 0xad, 0x00, 0x40, 0x75, 0xc1, 0xa0, 0x30, 0xf1,
+                0x28, 0x30, 0xa5, 0x98, 0xa4, 0x8f, 0x51, 0x86, 0x13, 0x96, 0xa7, 0x81, 0x0a, 0x69,
+                0xc2, 0xe8, 0x69, 0x89, 0x3f, 0x67, 0x27, 0xe6, 0x8d, 0xc4, 0x40, 0x06, 0xc3, 0x98,
+                0x1d, 0x2c, 0x04, 0x54, 0xc8, 0x12, 0xeb, 0xc5, 0xbe, 0xfe, 0x29, 0xa5, 0x84, 0x7f,
+                0x9c, 0xfb, 0x18, 0xf0, 0x0a, 0xfd, 0x37, 0xb5, 0xaf, 0xf0, 0x94, 0x80, 0xf5, 0x89,
+                0x0b, 0x52, 0xdf, 0xed,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_hardware_revision,
+            )
+            .await?;
+            // Ours:
+            //   04 10 91 52 76 bb 26 00 00 80 00 10 00 00 53 00 00 00 07 02 01 00 06 10 91 52 76 bb 26 00 00 80 00 10 00 00 3e 00 00 00 0a 02 10 00 0c 07 04 00 00 27 01 00 00
+            // Expected:
+            //   04 10 91 52 76 bb 26 00 00 80 00 10 00 00 53 00 00 00 07 02 01 00 06 10 91 52 76 bb 26 00 00 80 00 10 00 00 3e 00 00 00 0a 02 10 00 0c 07 19 00 00 27 01 00 00
+            //                                                                                                                                             ^^
+
+            let resp = ctx.handle_read_outgoing(handle_hardware_revision).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
