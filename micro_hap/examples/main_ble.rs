@@ -148,6 +148,7 @@ mod ble_bas_peripheral {
             .set_information_static(&server, &static_information) // don't forget to also assign to the pair ctx.
             .unwrap();
 
+        let accessory = micro_hap::NopAccessory;
         let pair_ctx = {
             static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
             STATE.init_with(micro_hap::pairing::PairContext::default)
@@ -216,7 +217,7 @@ mod ble_bas_peripheral {
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let a = gatt_events_task(&mut hap_context, &server, &conn);
+                        let a = gatt_events_task(&mut hap_context, &accessory, &server, &conn);
                         let b = custom_task(&server, &conn, &stack);
                         // run until any task ends (usually because the connection has been closed),
                         // then return to advertising state.
@@ -272,6 +273,7 @@ mod ble_bas_peripheral {
     /// This is how we interact with read and write requests.
     async fn gatt_events_task<P: PacketPool>(
         hap_context: &mut micro_hap::ble::HapPeripheralContext,
+        accessory: &impl micro_hap::AccessoryInterface,
         server: &Server<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), Error> {
@@ -340,7 +342,7 @@ mod ble_bas_peripheral {
                     };
 
                     let fallthrough_event = hap_context
-                        .process_gatt_event(&server.as_hap(), &mut support, event)
+                        .process_gatt_event(&server.as_hap(), &mut support, accessory, event)
                         .await?;
 
                     if let Some(event) = fallthrough_event {

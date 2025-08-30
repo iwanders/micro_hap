@@ -233,34 +233,47 @@ impl BleProperties {
     }
 }
 
-// trait passed to the attribute interface.
-pub trait AccessoryInterface {
-    // notify?
-}
-
-// Attribute interface to actuate and provide data from attributes.
-pub trait AttributeInterface {
-    fn read(&self, accessory: &dyn AccessoryInterface, data: &[u8]) -> Result<(), ()>;
-    fn write(&self, accessory: &dyn AccessoryInterface, data: &mut [u8]) -> Result<usize, ()>;
-}
-
-pub enum AttributeHandler {
-    ReadConstant(&'static [u8]),
-    // Dynamic(heapless::pool::arc::Arc<Z>),
+#[derive(Debug, Copy, Clone, Default)]
+pub enum DataSource {
+    /// Reads as 0 length data, writes discard data.
+    #[default]
+    Nop,
+    /// Read/Write to the accessory interface.
+    AccessoryInterface,
+    /// Super constant data.
+    Constant(&'static [u8]),
 }
 
 #[derive(Clone, Debug)]
 pub struct Attribute {
-    pub uuid: uuid::Uuid,
-    pub iid: CharId,
-    // permission?
-    // something something descriptors.
-    pub user_description: Option<heapless::String<32>>,
-    // valid_range: Option<(u16, u16)>,
-    // step_value: Option<u16>,
-    pub ble: Option<BleProperties>,
+    uuid: uuid::Uuid,
+    iid: CharId,
+    ble: Option<BleProperties>,
+
+    data_source: DataSource,
 }
 impl Attribute {
+    pub fn new(uuid: uuid::Uuid, iid: CharId) -> Self {
+        Self {
+            uuid,
+            iid,
+            ble: None,
+            data_source: DataSource::Nop,
+        }
+    }
+    pub fn with_ble_properties(self, prop: BleProperties) -> Self {
+        Self {
+            ble: Some(prop),
+            ..self
+        }
+    }
+    pub fn with_data(self, data_source: DataSource) -> Self {
+        Self {
+            data_source,
+            ..self
+        }
+    }
+
     pub fn ble_ref(&self) -> &BleProperties {
         self.ble.as_ref().unwrap()
     }
@@ -293,6 +306,25 @@ pub struct Session {
 // Which also means that the BLE side only has one: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Main.c#L258
 // Can a bluetooth accessory only have one connection?
 // Ah yes, it is a peripheral, peripherals in general get only one connection.
+
+// Attribute interface to actuate and provide data from attributes.
+pub trait AttributeInterface {
+    fn read(&self, data: &[u8]) -> Result<(), ()>;
+    fn write(&self, data: &mut [u8]) -> Result<usize, ()>;
+}
+
+// Something to retrieve the accessory callbacks.
+pub trait AccessoryInterface {
+    fn get_attribute_interface(&self, char_id: CharId) -> Option<&dyn AttributeInterface>;
+}
+#[derive(Debug, Copy, Clone)]
+pub struct NopAccessory;
+impl AccessoryInterface for NopAccessory {
+    fn get_attribute_interface(&self, char_id: CharId) -> Option<&dyn AttributeInterface> {
+        let _ = char_id;
+        None
+    }
+}
 
 #[cfg(test)]
 mod test {

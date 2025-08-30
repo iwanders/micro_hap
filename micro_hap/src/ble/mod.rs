@@ -166,96 +166,80 @@ impl HapBleService for AccessoryInformationService {
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(1),
-                user_description: None,
-                ble: Some(BleProperties::from_handle(self.service_instance.handle)),
-            })
+            .push(
+                crate::Attribute::new(characteristic::SERVICE_INSTANCE.into(), CharId(1))
+                    .with_ble_properties(BleProperties::from_handle(self.service_instance.handle)),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::IDENTIFY.into(),
-                iid: CharId(2),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.identify.handle)
-                        .with_properties(CharacteristicProperties::new().with_write(true))
-                        .with_format(sig::Format::Boolean),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::IDENTIFY.into(), CharId(2))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.identify.handle)
+                            .with_properties(CharacteristicProperties::new().with_write(true))
+                            .with_format(sig::Format::Boolean),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::MANUFACTURER.into(),
-                iid: CharId(3),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.manufacturer.handle)
-                        .with_properties(CharacteristicProperties::new().with_read(true))
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::MANUFACTURER.into(), CharId(3))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.manufacturer.handle)
+                            .with_properties(CharacteristicProperties::new().with_read(true))
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::MODEL.into(),
-                iid: CharId(4),
-                user_description: None,
-                ble: Some(
+            .push(
+                crate::Attribute::new(characteristic::MODEL.into(), CharId(4)).with_ble_properties(
                     BleProperties::from_handle(self.model.handle)
                         .with_properties(CharacteristicProperties::new().with_read(true))
                         .with_format(sig::Format::StringUtf8),
                 ),
-            })
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::NAME.into(),
-                iid: CharId(5),
-                user_description: None,
-                ble: Some(
+            .push(
+                crate::Attribute::new(characteristic::NAME.into(), CharId(5)).with_ble_properties(
                     BleProperties::from_handle(self.name.handle)
                         .with_properties(CharacteristicProperties::new().with_read(true))
                         .with_format(sig::Format::StringUtf8),
                 ),
-            })
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERIAL_NUMBER.into(),
-                iid: CharId(6),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.serial_number.handle)
-                        .with_properties(CharacteristicProperties::new().with_read(true))
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::SERIAL_NUMBER.into(), CharId(6))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.serial_number.handle)
+                            .with_properties(CharacteristicProperties::new().with_read(true))
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::FIRMWARE_REVISION.into(),
-                iid: CharId(7),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.firmware_revision.handle)
-                        .with_properties(CharacteristicProperties::new().with_read(true))
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::FIRMWARE_REVISION.into(), CharId(7))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.firmware_revision.handle)
+                            .with_properties(CharacteristicProperties::new().with_read(true))
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         // let z = CharacteristicProperties::from_bits(0x10);
@@ -263,34 +247,30 @@ impl HapBleService for AccessoryInformationService {
         // panic!();
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::HARDWARE_REVISION.into(),
-                iid: CharId(8),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.hardware_revision.handle)
-                        .with_properties(CharacteristicProperties::new().with_read(true))
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::HARDWARE_REVISION.into(), CharId(8))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.hardware_revision.handle)
+                            .with_properties(CharacteristicProperties::new().with_read(true))
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::ADK_VERSION.into(),
-                iid: CharId(9),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.adk_version.handle)
-                        .with_properties(
-                            CharacteristicProperties::new()
-                                .with_read(true)
-                                .with_hidden(true),
-                        )
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::ADK_VERSION.into(), CharId(9))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.adk_version.handle)
+                            .with_properties(
+                                CharacteristicProperties::new()
+                                    .with_read(true)
+                                    .with_hidden(true),
+                            )
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         Ok(service)
@@ -400,7 +380,7 @@ impl HapBleService for ProtocolInformationService {
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(0x14),
-                user_description: None,
+
                 ble: Some(
                     BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
                 ),
@@ -410,30 +390,26 @@ impl HapBleService for ProtocolInformationService {
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_SIGNATURE.into(),
-                iid: CharId(0x11),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.service_signature.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_read(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::SERVICE_SIGNATURE.into(), CharId(0x11))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.service_signature.handle)
+                            .with_format_opaque()
+                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::VERSION.into(),
-                iid: CharId(0x12),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.version.handle)
-                        .with_format(sig::Format::StringUtf8)
-                        .with_properties(CharacteristicProperties::new().with_read(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::VERSION.into(), CharId(0x12))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.version.handle)
+                            .with_format(sig::Format::StringUtf8)
+                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         Ok(service)
@@ -482,7 +458,7 @@ impl HapBleService for PairingService {
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(0x20),
-                user_description: None,
+
                 ble: Some(
                     BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
                 ),
@@ -492,56 +468,48 @@ impl HapBleService for PairingService {
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::PAIRING_PAIR_SETUP.into(),
-                iid: CharId(0x22),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.pair_setup.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_open_rw(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::PAIRING_PAIR_SETUP.into(), CharId(0x22))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.pair_setup.handle)
+                            .with_format_opaque()
+                            .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::PAIRING_PAIR_VERIFY.into(),
-                iid: CharId(0x23),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.pair_verify.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_open_rw(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::PAIRING_PAIR_VERIFY.into(), CharId(0x23))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.pair_verify.handle)
+                            .with_format_opaque()
+                            .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::PAIRING_FEATURES.into(),
-                iid: CharId(0x24),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.features.handle)
-                        .with_format(crate::ble::sig::Format::U8)
-                        .with_properties(CharacteristicProperties::new().with_read_open(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::PAIRING_FEATURES.into(), CharId(0x24))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.features.handle)
+                            .with_format(crate::ble::sig::Format::U8)
+                            .with_properties(CharacteristicProperties::new().with_read_open(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::PAIRING_PAIRINGS.into(),
-                iid: CharId(0x25),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.pairings.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_rw(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::PAIRING_PAIRINGS.into(), CharId(0x25))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.pairings.handle)
+                            .with_format_opaque()
+                            .with_properties(CharacteristicProperties::new().with_rw(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         Ok(service)
     }
@@ -584,7 +552,7 @@ impl HapBleService for LightbulbService {
             .push(crate::Attribute {
                 uuid: characteristic::SERVICE_INSTANCE.into(),
                 iid: CharId(0x14),
-                user_description: None,
+
                 ble: Some(
                     BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
                 ),
@@ -594,50 +562,44 @@ impl HapBleService for LightbulbService {
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_SIGNATURE.into(),
-                iid: CharId(0x31u16),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.service_signature.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_read(true)),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::SERVICE_SIGNATURE.into(), CharId(0x31u16))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.service_signature.handle)
+                            .with_format_opaque()
+                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::NAME.into(),
-                iid: CharId(0x32u16),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.name.handle)
-                        .with_properties(CharacteristicProperties::new().with_read(true))
-                        .with_format(sig::Format::StringUtf8),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::NAME.into(), CharId(0x32u16))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.name.handle)
+                            .with_properties(CharacteristicProperties::new().with_read(true))
+                            .with_format(sig::Format::StringUtf8),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
             .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::ON.into(),
-                iid: CharId(0x33u16),
-                user_description: None,
-                ble: Some(
-                    BleProperties::from_handle(self.on.handle)
-                        .with_properties(
-                            CharacteristicProperties::new()
-                                .with_rw(true)
-                                .with_supports_event_notification(true)
-                                .with_supports_disconnect_notification(true)
-                                .with_supports_broadcast_notification(true),
-                        )
-                        .with_format(sig::Format::Boolean),
-                ),
-            })
+            .push(
+                crate::Attribute::new(characteristic::ON.into(), CharId(0x33u16))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.on.handle)
+                            .with_properties(
+                                CharacteristicProperties::new()
+                                    .with_rw(true)
+                                    .with_supports_event_notification(true)
+                                    .with_supports_disconnect_notification(true)
+                                    .with_supports_broadcast_notification(true),
+                            )
+                            .with_format(sig::Format::Boolean),
+                    ),
+            )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         Ok(service)
@@ -972,7 +934,7 @@ impl HapPeripheralContext {
                 .add_service(srv.iid) // what is this set to?
                 .add_service_uuid(&srv.uuid)
                 .add_characteristic_properties(chr.ble_ref().properties)
-                .add_optional_user_description(&chr.user_description)
+                //                .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
                 .end();
 
@@ -1153,7 +1115,8 @@ impl HapPeripheralContext {
     pub async fn handle_write_incoming<'hap, 'support>(
         &mut self,
         hap: &HapServices<'hap>,
-        support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl crate::pairing::PairSupport,
+        accessory: &impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
@@ -1224,7 +1187,7 @@ impl HapPeripheralContext {
                 let outgoing_len = if handle == hap.pairing.pair_setup.handle {
                     crate::pairing::pair_setup_handle_incoming(
                         &mut **pair_ctx,
-                        support,
+                        pair_support,
                         &*first_half,
                     )
                     .map_err(|_| HapBleError::InvalidValue)?;
@@ -1232,19 +1195,23 @@ impl HapPeripheralContext {
                     // Put the reply in the second half.
                     let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
                         &mut **pair_ctx,
-                        support,
+                        pair_support,
                         &mut second_half,
                     )
                     .map_err(|_| HapBleError::InvalidValue)?;
                     outgoing_len
                 } else if handle == hap.pairing.pair_verify.handle {
-                    crate::pair_verify::handle_incoming(&mut **pair_ctx, support, &*first_half)
-                        .map_err(|_| HapBleError::InvalidValue)?;
+                    crate::pair_verify::handle_incoming(
+                        &mut **pair_ctx,
+                        pair_support,
+                        &*first_half,
+                    )
+                    .map_err(|_| HapBleError::InvalidValue)?;
 
                     // Put the reply in the second half.
                     let outgoing_len = crate::pair_verify::handle_outgoing(
                         &mut **pair_ctx,
-                        support,
+                        pair_support,
                         &mut second_half,
                     )
                     .map_err(|_| HapBleError::InvalidValue)?;
@@ -1286,11 +1253,12 @@ impl HapPeripheralContext {
     async fn handle_write_incoming_test<'hap, 'support>(
         &mut self,
         hap: &HapServices<'hap>,
-        support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl crate::pairing::PairSupport,
+        accessory: &impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
-        let resp = self.handle_write_incoming(hap, support, &data, handle);
+        let resp = self.handle_write_incoming(hap, pair_support, accessory, &data, handle);
 
         info!("pair verify handle: {:?}", hap.pairing.pair_verify.handle());
         if let Some(resp) = resp.await? {
@@ -1307,7 +1275,8 @@ impl HapPeripheralContext {
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
         &mut self,
         hap: &HapServices<'hap>,
-        support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl crate::pairing::PairSupport,
+        accessory: &impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
     {
@@ -1406,7 +1375,13 @@ impl HapPeripheralContext {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
 
-                let resp = self.handle_write_incoming(hap, support, &event.data(), event.handle());
+                let resp = self.handle_write_incoming(
+                    hap,
+                    pair_support,
+                    accessory,
+                    &event.data(),
+                    event.handle(),
+                );
                 if let Some(resp) = resp.await? {
                     self.prepared_reply = Some(Reply {
                         payload: resp,
@@ -1495,6 +1470,8 @@ mod test {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
+
+        let accessory = crate::NopAccessory;
 
         let pair_ctx = {
             static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
@@ -1626,7 +1603,7 @@ mod test {
             let outgoing_data: &[u8] = &[
                 0x02, 0x0d, 0x00, 0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
@@ -1645,7 +1622,7 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x10, 0x00, 0x0c, 0x07, 0x1b, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
@@ -1666,7 +1643,7 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x01, 0x00, 0x0c, 0x07, 0x04, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
@@ -1677,7 +1654,7 @@ mod test {
             let incoming_data: &[u8] = &[0x00, 0x03, 0x58, 0x24, 0x00];
             let handle = 0x24;
             let outgoing_data: &[u8] = &[0x02, 0x58, 0x00, 0x03, 0x00, 0x01, 0x01, 0x00];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
@@ -1694,7 +1671,7 @@ mod test {
             let handle = 0x11;
 
             // We don't know what outgoing should be here.
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle)
+            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
                 .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
@@ -1741,8 +1718,14 @@ mod test {
                 0x0b, 0xa1, 0xce, 0xdb, 0xc0, 0x99, 0x3c, 0x16, 0x02, 0x10, 0x3d, 0xc2, 0x81, 0xab,
                 0x08, 0xed, 0x4d, 0x8c, 0x52, 0x0c, 0xb2, 0x5f, 0xc2, 0x51, 0x9c, 0x1f,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_setup)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_setup,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1795,8 +1778,14 @@ mod test {
                 0xb6, 0xe4, 0xea, 0x0b, 0x31, 0xe2, 0xfd, 0xcd, 0x01, 0x2b, 0xaa, 0x73, 0x78, 0x7c,
                 0x3f, 0xfe, 0x14, 0x3b, 0xdc, 0x19,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_setup)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_setup,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1833,8 +1822,14 @@ mod test {
                 0x54, 0xe8, 0xf1, 0xb9, 0x17, 0xa3, 0x81, 0xfe, 0x70, 0x50, 0x06, 0x7a, 0x9f, 0xd1,
                 0x29, 0x85, 0x55, 0x77, 0x63, 0x9e, 0x04,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_setup)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_setup,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1876,8 +1871,14 @@ mod test {
                 0x98, 0xc0, 0x6b, 0xd2, 0xee, 0x1a, 0xaa, 0x9b, 0xb9, 0x7e, 0x6f, 0xab, 0x12, 0xa2,
                 0xcf, 0x69, 0x7e, 0x04, 0xb0, 0x61, 0x0a,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_verify)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_verify,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1900,8 +1901,14 @@ mod test {
                 0x43, 0xa5, 0xb9, 0x3d, 0x93, 0x06, 0x01, 0x03, 0x09, 0x01, 0x01,
             ];
             let outgoing: &[u8] = &[0x02, 0xa9, 0x00, 0x05, 0x00, 0x01, 0x03, 0x06, 0x01, 0x04];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_verify)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_verify,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1929,6 +1936,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_hardware_revision,
             )
@@ -1953,8 +1961,14 @@ mod test {
                 0x68, 0x19, 0xc8, 0xfc, 0xdb, 0x84, 0x18, 0x4a, 0x08, 0x88, 0xce, 0x5b, 0xcd, 0x2b,
                 0xac, 0x34, 0x1d, 0x0f,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_serial_number)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_serial_number,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -1975,8 +1989,14 @@ mod test {
                 0xae, 0xaf, 0x5a, 0x17, 0x15, 0x9b, 0x9d, 0x7d, 0xc2, 0xe0, 0xfa, 0x0a, 0x32, 0x84,
                 0x07, 0x35, 0x3c, 0xef,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_serial_number)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_serial_number,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -1997,8 +2017,14 @@ mod test {
                 0x76, 0x09, 0x83, 0x77, 0x32, 0xaa, 0x35, 0xac, 0x96, 0x3e, 0x72, 0x48, 0x9f, 0xa4,
                 0x66, 0x99, 0x8c, 0xdd,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_name)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_name,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2019,8 +2045,14 @@ mod test {
                 0xec, 0xce, 0xb4, 0x25, 0x1a, 0x28, 0x6d, 0x2c, 0x09, 0xc8, 0xb0, 0xbc, 0xbf, 0x99,
                 0xf1, 0x25, 0x62, 0xeb,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_adk_version)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_adk_version,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_adk_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2041,8 +2073,14 @@ mod test {
                 0x7d, 0xd5, 0x0f, 0xcc, 0x40, 0x94, 0x4f, 0x9b, 0x7f, 0x3d, 0x7a, 0xf8, 0x72, 0xee,
                 0xda, 0x0e, 0xbe, 0x7d,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_manufacturer)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_manufacturer,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_manufacturer).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2066,6 +2104,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_firmware_version,
             )
@@ -2090,8 +2129,14 @@ mod test {
                 0x10, 0xed, 0x22, 0xbd, 0x1d, 0xa6, 0xbd, 0xca, 0xbf, 0x24, 0x90, 0x5b, 0x89, 0x0f,
                 0xae, 0x1b, 0x8c, 0xd3,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_identify)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_identify,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_identify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2137,6 +2182,7 @@ mod test {
                 ctx.handle_write_incoming_test(
                     &hap,
                     &mut support,
+                    &accessory,
                     incoming,
                     handle_service_signature,
                 )
@@ -2162,8 +2208,14 @@ mod test {
                 0x98, 0xd8, 0x60, 0xcd, 0x97, 0xaf, 0x60, 0x5c, 0x91, 0xa4, 0x33, 0x33, 0xe3, 0x79,
                 0xf6, 0x18, 0x6f, 0xf0,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_version)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_version,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2184,8 +2236,14 @@ mod test {
                 0xc8, 0x56, 0x65, 0xce, 0x34, 0x1d, 0xab, 0x20, 0xa5, 0x17, 0x99, 0x78, 0x85, 0x56,
                 0x64, 0x28, 0x87, 0x5c,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_pairings)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_pair_pairings,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2205,6 +2263,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_service_signature,
             )
@@ -2232,6 +2291,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_service_signature,
             )
@@ -2256,8 +2316,14 @@ mod test {
                 0x60, 0x6e, 0x0f, 0x92, 0x7d, 0xb3, 0x41, 0xdb, 0x6e, 0x81, 0xa7, 0xc8, 0x82, 0x23,
                 0x7c, 0xbf, 0x70, 0x01,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_lightbulb_on)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_lightbulb_on,
+            )
+            .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2281,6 +2347,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_lightbulb_name,
             )
@@ -2304,6 +2371,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
+                &accessory,
                 incoming_data,
                 handle_firmware_version,
             )
