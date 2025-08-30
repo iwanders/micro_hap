@@ -1119,10 +1119,20 @@ impl HapPeripheralContext {
                 info!("Info req: {:?}", req);
                 self.info_request(&req).await?
             }
+            pdu::OpCode::ProtocolConfiguration => {
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L404
+                if !security_active {
+                    // Nope...
+                    return Err(HapBleError::EncryptionError);
+                }
+
+                todo!()
+            }
             _ => {
                 return {
                     error!("Failed to handle: {:?}", header);
-                    Err(HapBleError::UnexpectedRequest.into())
+                    todo!("need to implement this request type")
+                    //Err(HapBleError::UnexpectedRequest.into())
                 };
             }
         };
@@ -2403,6 +2413,34 @@ mod test {
             )
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Write to service signature?
+        {
+            let incoming_data: &[u8] = &[
+                0xdb, 0x5c, 0xf3, 0x57, 0x88, 0x99, 0x53, 0xab, 0xc5, 0xa1, 0x7d, 0xa1, 0x45, 0xdd,
+                0x70, 0x09, 0x4f, 0x5b, 0x9a, 0xa5, 0xbf, 0xa3, 0x2e, 0x3b, 0x6d, 0x54, 0x2f,
+            ];
+            let outgoing: &[u8] = &[
+                0x74, 0x1a, 0x67, 0x4a, 0x9f, 0x3b, 0xe7, 0x03, 0xac, 0xb2, 0xda, 0x38, 0x42, 0x2d,
+                0x01, 0x9f, 0xf3, 0x66, 0x7a, 0x5b, 0x14, 0x63, 0xf0, 0xc6, 0x30, 0x48, 0x8f, 0xa7,
+                0xcb, 0x7e, 0xa5, 0x8b, 0xfb, 0xb7, 0xa8, 0xd9, 0xed, 0xc8, 0x25, 0x2d, 0xe1, 0x31,
+                0xd3, 0xd4, 0xc3, 0xf3, 0xb0, 0x4f, 0x9e, 0x2d, 0xb0, 0x1f, 0x6a, 0xec, 0x29, 0x08,
+                0x88, 0xdb, 0x08, 0xc9, 0xbb, 0x16, 0x2c, 0x9a, 0xd2, 0x0a, 0x5b, 0x08, 0x66, 0x8a,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_service_signature,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             let _ = outgoing;
