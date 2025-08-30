@@ -21,6 +21,11 @@ const PAIR_VERIFY_M2_INFO: &'static str = "Pair-Verify-Encrypt-Info";
 const PAIR_VERIFY_M2_NONCE: &'static str = "PV-Msg02";
 const PAIR_VERIFY_M3_NONCE: &'static str = "PV-Msg03";
 
+// Salt and info for the control channel.
+pub const CONTROL_CHANNEL_SALT: &'static str = "Control-Salt";
+pub const CONTROL_CHANNEL_READ_KEY: &'static str = "Control-Read-Encryption-Key";
+pub const CONTROL_CHANNEL_WRITE_KEY: &'static str = "Control-Write-Encryption-Key";
+
 // HAPPairingPairVerifyHandleWrite
 pub fn handle_incoming(
     ctx: &mut PairContext,
@@ -89,6 +94,11 @@ pub fn handle_outgoing(
             } else {
                 pair_verify_process_get_m2(ctx, support, data)
             }
+        }
+        PairState::ReceivedM3 => {
+            ctx.server.pair_verify.setup.state = PairState::SentM4;
+            // Advance the state, and write M4.
+            pair_verify_process_get_m4(ctx, support, data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -307,5 +317,53 @@ pub fn pair_verify_process_m3(
 
     ed25519_verify(public_key.as_ref(), data, &right[signature_idx])?;
     info!("pairing checks out!");
+    Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L899
+// HAPPairingPairVerifyGetM4
+pub fn pair_verify_process_get_m4(
+    ctx: &mut PairContext,
+    support: &mut impl PairSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    info!("Pair Verify M4: Verify Finish Response.");
+
+    // NONCOMPLIANCE: BLE Igorning pair resume
+
+    let mut writer = TLVWriter::new(data);
+    writer = writer.add_entry(TLVType::State, &ctx.server.pair_verify.setup.state)?;
+
+    // Actually start the secure session.
+    pair_verify_start_session(ctx, support)?;
+
+    Ok(writer.end())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L25
+// HAPPairingPairVerifyStartSession
+pub fn pair_verify_start_session(
+    ctx: &mut PairContext,
+    support: &mut impl PairSupport,
+) -> Result<(), PairingError> {
+    ctx.session = Default::default();
+    hkdf_sha512(
+        &ctx.server.pair_verify.cv_key,
+        CONTROL_CHANNEL_SALT.as_bytes(),
+        CONTROL_CHANNEL_READ_KEY.as_bytes(),
+        &mut ctx.session.a_to_c.key,
+    )?;
+    info!("a_to_c key: {:0>2x?}", ctx.session.a_to_c.key);
+    hkdf_sha512(
+        &ctx.server.pair_verify.cv_key,
+        CONTROL_CHANNEL_SALT.as_bytes(),
+        CONTROL_CHANNEL_WRITE_KEY.as_bytes(),
+        &mut ctx.session.c_to_a.key,
+    )?;
+    info!("c_to_a key: {:0>2x?}", ctx.session.c_to_a.key);
+
+    ctx.session.security_active = true;
+    ctx.session.transient = true;
+
     Ok(())
 }
