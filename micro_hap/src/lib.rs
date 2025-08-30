@@ -24,7 +24,7 @@ pub mod tlv;
 pub mod crypto;
 use crypto::aead::ControlChannel;
 
-// this exists for Arm, but Not for std?? :(
+// This seems to not facilitate type erasure?
 use heapless::pool::arc::Arc;
 
 // We probably should handle some gatt reads manually with:
@@ -73,6 +73,8 @@ use heapless::pool::arc::Arc;
 //
 // Accessory may only expose a single primary interface. Linked services display as a group in the ui.
 // Primary service is optional,
+//
+// Ah, well we can't have Arc<dyn Foo> with heapless arc... it needs https://rust-lang.github.io/rfcs/2580-ptr-meta.html I think?
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -241,12 +243,13 @@ pub trait AccessoryInterface {
 
 // Attribute interface to actuate and provide data from attributes.
 pub trait AttributeInterface {
-    fn read(&self, data: &[u8]) -> Result<(), ()>;
-    fn write(&self, data: &[u8]) -> Result<(), ()>;
+    fn read(&self, accessory: &dyn AccessoryInterface, data: &[u8]) -> Result<(), ()>;
+    fn write(&self, accessory: &dyn AccessoryInterface, data: &mut [u8]) -> Result<usize, ()>;
 }
 
 pub enum AttributeHandler {
     ReadConstant(&'static [u8]),
+    // Dynamic(heapless::pool::arc::Arc<Z>),
 }
 
 #[derive(Clone, Debug)]
@@ -301,5 +304,56 @@ mod test {
             .is_test(true)
             .filter_level(log::LevelFilter::max())
             .try_init();
+    }
+
+    #[test]
+    fn test_arc_pool() {
+        use core::ptr::addr_of_mut;
+        use heapless::{
+            arc_pool,
+            pool::arc::{Arc, ArcBlock},
+        };
+
+        arc_pool!(MyArcPool: u128);
+
+        // cannot allocate without first giving memory blocks to the pool
+        assert!(MyArcPool.alloc(42).is_err());
+
+        // (some `no_std` runtimes have safe APIs to create `&'static mut` references)
+        let block: &'static mut ArcBlock<u128> = unsafe {
+            static mut BLOCK: ArcBlock<u128> = ArcBlock::new();
+            addr_of_mut!(BLOCK).as_mut().unwrap()
+        };
+
+        MyArcPool.manage(block);
+
+        let arc: Arc<MyArcPool> = MyArcPool.alloc(1).unwrap();
+
+        // number of smart pointers is limited to the number of blocks managed by the pool
+        let res = MyArcPool.alloc(2);
+        assert!(res.is_err());
+
+        #[derive(Debug, Copy, Clone)]
+        pub struct Foo;
+        pub trait Bar {
+            fn thing(&self) {
+                info!("thing");
+            }
+        }
+        impl Bar for Foo {};
+
+        /*
+        arc_pool!(MyFooArcPool: dyn core::any::Any);
+        let block: &'static mut ArcBlock<Foo> = unsafe {
+            static mut BLOCK: ArcBlock<Foo> = ArcBlock::new();
+            addr_of_mut!(BLOCK).as_mut().unwrap()
+        };
+
+        MyFooArcPool.manage(block);
+
+        let arc: Arc<MyFooArcPool> = MyFooArcPool.alloc(Foo).unwrap();
+
+        */
+        //let arc: Arc<dyn Bar> = arc.into();
     }
 }
