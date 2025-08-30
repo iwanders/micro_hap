@@ -321,22 +321,16 @@ pub struct Session {
 // Can a bluetooth accessory only have one connection?
 // Ah yes, it is a peripheral, peripherals in general get only one connection.
 
-// Attribute interface to actuate and provide data from attributes.
-pub trait AttributeInterface {
-    fn read(&self, data: &[u8]) -> Result<(), ()>;
-    fn write(&self, data: &mut [u8]) -> Result<usize, ()>;
-}
-
 // Something to retrieve the accessory callbacks.
 pub trait AccessoryInterface {
-    fn get_attribute_interface(&self, char_id: CharId) -> Option<&dyn AttributeInterface>;
+    fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;
 }
+
 #[derive(Debug, Copy, Clone)]
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
-    fn get_attribute_interface(&self, char_id: CharId) -> Option<&dyn AttributeInterface> {
-        let _ = char_id;
-        None
+    fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        None::<&[u8]>
     }
 }
 

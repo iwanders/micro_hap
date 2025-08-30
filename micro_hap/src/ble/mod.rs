@@ -5,7 +5,7 @@ mod util;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use util::GattString;
 mod pdu;
-use crate::{BleProperties, DataSource};
+use crate::{AccessoryInterface, BleProperties, DataSource};
 use bitfield_struct::bitfield;
 
 use crate::{CharId, SvcId};
@@ -115,25 +115,25 @@ pub struct AccessoryInformationService {
     /// Manufacturer name that created the device.
     #[characteristic(uuid=characteristic::MANUFACTURER, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=3u16.to_le_bytes())]
-    pub manufacturer: GattString<64>,
+    pub manufacturer: FacadeDummyType,
 
     // 0x21
     /// Manufacturer specific model, length must be greater than one.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=4u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::MODEL, read, write)]
-    pub model: GattString<64>,
+    pub model: FacadeDummyType,
 
     // 0x0023
     /// Name for the device.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=5u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::NAME, read, write)]
-    pub name: GattString<64>,
+    pub name: FacadeDummyType,
 
     //0x0030
     /// Manufacturer serial number, length must be greater than one.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=6u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::SERIAL_NUMBER, read, write)]
-    pub serial_number: GattString<64>,
+    pub serial_number: FacadeDummyType,
 
     //0x0052
     /// Firmware revision string; "<major>.<minor>.<revision>"
@@ -145,13 +145,13 @@ pub struct AccessoryInformationService {
     /// Describes hardware revision string; "<major>.<minor>.<revision>"
     #[characteristic(uuid=characteristic::HARDWARE_REVISION, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=8u16.to_le_bytes())]
-    pub hardware_revision: GattString<16>,
+    pub hardware_revision: FacadeDummyType,
 
     // 4ab8811-ac7f-4340-bac3-fd6a85f9943b
     /// ADK version thing from the example,
     #[characteristic(uuid=characteristic::ADK_VERSION, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=9u16.to_le_bytes())]
-    pub adk_version: GattString<16>,
+    pub adk_version: FacadeDummyType,
 }
 
 impl HapBleService for AccessoryInformationService {
@@ -242,9 +242,6 @@ impl HapBleService for AccessoryInformationService {
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
-        // let z = CharacteristicProperties::from_bits(0x10);
-        // info!("z: {:?}", z);
-        // panic!();
         service
             .attributes
             .push(
@@ -298,50 +295,6 @@ fn make_table() {
 
     // let server = GattServer::<C, NoopRawMutex, MAX_ATTRIBUTES, L2CAP_MTU>::new(stack, &table);
 }*/
-
-impl AccessoryInformationService {
-    pub fn set_information_static<
-        M: RawMutex,
-        P: PacketPool,
-        const AT: usize,
-        const CT: usize,
-        const CN: usize,
-    >(
-        &self,
-        server: &AttributeServer<'_, M, P, AT, CT, CN>,
-        value: &AccessoryInformationStatic,
-    ) -> Result<(), Error> {
-        self.hardware_revision.set(
-            server,
-            &util::GattString::try_from(value.hardware_revision)
-                .map_err(|_| Error::InsufficientSpace)?,
-        )?;
-        self.serial_number.set(
-            server,
-            &util::GattString::try_from(value.serial_number)
-                .map_err(|_| Error::InsufficientSpace)?,
-        )?;
-        self.model.set(
-            server,
-            &util::GattString::try_from(value.model).map_err(|_| Error::InsufficientSpace)?,
-        )?;
-        self.name.set(
-            server,
-            &util::GattString::try_from(value.name).map_err(|_| Error::InsufficientSpace)?,
-        )?;
-        self.manufacturer.set(
-            server,
-            &util::GattString::try_from(value.manufacturer)
-                .map_err(|_| Error::InsufficientSpace)?,
-        )?;
-        // self.firmware_revision.set(
-        //     server,
-        //     &util::GattString::try_from(value.firmware_revision)
-        //         .map_err(|_| Error::InsufficientSpace)?,
-        // )?;
-        Ok(())
-    }
-}
 
 type FacadeDummyType = [u8; 0];
 
@@ -517,6 +470,7 @@ impl HapBleService for PairingService {
     }
 }
 
+pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32);
 #[gatt_service(uuid = service::LIGHTBULB)]
 pub struct LightbulbService {
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
@@ -532,11 +486,11 @@ pub struct LightbulbService {
     /// Name for the device.
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x32u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::NAME, read, write )]
-    pub name: GattString<64>,
+    pub name: FacadeDummyType,
 
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x33u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::ON, read, write )]
-    on: bool,
+    on: FacadeDummyType,
 }
 impl HapBleService for LightbulbService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
@@ -582,7 +536,8 @@ impl HapBleService for LightbulbService {
                         BleProperties::from_handle(self.name.handle)
                             .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
-                    ),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -762,12 +717,28 @@ impl HapPeripheralContext {
 
     pub fn assign_static_data(&mut self, data: &AccessoryInformationStatic) {
         use crate::{characteristic, service};
+
         if let Some(ref mut svc) =
             self.get_service_by_uuid_mut(&service::ACCESSORY_INFORMATION.into())
         {
             svc.get_attribute_by_uuid_mut(&characteristic::FIRMWARE_REVISION.into())
                 .unwrap()
-                .set_data(DataSource::Constant(data.firmware_revision.as_bytes()))
+                .set_data(DataSource::Constant(data.firmware_revision.as_bytes()));
+            svc.get_attribute_by_uuid_mut(&characteristic::HARDWARE_REVISION.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.hardware_revision.as_bytes()));
+            svc.get_attribute_by_uuid_mut(&characteristic::MANUFACTURER.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.manufacturer.as_bytes()));
+            svc.get_attribute_by_uuid_mut(&characteristic::MODEL.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.model.as_bytes()));
+            svc.get_attribute_by_uuid_mut(&characteristic::SERIAL_NUMBER.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.serial_number.as_bytes()));
+            svc.get_attribute_by_uuid_mut(&characteristic::NAME.into())
+                .unwrap()
+                .set_data(DataSource::Constant(data.name.as_bytes()));
         }
     }
 
@@ -854,6 +825,7 @@ impl HapPeripheralContext {
 
     pub async fn characteristic_read_request(
         &mut self,
+        accessory: &impl crate::AccessoryInterface,
         req: &pdu::CharacteristicReadRequest,
     ) -> Result<BufferResponse, HapBleError> {
         // Well ehm, what do we do here?
@@ -866,7 +838,21 @@ impl HapPeripheralContext {
                     Ok(BufferResponse(0))
                 }
                 DataSource::AccessoryInterface => {
-                    todo!()
+                    if let Some(data) = accessory.read_characteristic(char_id) {
+                        let mut buffer = self.buffer.borrow_mut();
+                        let reply = req.header.to_success();
+                        let len = reply.write_into_length(*buffer)?;
+                        let len = BodyBuilder::new_at(*buffer, len)
+                            .add_value(data.into())
+                            .end();
+                        Ok(BufferResponse(len))
+                    } else {
+                        error!(
+                            "Characteristic is using interface data source, but it returned None; 0x{:0>2x?}",
+                            char_id
+                        );
+                        Ok(BufferResponse(0))
+                    }
                 }
                 DataSource::Constant(data) => {
                     let mut buffer = self.buffer.borrow_mut();
@@ -1060,7 +1046,7 @@ impl HapPeripheralContext {
             pdu::OpCode::CharacteristicRead => {
                 let req = pdu::CharacteristicReadRequest::parse_pdu(data)?;
                 warn!("Got req: {:?}", req);
-                self.characteristic_read_request(&req).await?
+                self.characteristic_read_request(accessory, &req).await?
             }
             pdu::OpCode::CharacteristicWrite => {
                 info!("handle is: {}", handle);
@@ -1339,7 +1325,7 @@ mod test {
     #[tokio::test]
     async fn test_message_exchanges() -> Result<(), HapBleError> {
         crate::test::init();
-        let name = "micro_hap";
+        let name = "Acme Light Bulb";
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
             appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
@@ -1347,17 +1333,18 @@ mod test {
         .unwrap();
 
         // Setup the accessory information.
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/App.c#L124
         let accessory_static_data = crate::AccessoryInformationStatic {
             name,
             // Possibly device id 57:3B:20:A7:E7:C4 ?
             device_id: crate::DeviceId([0x57, 0x3b, 0x20, 0xA7, 0xE7, 0xC4]),
             firmware_revision: "1",
+            hardware_revision: "1",
+            manufacturer: "Acme",
+            model: "LightBulb1,1",
+            serial_number: "099DB48E9E28",
             ..Default::default()
         };
-        let _ = server
-            .accessory_information
-            .set_information_static(&server, &accessory_static_data)
-            .unwrap();
 
         let hap = server.as_hap();
         let _ = hap;
@@ -1367,7 +1354,19 @@ mod test {
             STATE.init([0u8; 2048])
         };
 
-        let accessory = crate::NopAccessory;
+        struct LightBulbAccessory {
+            name: HeaplessString<32>,
+        }
+        impl crate::AccessoryInterface for LightBulbAccessory {
+            fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+                Some(self.name.as_bytes())
+            }
+        }
+
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
+        let accessory = LightBulbAccessory {
+            name: "Light Bulb".try_into().unwrap(),
+        };
 
         let pair_ctx = {
             static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
@@ -1463,6 +1462,7 @@ mod test {
         let handle_version = 0x47;
         let handle_lightbulb_on = 0x6a;
         let handle_lightbulb_name = 0x67;
+        let handle_model = 0x2a;
 
         // Next followes a few 'random' tests created when I was working on the signatures.
         // After that follows a full pairing, pair verify exchange and subsequent messages.
@@ -2256,7 +2256,7 @@ mod test {
         }
 
         // Now we read the firmware revision string!
-        if true {
+        {
             let incoming_data: &[u8] = &[
                 0x08, 0x0e, 0xc5, 0xff, 0x16, 0x22, 0x78, 0x24, 0xb6, 0xfc, 0x81, 0x4e, 0xf8, 0x28,
                 0x14, 0x67, 0xa8, 0xb1, 0xed, 0x6b, 0xb9,
@@ -2274,6 +2274,135 @@ mod test {
             )
             .await?;
             let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Manufacturer
+        {
+            let incoming_data: &[u8] = &[
+                0x05, 0x76, 0xd3, 0xaf, 0x2f, 0xa0, 0xdd, 0xd1, 0x2c, 0x0b, 0xa8, 0xdd, 0xf2, 0x7a,
+                0xe3, 0x0b, 0x53, 0x4e, 0x07, 0xb8, 0x9c,
+            ];
+            let outgoing: &[u8] = &[
+                0x71, 0xea, 0xd2, 0xfb, 0xe8, 0x12, 0xef, 0x4d, 0x7f, 0x86, 0x08, 0x3d, 0x00, 0xe7,
+                0xec, 0xe3, 0x66, 0x33, 0x18, 0xd8, 0x0e, 0x37, 0xd4, 0x37, 0x29, 0x50, 0x11,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_manufacturer,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_manufacturer).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Model
+        {
+            let incoming_data: &[u8] = &[
+                0xf8, 0xbd, 0xaf, 0x7d, 0x21, 0xbd, 0xa1, 0x50, 0x1f, 0x3c, 0x78, 0xe7, 0x86, 0x72,
+                0x30, 0xf3, 0x07, 0x8f, 0x6c, 0x91, 0xd9,
+            ];
+            let outgoing: &[u8] = &[
+                0xc7, 0xfb, 0xd3, 0x79, 0x6c, 0x67, 0x9c, 0x6c, 0x59, 0xc0, 0x55, 0x75, 0x46, 0x4c,
+                0x26, 0xf3, 0xce, 0x8f, 0xe8, 0x65, 0x2f, 0xc6, 0x58, 0x84, 0x9a, 0x21, 0x47, 0x14,
+                0xf5, 0xa2, 0x51, 0x90, 0x0e, 0x81, 0x51,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_model,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_model).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Serial number
+        {
+            let incoming_data: &[u8] = &[
+                0x56, 0xac, 0x55, 0x8e, 0xf6, 0x0f, 0x3a, 0xbd, 0x2c, 0x8a, 0xf5, 0xc4, 0x47, 0x0a,
+                0x13, 0x1c, 0x72, 0x38, 0x7f, 0xd0, 0x71,
+            ];
+            let outgoing: &[u8] = &[
+                0x51, 0x47, 0x7e, 0x71, 0x5d, 0x5d, 0xff, 0xb4, 0xf6, 0x05, 0x60, 0xbc, 0xce, 0x95,
+                0x70, 0xea, 0x91, 0xd9, 0x93, 0x62, 0xda, 0xdb, 0x4f, 0xd0, 0x7f, 0x47, 0x62, 0x82,
+                0x2c, 0xfe, 0x64, 0x79, 0x10, 0xf9, 0xf3,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_model,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_model).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Name
+        {
+            let incoming_data: &[u8] = &[
+                0x6b, 0x2e, 0x57, 0x9b, 0xb2, 0xa6, 0x59, 0xcc, 0xab, 0xee, 0x34, 0x11, 0x71, 0xb7,
+                0xe3, 0x40, 0x0a, 0xb6, 0xc9, 0x70, 0x48,
+            ];
+            let outgoing: &[u8] = &[
+                0xb4, 0x39, 0x0e, 0x0f, 0x87, 0x16, 0x2b, 0xfd, 0x43, 0xaf, 0xc8, 0xc0, 0x01, 0x75,
+                0x0f, 0x78, 0xb4, 0x9b, 0x78, 0xda, 0xcd, 0x49, 0x72, 0xa8, 0x70, 0x33, 0xbd, 0xc4,
+                0x91, 0xd5, 0xfd, 0x2c, 0x59, 0x25, 0x8b, 0xfb, 0xd9, 0x6a,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_model,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_model).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Lightbulb name!
+        {
+            let incoming_data: &[u8] = &[
+                0xc5, 0x3b, 0x1c, 0xbf, 0xab, 0x35, 0x4b, 0x41, 0x58, 0x8f, 0xdc, 0xab, 0x9c, 0xd6,
+                0xef, 0xa7, 0xa3, 0x0b, 0xe5, 0x26, 0xf6,
+            ];
+            let outgoing: &[u8] = &[
+                0x1b, 0x7e, 0x60, 0x55, 0x10, 0x0e, 0x09, 0x80, 0x26, 0x51, 0x7b, 0xce, 0x35, 0x11,
+                0x3c, 0xc8, 0x0d, 0x2f, 0x5b, 0xb0, 0x87, 0x91, 0x78, 0x7d, 0x84, 0x6c, 0xd3, 0x76,
+                0xb5, 0x24, 0x78, 0x5a, 0xdb,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_lightbulb_name,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             let _ = outgoing;

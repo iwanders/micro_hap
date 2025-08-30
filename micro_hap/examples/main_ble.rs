@@ -143,10 +143,7 @@ mod ble_bas_peripheral {
             ]),
             ..Default::default()
         };
-        let _ = server
-            .accessory_information
-            .set_information_static(&server, &static_information) // don't forget to also assign to the pair ctx.
-            .unwrap();
+        // let _ = server.accessory_information.unwrap();
 
         let accessory = micro_hap::NopAccessory;
         let pair_ctx = {
@@ -204,6 +201,8 @@ mod ble_bas_peripheral {
             &server.pairing,
         )
         .unwrap();
+
+        hap_context.assign_static_data(&static_information);
 
         let _ = join(ble_task(runner), async {
             loop {
