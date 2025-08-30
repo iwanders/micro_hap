@@ -253,7 +253,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
 fn hash_n<D: Digest>() -> impl Digest {
     let n = groups::GROUP_3072.n;
     // to_be_bytes makes a copy... :(
-    let n_words: &[u64; 3072 / (64)] = n.as_words();
+    let n_words: &groups::Words = n.as_words();
     // Use zerocopy to cast that to bytes.
     use zerocopy::IntoBytes;
     let n_bytes = n_words.as_bytes();
@@ -278,7 +278,7 @@ fn hash_g<D: Digest>() -> impl Digest {
 // This entire function depends on the group... why don't we pre-calculate this and put it in the group instead?
 pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     // to_be_bytes makes a copy... :(
-    let n_words: &[u64; 3072 / (64)] = n.as_words();
+    let n_words: &groups::Words = n.as_words();
     // Use zerocopy to cast that to bytes.
     use zerocopy::IntoBytes;
     let n_bytes = n_words.as_bytes();
@@ -717,10 +717,19 @@ pub mod groups {
 
     }
 
+    #[cfg(target_pointer_width = "64")]
+    pub type ConstMontyForm = crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48>;
+    #[cfg(target_pointer_width = "32")]
+    pub type ConstMontyForm = crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 96>;
+
+    #[cfg(target_pointer_width = "64")]
+    pub type Words = [u64; 3072 / 64];
+    #[cfg(target_pointer_width = "32")]
+    pub type Words = [u32; 3072 / 32];
+
     lazy_static! {
-        pub static ref SRP_3072_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> =
-            Srp3072ConstMontyForm::default();
-        pub static ref SRP_3072_G_CONST_MONTY: crypto_bigint::modular::ConstMontyForm<Srp3072Modulus, 48> = {
+        pub static ref SRP_3072_CONST_MONTY: ConstMontyForm = Srp3072ConstMontyForm::default();
+        pub static ref SRP_3072_G_CONST_MONTY: ConstMontyForm = {
             let m = U3072::from_u8(5);
             const_monty_form!(m, Srp3072Modulus)
         };
