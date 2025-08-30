@@ -24,7 +24,8 @@ pub mod tlv;
 pub mod crypto;
 use crypto::aead::ControlChannel;
 
-// use heapless::pool::arc::Arc;
+// this exists for Arm, but Not for std?? :(
+use heapless::pool::arc::Arc;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311

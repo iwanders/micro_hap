@@ -46,7 +46,7 @@ x25519-dalek = { version = "2.0.1", default-features = false, features = [
 #
 zerocopy = { version = "0.8.26", features = ["derive"] }
 bitfield-struct = "0.11.0"
-heapless = { version = "0.8", features = ["serde"] }
+heapless = { version = "0.9", features = ["serde", "portable-atomic"] }
 static_cell = "2.1"
 
 uuid = { version = "1.18.0", features = ["zerocopy"], default-features = false }

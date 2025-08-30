@@ -26,7 +26,7 @@ impl<const N: usize> FromGatt for GattString<N> {
 }
 
 impl<'a, const N: usize> TryFrom<&'a str> for GattString<N> {
-    type Error = ();
+    type Error = heapless::CapacityError;
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         let mut new = String::new();
         new.push_str(s)?;
