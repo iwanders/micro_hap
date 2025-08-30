@@ -426,7 +426,7 @@ impl ProtocolInformationService {
                 user_description: None,
                 ble: Some(
                     BleProperties::from_handle(self.version.handle)
-                        .with_format_opaque()
+                        .with_format(sig::Format::StringUtf8)
                         .with_properties(CharacteristicProperties::new().with_read(true)),
                 ),
             })
@@ -720,11 +720,13 @@ impl HapPeripheralContext {
         info!("service signature req: {:?}", req);
         let resp = req.header.to_success();
 
+        let req_svc = req.svc_id;
+
         let mut buffer = self.buffer.borrow_mut();
 
         let len = resp.write_into_length(*buffer)?;
 
-        let svc = self.get_service_by_svc(req.svc_id);
+        let svc = self.get_service_by_svc(req_svc);
 
         if let Some(svc) = svc {
             // WHat is the actual output?
@@ -760,6 +762,7 @@ impl HapPeripheralContext {
             Ok(BufferResponse(len))
         } else {
             // What do we return if the id is not known??
+            error!("Could not find service for req.svc_id: 0x{:0>2x?}", req_svc);
             todo!()
         }
     }
@@ -1483,6 +1486,7 @@ mod test {
         // it would be nice if we understood why the handle ids are different.
         let handle_pair_setup = 84;
         let handle_pair_verify = 87;
+        let handle_pair_pairings = 0x5d;
         let handle_hardware_revision = 0x36;
         let handle_serial_number = 0x30;
         let handle_name = 0x2d;
@@ -1490,6 +1494,8 @@ mod test {
         let handle_manufacturer = 0x27;
         let handle_firmware_version = 0x33;
         let handle_identify = 0x24;
+        let handle_service_signature = 0x44;
+        let handle_version = 0x47;
 
         // Next followes a few 'random' tests created when I was working on the signatures.
         // After that follows a full pairing, pair verify exchange and subsequent messages.
@@ -1997,8 +2003,125 @@ mod test {
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
-            // TODO: iid 2 is reused!!!!
         }
+
+        // Service signature?
+        {
+            struct ServiceSigTest {
+                incoming: &'static [u8],
+                outgoing: &'static [u8],
+            }
+            let tests = [
+                ServiceSigTest {
+                    incoming: &[
+                        0x94, 0xac, 0x60, 0xfe, 0xec, 0x02, 0x29, 0xbb, 0x88, 0x07, 0x87, 0x95,
+                        0xfb, 0x76, 0xf2, 0xb6, 0x67, 0x91, 0x3e, 0xf0, 0xa4,
+                    ],
+                    outgoing: &[
+                        0x49, 0x55, 0x89, 0x02, 0x21, 0x6e, 0x10, 0xdb, 0x76, 0x96, 0x2e, 0x53,
+                        0x66, 0xa4, 0xca, 0x06, 0x3d, 0xbf, 0x84, 0xe2, 0xad, 0x82, 0x27, 0x33,
+                        0xf2, 0xb5, 0x85,
+                    ],
+                },
+                ServiceSigTest {
+                    incoming: &[
+                        0x5a, 0x59, 0x70, 0x78, 0x9d, 0xd3, 0xec, 0x0d, 0x66, 0xad, 0x69, 0x05,
+                        0xfa, 0xb6, 0xaf, 0x25, 0x64, 0x79, 0xf6, 0x34, 0xe6,
+                    ],
+                    outgoing: &[
+                        0x92, 0x7c, 0xb2, 0xde, 0xfb, 0x33, 0xf6, 0x74, 0xea, 0xe9, 0x7b, 0xe8,
+                        0x94, 0xba, 0x2d, 0x73, 0x30, 0x81, 0x2b, 0x1a, 0xf6, 0xe1, 0xa9, 0x78,
+                        0x93, 0xe3, 0xf8, 0x76, 0xc5, 0x95, 0x86, 0x7f, 0xd5, 0x90, 0x79, 0xf3,
+                        0x4b, 0x41, 0x74, 0x91, 0xe4, 0x80, 0x74, 0x24, 0xd2, 0x40, 0x06, 0xc5,
+                        0x79, 0x61, 0x6f, 0xa4, 0x84, 0xfa, 0x8d, 0x55, 0xcb, 0x38, 0x7e, 0x4e,
+                        0x5d, 0x4b, 0xbd, 0x61, 0xcd, 0x90, 0x8d, 0x70, 0xa5, 0x2b, 0x0b, 0x86,
+                        0x1a, 0x56,
+                    ],
+                },
+            ];
+
+            for ServiceSigTest { incoming, outgoing } in tests.iter() {
+                ctx.handle_write_incoming_test(
+                    &hap,
+                    &mut support,
+                    incoming,
+                    handle_service_signature,
+                )
+                .await?;
+                let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
+                let resp_buffer = resp.expect("expecting a outgoing response");
+                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                assert_eq!(&*resp_buffer, *outgoing);
+            }
+        }
+
+        // Protocol Version
+        {
+            let incoming_data: &[u8] = &[
+                0x28, 0xb4, 0x47, 0x6f, 0x30, 0x31, 0xcb, 0x3b, 0xc1, 0xa6, 0x81, 0x61, 0x60, 0xc8,
+                0xf9, 0x6a, 0xb7, 0x88, 0x0e, 0x5a, 0x94,
+            ];
+            let outgoing: &[u8] = &[
+                0x12, 0x94, 0x43, 0xa9, 0x7f, 0xd4, 0xba, 0x87, 0x38, 0x3b, 0xd6, 0x68, 0xfd, 0x61,
+                0x0f, 0x38, 0x71, 0x1c, 0xc8, 0x65, 0xf6, 0x28, 0xbc, 0x02, 0x8b, 0x17, 0xfe, 0x0e,
+                0x77, 0xc3, 0xdf, 0xaf, 0xab, 0x4e, 0xec, 0xd0, 0xe9, 0x9f, 0xc2, 0xc8, 0x3d, 0x5c,
+                0x73, 0x87, 0x71, 0xd1, 0x07, 0x2e, 0xb0, 0x5a, 0xe5, 0x88, 0x7a, 0xed, 0x3b, 0xfa,
+                0x98, 0xd8, 0x60, 0xcd, 0x97, 0xaf, 0x60, 0x5c, 0x91, 0xa4, 0x33, 0x33, 0xe3, 0x79,
+                0xf6, 0x18, 0x6f, 0xf0,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_version)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Pairings pairings
+        {
+            let incoming_data: &[u8] = &[
+                0x62, 0xab, 0xff, 0xf9, 0xd7, 0x02, 0xc2, 0x38, 0x11, 0x28, 0x0b, 0xe9, 0xef, 0xe7,
+                0x0b, 0xe9, 0x11, 0x4a, 0x2a, 0x7c, 0x36,
+            ];
+            let outgoing: &[u8] = &[
+                0xd3, 0x00, 0xec, 0x96, 0xdc, 0xde, 0x03, 0x87, 0x82, 0x85, 0x0e, 0x0a, 0x67, 0x8c,
+                0x46, 0xdf, 0xc0, 0x9d, 0x7f, 0xc3, 0x98, 0x3b, 0xab, 0x52, 0x34, 0xeb, 0x7c, 0x38,
+                0x5b, 0x35, 0x41, 0xae, 0x7f, 0x96, 0x4b, 0x5b, 0x85, 0x17, 0x91, 0x44, 0x3e, 0xdc,
+                0xcc, 0xa2, 0xa7, 0x80, 0xbb, 0xf1, 0xb2, 0xae, 0xd7, 0x9e, 0x4a, 0x84, 0xd3, 0x6b,
+                0xc8, 0x56, 0x65, 0xce, 0x34, 0x1d, 0xab, 0x20, 0xa5, 0x17, 0x99, 0x78, 0x85, 0x56,
+                0x64, 0x28, 0x87, 0x5c,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_pair_pairings)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Service signature again.
+        {
+            let incoming_data: &[u8] = &[
+                0xef, 0xdd, 0xe0, 0xf7, 0xc8, 0x2a, 0xec, 0x9e, 0xa5, 0xcc, 0x78, 0x68, 0x03, 0x1c,
+                0x40, 0x68, 0xc0, 0x8e, 0x47, 0xbb, 0x36,
+            ];
+            let outgoing: &[u8] = &[
+                0x9d, 0xfe, 0x33, 0xf3, 0xb3, 0x4e, 0x91, 0xa1, 0x97, 0x09, 0x19, 0x49, 0xe3, 0x8a,
+                0x5a, 0xa7, 0x46, 0x50, 0x4b, 0x05, 0x0e, 0xc4, 0xd2, 0x81, 0x46, 0x9c, 0x84,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_service_signature,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
         Ok(())
     }
 }
