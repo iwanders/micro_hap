@@ -176,7 +176,10 @@ impl AccessoryInformationService {
                 uuid: characteristic::IDENTIFY.into(),
                 iid: CharId(2),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.identify.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.identify.handle)
+                        .with_properties(CharacteristicProperties::new().with_write(true)),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -186,7 +189,11 @@ impl AccessoryInformationService {
                 uuid: characteristic::MANUFACTURER.into(),
                 iid: CharId(3),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.manufacturer.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.manufacturer.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -196,7 +203,11 @@ impl AccessoryInformationService {
                 uuid: characteristic::MODEL.into(),
                 iid: CharId(4),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.model.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.model.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -206,7 +217,11 @@ impl AccessoryInformationService {
                 uuid: characteristic::NAME.into(),
                 iid: CharId(5),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.name.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.name.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -230,7 +245,11 @@ impl AccessoryInformationService {
                 uuid: characteristic::FIRMWARE_REVISION.into(),
                 iid: CharId(7),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.firmware_revision.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.firmware_revision.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -257,7 +276,15 @@ impl AccessoryInformationService {
                 uuid: characteristic::ADK_VERSION.into(),
                 iid: CharId(9),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.adk_version.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.adk_version.handle)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_read(true)
+                                .with_hidden(true),
+                        )
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -674,7 +701,11 @@ impl HapPeripheralContext {
             for a in k.attributes.iter() {
                 let attr_id = a.iid;
                 let handle = a.ble_ref().handle;
-                info!("iid 0x{:0>2x?}, handle: 0x{:0>2x?}", attr_id, handle);
+                let uuid = &a.uuid;
+                info!(
+                    "iid 0x{:0>2x?}, handle: 0x{:0>2x?}  uid: {:0>2x?}",
+                    attr_id, handle, uuid
+                );
             }
         }
     }
@@ -1310,6 +1341,21 @@ mod test {
     use super::*;
     use static_cell::StaticCell;
 
+    #[test]
+    fn test_characteristics() {
+        crate::test::init();
+        let v = CharacteristicProperties::new()
+            .with_read(true)
+            .with_read_open(true)
+            .with_hidden(true);
+        assert_eq!(v.0, 0x0001 | 0x0010 | 0x0040);
+
+        let z = CharacteristicProperties::from_bits(0x03);
+        info!("0x03: {z:#?}");
+        let z = CharacteristicProperties::from_bits(0x10);
+        info!("0x10: {z:#?}");
+    }
+
     #[gatt_server]
     struct Server {
         accessory_information: AccessoryInformationService,
@@ -1433,6 +1479,20 @@ mod test {
         support.ed_ltsk = ed_ltsk;
         support.add_random(&random_buffer);
 
+        // it would be nice if we understood why the handle ids are different.
+        let handle_pair_setup = 84;
+        let handle_pair_verify = 87;
+        let handle_hardware_revision = 0x36;
+        let handle_serial_number = 0x30;
+        let handle_name = 0x2d;
+        let handle_adk_version = 0x39;
+        let handle_manufacturer = 0x27;
+        let handle_firmware_version = 0x33;
+        let handle_identify = 0x24;
+
+        // Next followes a few 'random' tests created when I was working on the signatures.
+        // After that follows a full pairing, pair verify exchange and subsequent messages.
+
         let service_signature_req = [0, 6, 0x3a, 0x10, 0];
         let service_signature_req =
             pdu::ServiceSignatureReadRequest::parse_pdu(&service_signature_req)?;
@@ -1511,14 +1571,6 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-
-            // This is different
-            // Expected:
-            // 2, 86, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 79, 0, 0, 0, 7, 2, 32, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 85, 0, 0, 0, 10, 2, 1, 0, 12, 7, 27, 0, 0, 39, 1, 0, 0
-            // Got:
-            // 2, 86, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 79, 0, 0, 0, 7, 2, 32, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 85, 0, 0, 0, 10, 2, 1, 0, 12, 7, 4, 0, 0, 39, 1, 0, 0
-            //                                                                                                                                                                                         ^^
-
             assert_eq!(&*resp_buffer, outgoing_data);
         }
         {
@@ -1530,10 +1582,6 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-
-            // This is different
-            //   left: [2, 88, 0, 3, 0, 1, 1, 2]
-            //   right: [2, 88, 0, 3, 0, 1, 1, 0]
 
             assert_eq!(&*resp_buffer, outgoing_data);
         }
@@ -1555,11 +1603,6 @@ mod test {
         }
 
         // Writing to pair setup.  ------------
-        // it would be nice if we understood why the handle ids are different.
-        let handle_pair_setup = 84;
-        let handle_pair_verify = 87;
-        let handle_hardware_revision = 0x36;
-        let handle_serial_number = 0x30;
         // m1 & m2
         {
             let incoming_data: &[u8] = &[
@@ -1818,21 +1861,143 @@ mod test {
             assert_eq!(&*resp_buffer, outgoing);
         }
 
+        // And then the model
+        {
+            let incoming_data: &[u8] = &[
+                0x9e, 0xf7, 0x09, 0xf5, 0x15, 0x41, 0xb4, 0x5e, 0x12, 0x04, 0x84, 0xfc, 0x0f, 0xce,
+                0x52, 0xac, 0xff, 0xc4, 0x21, 0x43, 0x93,
+            ];
+            let outgoing: &[u8] = &[
+                0xa6, 0x83, 0xf9, 0xd2, 0xfa, 0x9e, 0x2e, 0xc0, 0x15, 0xe4, 0xda, 0xae, 0x71, 0x27,
+                0xe6, 0x5f, 0x07, 0x5e, 0x26, 0xac, 0xe6, 0x75, 0xdb, 0x1d, 0x25, 0x3a, 0x36, 0xfc,
+                0x98, 0x79, 0x37, 0xb6, 0x00, 0xc7, 0x68, 0xb3, 0xbe, 0x59, 0x46, 0x2a, 0x40, 0xfc,
+                0x71, 0x06, 0xca, 0xb3, 0x5f, 0xd9, 0xf9, 0x49, 0x60, 0x7c, 0xd1, 0x1a, 0x0b, 0x2e,
+                0xae, 0xaf, 0x5a, 0x17, 0x15, 0x9b, 0x9d, 0x7d, 0xc2, 0xe0, 0xfa, 0x0a, 0x32, 0x84,
+                0x07, 0x35, 0x3c, 0xef,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_serial_number)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // And name
+        {
+            let incoming_data: &[u8] = &[
+                0x35, 0x8c, 0x9d, 0xa2, 0x1f, 0x46, 0xba, 0xf2, 0x2c, 0x23, 0x6a, 0x50, 0x6a, 0xf4,
+                0xf0, 0x90, 0xc2, 0x27, 0xb9, 0x9b, 0x34,
+            ];
+            let outgoing: &[u8] = &[
+                0x3c, 0xc8, 0xf3, 0xc7, 0x7a, 0x56, 0xb0, 0x83, 0x8d, 0x10, 0xe6, 0xaa, 0xf5, 0xba,
+                0xc7, 0xfa, 0x20, 0x5b, 0x71, 0x79, 0x56, 0x12, 0x4d, 0x7a, 0x68, 0x80, 0x88, 0x3e,
+                0xad, 0x02, 0x95, 0x45, 0xa5, 0x03, 0x49, 0x2d, 0x79, 0x46, 0x2d, 0x08, 0x86, 0x0f,
+                0x7e, 0x89, 0x69, 0x92, 0xb9, 0xbe, 0x31, 0x83, 0x24, 0x41, 0xa0, 0xf7, 0xa0, 0x95,
+                0x76, 0x09, 0x83, 0x77, 0x32, 0xaa, 0x35, 0xac, 0x96, 0x3e, 0x72, 0x48, 0x9f, 0xa4,
+                0x66, 0x99, 0x8c, 0xdd,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_name)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_name).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // ADK version...
+        {
+            let incoming_data: &[u8] = &[
+                0x66, 0x8f, 0xcb, 0x09, 0xd0, 0xd9, 0x1e, 0xdf, 0x7c, 0xa6, 0x47, 0x3b, 0x6f, 0x75,
+                0x18, 0x76, 0xd2, 0x04, 0x26, 0x7a, 0x9f,
+            ];
+            let outgoing: &[u8] = &[
+                0xe4, 0xfb, 0x1e, 0x38, 0x85, 0xca, 0xd9, 0x36, 0xbd, 0xac, 0x36, 0x2a, 0x18, 0xaa,
+                0xe5, 0x37, 0x70, 0xee, 0xb7, 0x4f, 0x44, 0xdf, 0xad, 0xdc, 0x05, 0x0a, 0xa1, 0xb1,
+                0x98, 0x75, 0x7b, 0x18, 0xb9, 0x9b, 0xcb, 0xc8, 0xf2, 0xba, 0xd9, 0xa7, 0xb9, 0xef,
+                0x79, 0x52, 0x24, 0xf1, 0x1e, 0xc8, 0x44, 0xeb, 0x89, 0x11, 0x67, 0xa7, 0xc9, 0x6b,
+                0xec, 0xce, 0xb4, 0x25, 0x1a, 0x28, 0x6d, 0x2c, 0x09, 0xc8, 0xb0, 0xbc, 0xbf, 0x99,
+                0xf1, 0x25, 0x62, 0xeb,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_adk_version)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_adk_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Manufacturer
+        {
+            let incoming_data: &[u8] = &[
+                0x32, 0x72, 0x7c, 0x3b, 0x59, 0x40, 0xdd, 0xba, 0x59, 0x82, 0xab, 0x76, 0xe7, 0x21,
+                0x1a, 0x99, 0x5c, 0xd8, 0xc1, 0x3b, 0x35,
+            ];
+            let outgoing: &[u8] = &[
+                0x33, 0x7a, 0x6b, 0x4f, 0x53, 0x01, 0xdf, 0x0b, 0x98, 0xe0, 0x85, 0x94, 0xbf, 0x2c,
+                0xb2, 0x2f, 0x3c, 0x2f, 0x64, 0x75, 0x28, 0xb0, 0xcd, 0xf6, 0xdf, 0x68, 0x03, 0xcb,
+                0x65, 0x87, 0x57, 0x0f, 0x4d, 0x48, 0xa7, 0x15, 0xd7, 0x4b, 0x77, 0x2e, 0xf9, 0x31,
+                0x2a, 0xcd, 0x8a, 0x1d, 0x3a, 0x10, 0x8d, 0xeb, 0xf0, 0xe5, 0x79, 0xcb, 0x09, 0xa9,
+                0x7d, 0xd5, 0x0f, 0xcc, 0x40, 0x94, 0x4f, 0x9b, 0x7f, 0x3d, 0x7a, 0xf8, 0x72, 0xee,
+                0xda, 0x0e, 0xbe, 0x7d,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_manufacturer)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_manufacturer).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Firmware version
+        {
+            let incoming_data: &[u8] = &[
+                0x56, 0x55, 0x73, 0x57, 0xf1, 0xc2, 0x41, 0x16, 0xe5, 0x78, 0x9d, 0x36, 0xec, 0xfd,
+                0x2d, 0x9a, 0xf5, 0x96, 0x7c, 0x7c, 0x5a,
+            ];
+            let outgoing: &[u8] = &[
+                0xf1, 0x35, 0x2c, 0xc3, 0xb2, 0x9b, 0x52, 0xd1, 0x36, 0x45, 0xf4, 0x02, 0x26, 0x60,
+                0x2e, 0xa8, 0xdc, 0x6a, 0x1e, 0x02, 0x99, 0x0c, 0x0e, 0x06, 0xd1, 0x6a, 0x41, 0xdc,
+                0x10, 0xa7, 0x76, 0xce, 0xb1, 0xf4, 0x17, 0x64, 0x89, 0xd4, 0xc8, 0xc6, 0xcb, 0xcc,
+                0x8f, 0xdc, 0x74, 0xca, 0x4d, 0x2a, 0x60, 0x07, 0xa1, 0xcb, 0xc4, 0x9e, 0x46, 0x6b,
+                0x7a, 0xf3, 0xa5, 0x7a, 0x96, 0x60, 0x78, 0x15, 0xf0, 0x19, 0x17, 0x1f, 0x26, 0x93,
+                0xea, 0x68, 0x6f, 0xff,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_firmware_version,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Identify
+        {
+            let incoming_data: &[u8] = &[
+                0x9e, 0x8a, 0xcf, 0xd9, 0xe7, 0x39, 0x9e, 0xec, 0x96, 0x8b, 0x9b, 0x22, 0xcf, 0xde,
+                0x21, 0x30, 0x4f, 0xb6, 0xfe, 0x26, 0x1a,
+            ];
+            let outgoing: &[u8] = &[
+                0x2c, 0x30, 0xaa, 0xf1, 0x38, 0x5a, 0x05, 0xb6, 0xeb, 0x26, 0x3f, 0x8c, 0x20, 0x68,
+                0xba, 0x46, 0x55, 0x2d, 0x7f, 0x40, 0x42, 0x51, 0xff, 0xf9, 0x71, 0xdf, 0xb3, 0xbe,
+                0x1c, 0xc8, 0x44, 0x62, 0x34, 0xa2, 0x91, 0xb1, 0xa2, 0x47, 0x33, 0x05, 0xef, 0x82,
+                0x75, 0x13, 0x6c, 0xe6, 0x04, 0x87, 0xba, 0xf5, 0x66, 0xfa, 0xe7, 0xdb, 0x21, 0x7a,
+                0x10, 0xed, 0x22, 0xbd, 0x1d, 0xa6, 0xbd, 0xca, 0xbf, 0x24, 0x90, 0x5b, 0x89, 0x0f,
+                0xae, 0x1b, 0x8c, 0xd3,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_identify)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_identify).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            //assert_eq!(&*resp_buffer, outgoing);
+            // TODO: iid 2 is reused!!!!
+        }
         Ok(())
-    }
-
-    #[test]
-    fn test_characteristics() {
-        crate::test::init();
-        let v = CharacteristicProperties::new()
-            .with_read(true)
-            .with_read_open(true)
-            .with_hidden(true);
-        assert_eq!(v.0, 0x0001 | 0x0010 | 0x0040);
-
-        let z = CharacteristicProperties::from_bits(0x03);
-        info!("0x03: {z:#?}");
-        let z = CharacteristicProperties::from_bits(0x10);
-        info!("0x10: {z:#?}");
     }
 }
