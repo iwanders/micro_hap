@@ -1714,7 +1714,7 @@ mod test {
             assert_eq!(&*resp_buffer, outgoing);
         }
 
-        if false {
+        {
             // Pair verify. m3?
             let incoming_data: &[u8] = &[
                 0x00, 0x02, 0xa9, 0x23, 0x00, 0x82, 0x00, 0x01, 0x7d, 0x05, 0x78, 0x74, 0xda, 0xba,

@@ -1,10 +1,14 @@
 // use bitfield_struct::bitfield;
 use zerocopy::IntoBytes;
 
-use crate::crypto::{aead, ed25519::ed25519_sign, hkdf_sha512};
+use crate::crypto::{
+    aead,
+    ed25519::{ed25519_sign, ed25519_verify},
+    hkdf_sha512,
+};
 use crate::pairing::{
-    ED25519_BYTES, PairContext, PairState, PairSupport, PairingError, PairingMethod, TLVType,
-    X25519_BYTES, tlv::*,
+    ED25519_BYTES, PairContext, PairState, PairSupport, PairingError, PairingId, PairingMethod,
+    TLVType, X25519_BYTES, tlv::*,
 };
 use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
 use uuid;
@@ -60,7 +64,7 @@ pub fn handle_incoming(
             let mut state = TLVState::tied(&data);
             let mut encrypted_data = TLVEncryptedData::tied(&data);
             TLVReader::new(&data).read_into(&mut [&mut state, &mut encrypted_data])?;
-            pair_verify_process_m3(ctx, state, encrypted_data)
+            pair_verify_process_m3(ctx, support, state, encrypted_data)
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -245,6 +249,7 @@ pub fn pair_verify_process_get_m2(
 // HAPPairingPairVerifyProcessM3
 pub fn pair_verify_process_m3(
     ctx: &mut PairContext,
+    support: &mut impl PairSupport,
     state: TLVState,
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
@@ -273,6 +278,34 @@ pub fn pair_verify_process_m3(
     TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
 
     // need to retrieve pairing that we created during the setup now.
+    let pairing_id = PairingId::from_tlv(&identifier)?;
 
+    let pairing = support
+        .get_pairing(&pairing_id)?
+        .ok_or(PairingError::UnknownPairing)?;
+    info!("found pairing: {:?}", pairing);
+
+    // NONCOMPLIANCE reference stores session->state.pairVerify.pairingID = (int) key;, but we use the full pairing id?
+    // do we need to track integers?
+
+    // What's next, we collect: IOS public key, pairing id, accessory public key, check if signature matches that.
+    // We use the 'right' slot in our scratch memory.
+
+    let ios_device_pk_idx = 0..X25519_BYTES;
+    let identifier_idx = ios_device_pk_idx.end..ios_device_pk_idx.end + identifier.len();
+    let accessory_pk_idx = identifier_idx.end..identifier_idx.end + X25519_BYTES;
+    let signature_idx = accessory_pk_idx.end..accessory_pk_idx.end + ED25519_BYTES;
+
+    right[ios_device_pk_idx].copy_from_slice(&ctx.server.pair_verify.controller_cv_pk);
+    identifier.copy_body(&mut right[identifier_idx])?;
+    right[accessory_pk_idx].copy_from_slice(&ctx.server.pair_verify.cv_pk);
+    signature.copy_body(&mut right[signature_idx.clone()])?;
+
+    // Next, check if the signature matches.
+    let public_key = pairing.public_key;
+    let data = &right[0..X25519_BYTES + identifier.len() + X25519_BYTES];
+
+    ed25519_verify(public_key.as_ref(), data, &right[signature_idx])?;
+    info!("pairing checks out!");
     Ok(())
 }

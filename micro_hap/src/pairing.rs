@@ -40,6 +40,7 @@ pub enum PairingError {
     BadDecryption,
     BadSignature,
     UuidError,
+    UnknownPairing,
 }
 
 impl From<TLVError> for PairingError {
@@ -55,6 +56,11 @@ impl From<hkdf::InvalidLength> for PairingError {
 impl From<chacha20poly1305::Error> for PairingError {
     fn from(_e: chacha20poly1305::Error) -> PairingError {
         PairingError::BadDecryption
+    }
+}
+impl From<ed25519_dalek::SignatureError> for PairingError {
+    fn from(_e: ed25519_dalek::SignatureError) -> PairingError {
+        PairingError::BadSignature
     }
 }
 
@@ -103,6 +109,17 @@ impl PairingId {
             uuid::Uuid::try_parse_ascii(input_bytes).map_err(|_| PairingError::UuidError)?,
         ))
     }
+    pub fn from_tlv(identifier: &TLVIdentifier) -> Result<PairingId, PairingError> {
+        Ok(PairingId(
+            uuid::Uuid::try_parse_ascii(
+                identifier
+                    .data_slices()
+                    .get(0)
+                    .ok_or(PairingError::UuidError)?,
+            )
+            .map_err(|_| PairingError::UuidError)?,
+        ))
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
@@ -115,6 +132,9 @@ impl PairingPublicKey {
         }
         r.0.copy_from_slice(bytes);
         Ok(r)
+    }
+    pub fn as_ref(&self) -> &[u8; 32] {
+        &self.0
     }
 }
 
