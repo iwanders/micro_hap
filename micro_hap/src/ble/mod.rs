@@ -91,6 +91,10 @@ impl From<chacha20poly1305::Error> for HapBleError {
     }
 }
 
+pub trait HapBleService {
+    fn populate_support(&self) -> Result<crate::Service, HapBleError>;
+}
+
 // MUST have an instance id of 1, service 3e
 #[gatt_service(uuid = service::ACCESSORY_INFORMATION)]
 pub struct AccessoryInformationService {
@@ -150,7 +154,7 @@ pub struct AccessoryInformationService {
     pub adk_version: GattString<16>,
 }
 
-impl AccessoryInformationService {
+impl HapBleService for AccessoryInformationService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
@@ -380,7 +384,7 @@ pub struct ProtocolInformationService {
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x12u16.to_le_bytes())]
     version: GattString<16>,
 }
-impl ProtocolInformationService {
+impl HapBleService for ProtocolInformationService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
@@ -462,7 +466,7 @@ pub struct PairingService {
     pairings: FacadeDummyType,
 }
 
-impl PairingService {
+impl HapBleService for PairingService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
@@ -564,6 +568,81 @@ pub struct LightbulbService {
     #[characteristic(uuid=characteristic::ON, read, write )]
     on: bool,
 }
+impl HapBleService for LightbulbService {
+    fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        let mut service = crate::Service {
+            ble_handle: Some(self.handle),
+            uuid: service::LIGHTBULB.into(),
+            iid: SvcId(0x30),
+            attributes: Default::default(),
+            properties: crate::ServiceProperties::new().with_primary(true),
+        };
+
+        /*
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_INSTANCE.into(),
+                iid: CharId(0x14),
+                user_description: None,
+                ble: Some(
+                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
+                ),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+            */
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::SERVICE_SIGNATURE.into(),
+                iid: CharId(0x31u16),
+                user_description: None,
+                ble: Some(
+                    BleProperties::from_handle(self.service_signature.handle)
+                        .with_format_opaque()
+                        .with_properties(CharacteristicProperties::new().with_read(true)),
+                ),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::NAME.into(),
+                iid: CharId(0x32u16),
+                user_description: None,
+                ble: Some(
+                    BleProperties::from_handle(self.name.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        service
+            .attributes
+            .push(crate::Attribute {
+                uuid: characteristic::ON.into(),
+                iid: CharId(0x33u16),
+                user_description: None,
+                ble: Some(
+                    BleProperties::from_handle(self.on.handle)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
+                        .with_format(sig::Format::Boolean),
+                ),
+            })
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
+        Ok(service)
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
 /// Properties for a characteristic
@@ -636,15 +715,18 @@ pub struct HapPeripheralContext {
     information_service: crate::Service,
     protocol_service: crate::Service,
     pairing_service: crate::Service,
-    // pair_ctx: crate::pairing::PairContext<'static, 'static, 'static, 'static>,
+
+    user_services: heapless::Vec<crate::Service, 8>,
 }
 impl HapPeripheralContext {
-    fn services(&self) -> [&crate::Service; 3] {
+    fn services(&self) -> impl Iterator<Item = &crate::Service> {
         [
             &self.information_service,
             &self.protocol_service,
             &self.pairing_service,
         ]
+        .into_iter()
+        .chain(self.user_services.iter())
     }
 
     pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Attribute> {
@@ -690,15 +772,18 @@ impl HapPeripheralContext {
             information_service: information_service.populate_support()?,
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
+            user_services: Default::default(),
         })
+    }
+    pub fn add_service(&mut self, srv: &impl HapBleService) -> Result<(), HapBleError> {
+        self.user_services
+            .push(srv.populate_support()?)
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+        Ok(())
     }
 
     pub fn print_handles(&self) {
-        for k in [
-            &self.information_service,
-            &self.protocol_service,
-            &self.pairing_service,
-        ] {
+        for k in self.services() {
             for a in k.attributes.iter() {
                 let attr_id = a.iid;
                 let handle = a.ble_ref().handle;
@@ -1358,6 +1443,10 @@ mod test {
         info!("0x03: {z:#?}");
         let z = CharacteristicProperties::from_bits(0x10);
         info!("0x10: {z:#?}");
+
+        // b0 03
+        let z = CharacteristicProperties::from_bits(u16::from_le_bytes([0xb0, 0x03]));
+        info!("[0xb0, 0x03]: {z:#?}");
     }
 
     #[gatt_server]
@@ -1365,6 +1454,7 @@ mod test {
         accessory_information: AccessoryInformationService,
         protocol: ProtocolInformationService,
         pairing: PairingService,
+        lightbulb: LightbulbService,
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> HapServices<'_> {
@@ -1463,6 +1553,7 @@ mod test {
             &server.protocol,
             &server.pairing,
         )?;
+        ctx.add_service(&server.lightbulb)?;
 
         ctx.print_handles();
         /*
@@ -1496,6 +1587,8 @@ mod test {
         let handle_identify = 0x24;
         let handle_service_signature = 0x44;
         let handle_version = 0x47;
+        let handle_lightbulb_on = 0x6a;
+        let handle_lightbulb_name = 0x67;
 
         // Next followes a few 'random' tests created when I was working on the signatures.
         // After that follows a full pairing, pair verify exchange and subsequent messages.
@@ -2099,7 +2192,7 @@ mod test {
             assert_eq!(&*resp_buffer, outgoing);
         }
 
-        // Service signature again.
+        // Service signature on the lightbulb service.
         {
             let incoming_data: &[u8] = &[
                 0xef, 0xdd, 0xe0, 0xf7, 0xc8, 0x2a, 0xec, 0x9e, 0xa5, 0xcc, 0x78, 0x68, 0x03, 0x1c,
@@ -2120,6 +2213,105 @@ mod test {
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // service sig again!
+        {
+            let incoming_data: &[u8] = &[
+                0x1f, 0x72, 0x43, 0xdd, 0x38, 0x37, 0xf6, 0xab, 0x2a, 0x5d, 0x11, 0x03, 0xd1, 0xc9,
+                0xe5, 0x5a, 0xf5, 0x37, 0xab, 0x93, 0x41,
+            ];
+            let outgoing: &[u8] = &[
+                0xf8, 0x36, 0x5b, 0x0e, 0x79, 0x60, 0x84, 0xed, 0x09, 0x8c, 0xd5, 0x93, 0x3c, 0x5d,
+                0x5f, 0x3a, 0xb0, 0x1f, 0x66, 0x2d, 0xe2, 0x90, 0x22, 0x7b, 0xac, 0xd8, 0xd3, 0xc7,
+                0xdb, 0xb1, 0xb8, 0xba, 0xba, 0x47, 0xc1, 0x22, 0x84, 0x6f, 0x72, 0x75, 0x3b, 0xba,
+                0xc2, 0x18, 0x96, 0x8e, 0xeb, 0xaa, 0xb4, 0x2a, 0x15, 0x3e, 0x88, 0xed, 0x10, 0x81,
+                0xcc, 0x8b, 0xce, 0xf6, 0x96, 0xe4, 0x89, 0x24, 0x6b, 0xf0, 0x11, 0xb5, 0x72, 0x17,
+                0xdd, 0x4c, 0x98, 0x40,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_service_signature,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Characteristic signature read on the 'On' characteristic!
+        {
+            let incoming_data: &[u8] = &[
+                0x36, 0x56, 0xec, 0xae, 0xff, 0x04, 0xf0, 0x8d, 0x37, 0x5b, 0x29, 0xd1, 0x1d, 0x4b,
+                0x77, 0xf8, 0x17, 0xe4, 0x85, 0x3f, 0x1a,
+            ];
+            let outgoing: &[u8] = &[
+                0xc7, 0xb5, 0x35, 0x28, 0xde, 0x0c, 0xe6, 0x16, 0xa8, 0xac, 0xe8, 0x3f, 0x5c, 0x12,
+                0x96, 0xe2, 0x5b, 0xe8, 0xfd, 0x62, 0xe5, 0x9d, 0xed, 0x3b, 0xb6, 0x0c, 0x11, 0x5f,
+                0xe9, 0xb2, 0xaa, 0xd1, 0xea, 0x91, 0x88, 0x7f, 0x20, 0x75, 0x49, 0x75, 0x98, 0xde,
+                0xa9, 0xe1, 0x63, 0x7c, 0xbe, 0x60, 0x29, 0x31, 0x1d, 0xcc, 0xde, 0xc3, 0xd9, 0x24,
+                0x60, 0x6e, 0x0f, 0x92, 0x7d, 0xb3, 0x41, 0xdb, 0x6e, 0x81, 0xa7, 0xc8, 0x82, 0x23,
+                0x7c, 0xbf, 0x70, 0x01,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_lightbulb_on)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Something on the name handle.
+        {
+            let incoming_data: &[u8] = &[
+                0xe1, 0x16, 0x70, 0x52, 0xa7, 0x1e, 0x17, 0x9d, 0x53, 0x90, 0x83, 0xc2, 0x96, 0x6a,
+                0x16, 0xa9, 0x4a, 0x56, 0x1d, 0xd4, 0xb4,
+            ];
+            let outgoing: &[u8] = &[
+                0xc0, 0x1f, 0xe4, 0x04, 0x88, 0xb1, 0xcd, 0xa1, 0x36, 0x05, 0x70, 0xb3, 0x81, 0x8f,
+                0x8b, 0x31, 0x85, 0x8f, 0x80, 0x20, 0xbc, 0xf2, 0x0a, 0x09, 0xd9, 0x6e, 0x00, 0x4c,
+                0xf0, 0xf3, 0x4d, 0x47, 0x8d, 0x85, 0xfe, 0x7a, 0xff, 0xb1, 0xd5, 0x99, 0xe9, 0xc8,
+                0xea, 0xde, 0xdd, 0xd4, 0xd2, 0xfb, 0x2c, 0x0f, 0x63, 0x7f, 0x95, 0x75, 0x38, 0x58,
+                0x40, 0x74, 0x08, 0x4a, 0xda, 0xbf, 0xe1, 0x98, 0xc5, 0xe8, 0x0f, 0x03, 0x6c, 0xb5,
+                0xc1, 0xb1, 0x4f, 0x5b,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_lightbulb_name,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Now we read the firmware revision string!
+        if false {
+            let incoming_data: &[u8] = &[
+                0x08, 0x0e, 0xc5, 0xff, 0x16, 0x22, 0x78, 0x24, 0xb6, 0xfc, 0x81, 0x4e, 0xf8, 0x28,
+                0x14, 0x67, 0xa8, 0xb1, 0xed, 0x6b, 0xb9,
+            ];
+            let outgoing: &[u8] = &[
+                0x51, 0x1e, 0x94, 0x9a, 0xa4, 0x75, 0x93, 0xaf, 0x60, 0xb4, 0xa6, 0xd3, 0x2c, 0xa4,
+                0x2f, 0xf5, 0xca, 0x2a, 0x34, 0xeb, 0x4f, 0x70, 0x0e, 0x39,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                incoming_data,
+                handle_firmware_version,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            // assert_eq!(&*resp_buffer, outgoing);
         }
 
         Ok(())
