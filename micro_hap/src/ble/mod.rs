@@ -216,7 +216,11 @@ impl AccessoryInformationService {
                 uuid: characteristic::SERIAL_NUMBER.into(),
                 iid: CharId(6),
                 user_description: None,
-                ble: Some(BleProperties::from_handle(self.serial_number.handle)),
+                ble: Some(
+                    BleProperties::from_handle(self.serial_number.handle)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_format(sig::Format::StringUtf8),
+                ),
             })
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -1555,6 +1559,7 @@ mod test {
         let handle_pair_setup = 84;
         let handle_pair_verify = 87;
         let handle_hardware_revision = 0x36;
+        let handle_serial_number = 0x30;
         // m1 & m2
         {
             let incoming_data: &[u8] = &[
@@ -1785,13 +1790,29 @@ mod test {
                 handle_hardware_revision,
             )
             .await?;
-            // Ours:
-            //   04 10 91 52 76 bb 26 00 00 80 00 10 00 00 53 00 00 00 07 02 01 00 06 10 91 52 76 bb 26 00 00 80 00 10 00 00 3e 00 00 00 0a 02 10 00 0c 07 04 00 00 27 01 00 00
-            // Expected:
-            //   04 10 91 52 76 bb 26 00 00 80 00 10 00 00 53 00 00 00 07 02 01 00 06 10 91 52 76 bb 26 00 00 80 00 10 00 00 3e 00 00 00 0a 02 10 00 0c 07 19 00 00 27 01 00 00
-            //                                                                                                                                             ^^
-
             let resp = ctx.handle_read_outgoing(handle_hardware_revision).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // And then the serial number.
+        {
+            let incoming_data: &[u8] = &[
+                0x55, 0x04, 0xb0, 0xec, 0xc5, 0x05, 0xc1, 0xa2, 0x24, 0x2a, 0x56, 0x78, 0xd5, 0x32,
+                0xa0, 0xe6, 0x74, 0xa6, 0x2c, 0x5b, 0xb0,
+            ];
+            let outgoing: &[u8] = &[
+                0x7d, 0x13, 0x44, 0x5e, 0xd2, 0xfd, 0x1b, 0xe4, 0x49, 0xfb, 0x18, 0xb9, 0xfd, 0x63,
+                0x81, 0xb7, 0xc2, 0x54, 0xbe, 0xbf, 0x29, 0xc0, 0x94, 0x2a, 0x25, 0x04, 0x7a, 0x51,
+                0x09, 0x7d, 0x38, 0x5c, 0x05, 0x33, 0xec, 0xde, 0x77, 0xbf, 0x76, 0x5e, 0x55, 0xe2,
+                0x33, 0xd8, 0x68, 0x75, 0xe3, 0x90, 0x9a, 0x9b, 0x3b, 0x83, 0x46, 0x6c, 0xf9, 0x4c,
+                0x68, 0x19, 0xc8, 0xfc, 0xdb, 0x84, 0x18, 0x4a, 0x08, 0x88, 0xce, 0x5b, 0xcd, 0x2b,
+                0xac, 0x34, 0x1d, 0x0f,
+            ];
+            ctx.handle_write_incoming_test(&hap, &mut support, incoming_data, handle_serial_number)
+                .await?;
+            let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
