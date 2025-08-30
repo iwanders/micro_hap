@@ -24,6 +24,8 @@ pub mod tlv;
 pub mod crypto;
 use crypto::aead::ControlChannel;
 
+// use heapless::pool::arc::Arc;
+
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //
@@ -231,6 +233,21 @@ impl BleProperties {
     }
 }
 
+// trait passed to the attribute interface.
+pub trait AccessoryInterface {
+    // notify?
+}
+
+// Attribute interface to actuate and provide data from attributes.
+pub trait AttributeInterface {
+    fn read(&self, data: &[u8]) -> Result<(), ()>;
+    fn write(&self, data: &[u8]) -> Result<(), ()>;
+}
+
+pub enum AttributeHandler {
+    ReadConstant(&'static [u8]),
+}
+
 #[derive(Clone, Debug)]
 pub struct Attribute {
     pub uuid: uuid::Uuid,
@@ -254,7 +271,7 @@ impl Attribute {
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
 #[derive(Clone, Debug, Default)]
 pub struct Session {
-    // The followinf four are in the hap substruct.
+    // The following four are in the hap substruct.
     /// Accessory to Controller control channel.
     pub a_to_c: ControlChannel,
     /// Controller to Accessory control channel.

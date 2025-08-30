@@ -27,13 +27,13 @@ embassy-time = "0.4"
 
 # http deps
 #embassy-net = { version = "0.7", features = ["proto-ipv4", "tcp", "medium-ip"] }
-httparse = "1.10.1"
+#httparse = "1.10.1"
 embedded-io-async = "0.6.1"
 # /http deps
 
 # For SRP
 sha2 = "0.10.9"
-crypto-bigint = "0.6.1"
+crypto-bigint = { version = "0.6.1", default-features = false }
 
 # For more crypto stuff
 hkdf = "0.12.4"
@@ -49,10 +49,10 @@ bitfield-struct = "0.11.0"
 heapless = { version = "0.8", features = ["serde"] }
 static_cell = "2.1"
 
-uuid = { version = "1.18.0", features = ["zerocopy"] }
+uuid = { version = "1.18.0", features = ["zerocopy"], default-features = false }
 
 # Initialisation of cryptographic helpers
-lazy_static = "1.5.0"
+lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 
 # logging
 defmt = { version = "1.0.1", optional = true }
