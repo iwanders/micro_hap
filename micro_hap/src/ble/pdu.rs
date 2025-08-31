@@ -457,6 +457,75 @@ impl From<ProtocolConfigurationRequestTLVType> for u8 {
     }
 }
 
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L17
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
+#[repr(u8)]
+pub enum BleBroadcastTLV {
+    /** HAP-Characteristic-Configuration-Param-Properties. */
+    Properties = 0x01,
+
+    /** HAP-Characteristic-Configuration-Param-Broadcast-Interval. */
+    BroadcastInterval = 0x02,
+}
+
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L17
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, Default, Copy, Clone)]
+#[repr(u8)]
+pub enum BleBroadcastInterval {
+    #[default]
+    Interval20ms = 0x01,
+    Interval1280ms = 0x02,
+    Interval2560ms = 0x03,
+}
+
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L37
+#[derive(Debug, Copy, Clone)]
+#[repr(C, packed)]
+pub struct CharacteristicConfigurationRequest {
+    pub header: RequestHeader,
+    pub char_id: CharId,
+    pub body_length: u16,
+    pub broadcast_enabled: Option<bool>,
+    pub broadcast_interval: Option<BleBroadcastInterval>,
+}
+impl CharacteristicConfigurationRequest {
+    pub fn parse_pdu(data: &[u8]) -> Result<Self, HapBleError> {
+        let header = RequestHeader::parse_pdu(data)?;
+        let aft = &data[RequestHeader::mem_size()..];
+
+        let char_id = CharId(u16::from_le_bytes([aft[0], aft[1]]));
+        let body_length = u16::from_le_bytes([aft[2], aft[3]]);
+        let body = &aft[4..4 + body_length as usize];
+
+        let mut res = CharacteristicConfigurationRequest {
+            header: *header,
+            char_id,
+            body_length,
+            broadcast_enabled: Default::default(),
+            broadcast_interval: Default::default(),
+        };
+
+        let reader = crate::tlv::TLVReader::new(body);
+        for entry in reader {
+            let entry = entry?;
+            if entry.type_id == BleBroadcastTLV::BroadcastInterval as u8 {
+                // interval
+                let entry_value = entry.short_data()?;
+                let enum_value: BleBroadcastInterval =
+                    BleBroadcastInterval::try_read_from_bytes(entry_value)
+                        .map_err(|_| HapBleError::InvalidValue)?;
+                res.broadcast_interval = Some(enum_value);
+            } else if entry.type_id == BleBroadcastTLV::Properties as u8 {
+                // param properties
+                res.broadcast_enabled = Some(entry.to_u32()? == 1);
+            } else {
+                todo!("unhandled entry type: 0x{:0>2x}", entry.type_id);
+            }
+        }
+        Ok(res)
+    }
+}
+
 pub mod tlvs {
     use super::*;
     use crate::typed_tlv;

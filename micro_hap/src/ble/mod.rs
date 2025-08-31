@@ -1236,8 +1236,70 @@ impl HapPeripheralContext {
                     .await?
             }
             pdu::OpCode::CharacteristicConfiguration => {
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L336
                 info!("CharacteristicConfiguration req: {:0>2x?}", data);
-                todo!()
+                if !security_active {
+                    // Nope...
+                    return Err(HapBleError::EncryptionError);
+                }
+
+                let req = pdu::CharacteristicConfigurationRequest::parse_pdu(data)?;
+                info!("CharacteristicConfiguration req: {:0>2x?}", req);
+
+                let interval = req.broadcast_interval.unwrap_or_default();
+
+                let broadcast_enabled = if let Some(broadcast_value) = req.broadcast_enabled {
+                    // Enabled broadcasts at the provided interval.
+                    {
+                        let chr = self
+                            .get_attribute_by_char(req.char_id)
+                            .ok_or(HapBleError::InvalidValue)?;
+                        if !chr.ble_ref().properties.supports_broadcast_notification() {
+                            error!(
+                                "setting broadcast for something that doesn't support broadcast notify"
+                            );
+                            return Err(HapBleError::InvalidValue);
+                        }
+                    }
+
+                    broadcast::configure_broadcast_notification(
+                        broadcast_value,
+                        interval,
+                        req.char_id,
+                    )?;
+                    broadcast_value
+                } else {
+                    // Do nothing?
+
+                    broadcast::configure_broadcast_notification(
+                        false,
+                        Default::default(),
+                        req.char_id,
+                    )?;
+                    false
+                };
+                // HAPBLECharacteristicGetConfigurationResponse
+                // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L172C10-L172C54
+                let chr = self
+                    .get_attribute_by_char(req.char_id)
+                    .ok_or(HapBleError::InvalidValue)?;
+
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+
+                let len = BodyBuilder::new_at(&mut buffer, len)
+                    .add_slice(
+                        pdu::BleBroadcastTLV::BroadcastInterval as u8,
+                        interval.as_bytes(),
+                    )
+                    .add_slice(
+                        pdu::BleBroadcastTLV::Properties as u8,
+                        (broadcast_enabled as u16).as_bytes(),
+                    )
+                    .end();
+
+                BufferResponse(len)
             }
             _ => {
                 return {

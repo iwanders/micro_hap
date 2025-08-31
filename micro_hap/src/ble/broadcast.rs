@@ -1,3 +1,4 @@
+use crate::CharId;
 use crate::crypto::hkdf_sha512;
 use crate::pairing::{PairContext, PairSupport, PairingError};
 // Some helpers to handle the whole broadcast key and global state number stuff.
@@ -43,5 +44,25 @@ pub fn broadcast_generate_key(
 
     support.set_ble_broadcast_parameters(&parameters)?;
 
+    Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L208
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L317
+// Combination of HAPBLECharacteristicEnableBroadcastNotifications and HAPBLECharacteristicDisableBroadcastNotifications
+//
+// also an hint is https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L135
+pub fn configure_broadcast_notification(
+    broadcast_enabled: bool,
+    interval: super::pdu::BleBroadcastInterval,
+    char_id: CharId,
+) -> Result<(), super::HapBleError> {
+    // How does this work is it just 3 bytes ( bool | interval[0,1] )
+
+    // NONCOMPLIANCE: Completely ignoring this whole broadcast thing.
+    error!(
+        "skipping broadcast configuration for char id 0x{:0>2x?}",
+        char_id
+    );
     Ok(())
 }

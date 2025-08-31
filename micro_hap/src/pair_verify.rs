@@ -365,7 +365,8 @@ pub fn pair_verify_start_session(
     info!("c_to_a key: {:0>2x?}", ctx.session.c_to_a.key);
 
     ctx.session.security_active = true;
-    ctx.session.transient = true;
+    // Its now a non-transient session?
+    ctx.session.transient = false;
 
     Ok(())
 }
