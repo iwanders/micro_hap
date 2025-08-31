@@ -1,5 +1,5 @@
 // use bitfield_struct::bitfield;
-use zerocopy::IntoBytes;
+use zerocopy::{IntoBytes, TryFromBytes};
 
 use crate::crypto::{
     aead,
@@ -124,10 +124,12 @@ pub fn pair_verify_process_m1(
     }
     ctx.server.pair_verify.setup.state = PairState::ReceivedM1;
 
-    let use_method = PairingMethod::PairVerify;
+    let mut use_method = PairingMethod::PairVerify;
     if method.is_some() {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L185
-        todo!();
+        info!("method: {:?}", method);
+        use_method = PairingMethod::try_read_from_bytes(method.short_data()?)
+            .map_err(|_| PairingError::IncorrectLength)?;
     }
 
     if public_key.len() != X25519_BYTES {
@@ -139,6 +141,7 @@ pub fn pair_verify_process_m1(
 
     if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
         //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
+        info!("Pair Resume M1: Resume Request");
         todo!();
         // Seems the fallback of this is just doing a pair verify? Perhaps we can just do that and skip implementing this?
     }
