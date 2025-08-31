@@ -21,7 +21,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // It's probably a good idea to follow that structure such that we can easily follow the code and if need be introspect
 // the data in intermediate stages in the reference.
 
-use crate::tlv::{TLV, TLVError, TLVReader, TLVWriter};
+use crate::tlv::{TLVError, TLVReader, TLVWriter};
 use uuid;
 
 use crate::crypto::{

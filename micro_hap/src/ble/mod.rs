@@ -1,9 +1,7 @@
 use crate::AccessoryInformationStatic;
 use crate::{characteristic, descriptor, service};
 use trouble_host::prelude::*;
-mod util;
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use util::GattString;
+
 mod pdu;
 use crate::{AccessoryInterface, BleProperties, DataSource};
 use bitfield_struct::bitfield;

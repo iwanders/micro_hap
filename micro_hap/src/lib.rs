@@ -330,6 +330,7 @@ pub trait AccessoryInterface {
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
     fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        let _ = char_id;
         None::<&[u8]>
     }
 }
