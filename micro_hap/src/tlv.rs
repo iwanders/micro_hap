@@ -56,13 +56,20 @@ impl<'a> TLVReader<'a> {
         }
     }
 
+    pub fn next_segment_allow_zero(&mut self) -> Option<Result<TLV<'a>, TLVError>> {
+        self.next_segment_worker(true)
+    }
+
     pub fn next_segment(&mut self) -> Option<Result<TLV<'a>, TLVError>> {
+        self.next_segment_worker(false)
+    }
+    fn next_segment_worker(&mut self, allow_zero: bool) -> Option<Result<TLV<'a>, TLVError>> {
         if (self.position + 1) < self.buffer.len() {
             let type_id = self.buffer[self.position];
             let length = self.buffer[self.position + 1];
 
             // Ensure we ignore zero bytes at the end of the buffer.
-            if length == 0 {
+            if length == 0 && !allow_zero {
                 return None;
             }
             let data_end = self.position + 2 + length as usize;
@@ -308,6 +315,32 @@ impl<'a> TLVWriter<'a> {
         }
         Ok(())
     }
+}
+
+/// Helper macro to make typed newtype wrappers around TLV
+#[macro_export]
+macro_rules! typed_tlv {
+    ( $name:ident, $tlv_type:expr  ) => {
+        #[derive(PartialEq, Eq, Debug, Clone)]
+        pub struct $name<'a>(crate::tlv::TLV<'a>);
+        impl<'a> $name<'a> {
+            pub fn tied(data: &'a [u8]) -> Self {
+                Self(crate::tlv::TLV::tied(data, $tlv_type))
+            }
+        }
+        impl<'a> core::ops::Deref for $name<'a> {
+            type Target = crate::tlv::TLV<'a>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl<'a> core::ops::DerefMut for $name<'a> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
 }
 
 #[cfg(test)]

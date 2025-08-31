@@ -25,12 +25,13 @@ impl<T> MemSizeOf for T {
 pub trait ParsePdu {
     type Output;
     fn parse_pdu(b: &[u8]) -> Result<&Self::Output, HapBleError>;
+    fn parse_pdu_with_remainder(b: &[u8]) -> Result<(&Self::Output, &[u8]), HapBleError>;
 }
 
 impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
     type Output = T;
 
-    fn parse_pdu(data: &[u8]) -> Result<&Self::Output, HapBleError> {
+    fn parse_pdu_with_remainder(data: &[u8]) -> Result<(&Self::Output, &[u8]), HapBleError> {
         let exp = T::mem_size();
         if data.len() < exp {
             return Err(HapBleError::UnexpectedDataLength {
@@ -38,7 +39,14 @@ impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
                 actual: data.len(),
             });
         }
-        T::try_ref_from_bytes(&data[0..exp]).map_err(|_| HapBleError::InvalidValue)
+        let our_data = &data[0..exp];
+        let remainder = &data[exp..];
+        T::try_ref_from_bytes(our_data)
+            .map(|d| (d, remainder))
+            .map_err(|_| HapBleError::InvalidValue)
+    }
+    fn parse_pdu(data: &[u8]) -> Result<&Self::Output, HapBleError> {
+        Self::parse_pdu_with_remainder(data).map(|(d, _rem)| d)
     }
 }
 
@@ -399,6 +407,75 @@ impl From<InfoResponseTLVType> for u8 {
     fn from(value: InfoResponseTLVType) -> Self {
         value as u8
     }
+}
+
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct ProtocolConfigurationRequestHeader {
+    pub header: RequestHeader,
+    pub svc_id: SvcId,
+    pub body_length: u16,
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProtocol%2BConfiguration.c#L117-L129
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
+#[repr(u8)]
+pub enum ProtocolConfigurationTLVType {
+    /** HAP-Param-Current-State-Number. */
+    CurrentStateNumber = 0x01,
+
+    /** HAP-Param-Current-Config-Number. */
+    CurrentConfigNumber = 0x02,
+
+    /** HAP-Param-Accessory-Advertising-Identifier. */
+    AccessoryAdvertisingIdentifier = 0x03,
+
+    /** HAP-Param-Broadcast-Encryption-Key. */
+    BroadcastEncryptionKey = 0x04,
+}
+impl From<ProtocolConfigurationTLVType> for u8 {
+    fn from(value: ProtocolConfigurationTLVType) -> Self {
+        value as u8
+    }
+}
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L17
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
+#[repr(u8)]
+pub enum ProtocolConfigurationRequestTLVType {
+    /** Generate-Broadcast-Encryption-Key. */
+    GenerateBroadcastEncryptionKey = 0x01,
+
+    /** Get-All-Params. */
+    GetAllParams = 0x02,
+
+    /** Set-Accessory-Advertising-Identifier. */
+    SetAccessoryAdvertisingIdentifier = 0x03,
+}
+impl From<ProtocolConfigurationRequestTLVType> for u8 {
+    fn from(value: ProtocolConfigurationRequestTLVType) -> Self {
+        value as u8
+    }
+}
+
+pub mod tlvs {
+    use super::*;
+    use crate::typed_tlv;
+    typed_tlv!(
+        TLVProtocolConfigurationCurrentState,
+        ProtocolConfigurationTLVType::CurrentStateNumber
+    );
+    typed_tlv!(
+        TLVProtocolConfigurationConfigNumber,
+        ProtocolConfigurationTLVType::CurrentConfigNumber
+    );
+    typed_tlv!(
+        TLVProtocolConfigurationAdvertisingIdentifier,
+        ProtocolConfigurationTLVType::AccessoryAdvertisingIdentifier
+    );
+    typed_tlv!(
+        TLVProtocolConfigurationBroadcastEncryptionKey,
+        ProtocolConfigurationTLVType::BroadcastEncryptionKey
+    );
 }
 
 // heh

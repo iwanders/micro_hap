@@ -416,34 +416,7 @@ pub struct SetupCode(pub [u8; 11]);
 
 pub mod tlv {
     use super::*;
-    /// Helper macro to make typed newtype wrappers around TLV
-    macro_rules! typed_tlv {
-        ( $name:ident, $tlv_type:expr  ) => {
-            #[derive(PartialEq, Eq, Debug, Clone)]
-            pub struct $name<'a>(TLV<'a>);
-            impl<'a> $name<'a> {
-                pub fn tied(data: &'a [u8]) -> Self {
-                    Self(TLV::tied(data, $tlv_type))
-                }
-                pub fn tlv_type(&self) -> TLVType {
-                    $tlv_type
-                }
-            }
-            impl<'a> core::ops::Deref for $name<'a> {
-                type Target = TLV<'a>;
-
-                fn deref(&self) -> &Self::Target {
-                    &self.0
-                }
-            }
-            impl<'a> core::ops::DerefMut for $name<'a> {
-                fn deref_mut(&mut self) -> &mut Self::Target {
-                    &mut self.0
-                }
-            }
-        };
-    }
-
+    use crate::typed_tlv;
     // And then make the concrete TLV types.
     typed_tlv!(TLVMethod, TLVType::Method);
     typed_tlv!(TLVState, TLVType::State);

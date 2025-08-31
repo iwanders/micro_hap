@@ -937,6 +937,63 @@ impl HapPeripheralContext {
         }
     }
 
+    // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L29
+    pub async fn protocol_configure_request(
+        &mut self,
+        pair_support: &mut impl crate::pairing::PairSupport,
+        req: &pdu::ProtocolConfigurationRequestHeader,
+        payload: &[u8],
+    ) -> Result<BufferResponse, HapBleError> {
+        let _ = req;
+        let svc_id = req.svc_id; // its unaligned, so copy it before we use it.
+        if let Some(svc) = self.get_service_by_svc(svc_id) {
+            if !svc.properties.configurable() {
+                return Err(HapBleError::UnexpectedRequest);
+            }
+
+            let mut buffer = self.buffer.borrow_mut();
+            let reply = req.header.to_success();
+            let len = reply.write_into_length(*buffer)?;
+
+            let mut generate_key: bool = false;
+            let mut get_all: bool = false;
+
+            // This TLV stuff has zero lengths, which the reader (AND the reference?) considers invalid.
+            let mut reader = crate::tlv::TLVReader::new(&payload);
+            while let Some(z) = reader.next_segment_allow_zero() {
+                let z = z?;
+                if z.type_id == pdu::ProtocolConfigurationRequestTLVType::GetAllParams as u8 {
+                    get_all = true;
+                } else if z.type_id
+                    == pdu::ProtocolConfigurationRequestTLVType::GenerateBroadcastEncryptionKey
+                        as u8
+                {
+                    generate_key = true;
+                } else {
+                    todo!("unhandled protocol configuration type id: {}", z.type_id);
+                }
+            }
+
+            if generate_key {
+                // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
+                todo!();
+            }
+            if get_all {
+                todo!();
+            }
+
+            todo!();
+
+            let len = BodyBuilder::new_at(*buffer, len)
+                // .add_slice(pdu::InfoResponseTLVType::SetupHash, &setup_hash)
+                .end();
+            Ok(BufferResponse(len))
+        } else {
+            error!("Got protocol configure on unknown service: {:?}", svc_id);
+            return Err(HapBleError::UnexpectedRequest);
+        }
+    }
+
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
         //&self,
         data: &[u8],
@@ -1125,8 +1182,13 @@ impl HapPeripheralContext {
                     // Nope...
                     return Err(HapBleError::EncryptionError);
                 }
-
-                todo!()
+                // Well ehm, what do we do here?
+                let (req, payload) =
+                    pdu::ProtocolConfigurationRequestHeader::parse_pdu_with_remainder(data)?;
+                // let remainder = data[req.body_length];
+                info!("Info req: {:?}", req);
+                self.protocol_configure_request(pair_support, &req, payload)
+                    .await?
             }
             _ => {
                 return {
