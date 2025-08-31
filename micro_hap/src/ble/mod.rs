@@ -470,6 +470,7 @@ impl HapBleService for PairingService {
 }
 
 pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32);
+pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33);
 #[gatt_service(uuid = service::LIGHTBULB)]
 pub struct LightbulbService {
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
@@ -483,11 +484,11 @@ pub struct LightbulbService {
 
     // 0x0023
     /// Name for the device.
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x32u16.to_le_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_LIGHTBULB_NAME.0.to_le_bytes())]
     #[characteristic(uuid=characteristic::NAME, read, write )]
     pub name: FacadeDummyType,
 
-    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x33u16.to_le_bytes())]
+    #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_LIGHTBULB_ON.0.to_le_bytes())]
     #[characteristic(uuid=characteristic::ON, read, write )]
     on: FacadeDummyType,
 }
@@ -554,7 +555,8 @@ impl HapBleService for LightbulbService {
                                     .with_supports_broadcast_notification(true),
                             )
                             .with_format(sig::Format::Boolean),
-                    ),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -1539,16 +1541,24 @@ mod test {
 
         struct LightBulbAccessory {
             name: HeaplessString<32>,
+            bulb_on_state: bool,
         }
         impl crate::AccessoryInterface for LightBulbAccessory {
             fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
-                Some(self.name.as_bytes())
+                if char_id == CHAR_ID_LIGHTBULB_NAME {
+                    Some(self.name.as_bytes())
+                } else if char_id == CHAR_ID_LIGHTBULB_ON {
+                    Some(self.bulb_on_state.as_bytes())
+                } else {
+                    todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                }
             }
         }
 
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let accessory = LightBulbAccessory {
             name: "Light Bulb".try_into().unwrap(),
+            bulb_on_state: false,
         };
 
         let pair_ctx = {
@@ -2757,6 +2767,53 @@ mod test {
                 let _ = outgoing;
                 assert_eq!(&*resp_buffer, outgoing);
             }
+
+            // Another write on on the lightbulb!
+            // 0x62, 0x23, 0x31, 0x37, 0x2f, 0xf0, 0x06, 0x49, 0xaf, 0xcb, 0x62, 0x07, 0xdb, 0x24, 0xe1, 0x6f, 0x41, 0x9d, 0x3e, 0xe0, 0x1e
+            {
+                struct LightBulbOnTest {
+                    incoming: &'static [u8],
+                    outgoing: &'static [u8],
+                }
+                let test = [
+                    LightBulbOnTest {
+                        incoming: &[
+                            0x62, 0x23, 0x31, 0x37, 0x2f, 0xf0, 0x06, 0x49, 0xaf, 0xcb, 0x62, 0x07,
+                            0xdb, 0x24, 0xe1, 0x6f, 0x41, 0x9d, 0x3e, 0xe0, 0x1e,
+                        ],
+                        outgoing: &[
+                            0x4a, 0x16, 0x2b, 0x72, 0x80, 0x44, 0x98, 0x00, 0x04, 0x01, 0x24, 0xc8,
+                            0x5a, 0xff, 0xec, 0x83, 0xa6, 0xf5, 0xe3, 0xa3, 0xc5, 0x73, 0x71, 0xb1,
+                        ],
+                    },
+                    LightBulbOnTest {
+                        incoming: &[
+                            0xd1, 0xdc, 0x5e, 0x02, 0x11, 0x6d, 0x75, 0x31, 0xa7, 0x51, 0x4d, 0x42,
+                            0xac, 0x61, 0x42, 0x3a, 0x71, 0xb8, 0x16, 0x93, 0x63,
+                        ],
+                        outgoing: &[
+                            0x53, 0x82, 0x18, 0xca, 0xf4, 0x7f, 0x5f, 0xb0, 0x79, 0x37, 0x45, 0x63,
+                            0xcf, 0xca, 0xb5, 0x69, 0x9a, 0x4e, 0x6c, 0x3f, 0x5e, 0x28, 0x96, 0x54,
+                        ],
+                    },
+                ];
+                for LightBulbOnTest { incoming, outgoing } in test {
+                    ctx.handle_write_incoming_test(
+                        &hap,
+                        &mut support,
+                        &accessory,
+                        incoming,
+                        handle_lightbulb_on,
+                    )
+                    .await?;
+                    let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+                    let resp_buffer = resp.expect("expecting a outgoing response");
+                    info!("outgoing: {:0>2x?}", &*resp_buffer);
+                    assert_eq!(&*resp_buffer, outgoing);
+                }
+            }
+
+            // And now we go into pair verify yet again!
         }
 
         Ok(())
