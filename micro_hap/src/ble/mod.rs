@@ -1235,6 +1235,10 @@ impl HapPeripheralContext {
                 self.protocol_configure_request(pair_support, &req, payload)
                     .await?
             }
+            pdu::OpCode::CharacteristicConfiguration => {
+                info!("CharacteristicConfiguration req: {:0>2x?}", data);
+                todo!()
+            }
             _ => {
                 return {
                     error!("Failed to handle: {:?}", header);
@@ -2528,9 +2532,6 @@ mod test {
 
         // Write to service signature -> Protocol Configuration!
         {
-            // got:          02, 1f, 00, 31, 00, 01, 02, 00, 00, 02, 01, 00, 03, 06, 57, 3b, 20, a7, e7, c4, 04, 20, 17, 2d, 94, 5b, e1, 8e, fe, 3d, b3, ba, 9b, 97, ce, 1b, 48, b4, 71, ab, a3, cd, ee, 11, de, 7d, 03, c1, b0, 59, 70, 3c, a0, 4d
-            // Expected;                         01, 02, 01, 00, 02, 01, 01, 03, 06, 57, 3b, 20, a7, e7, c4, 04, 20, 17, 2d, 94, 5b, e1, 8e, fe, 3d, b3, ba, 9b, 97, ce, 1b, 48, b4, 71, ab, a3, cd, ee, 11, de, 7d, 03, c1, b0, 59, 70, 3c, a0, 4d
-            // This: 03, 06, 57, 3b, 20, a7, e7, c4, is the device id.
             let incoming_data: &[u8] = &[
                 0xdb, 0x5c, 0xf3, 0x57, 0x88, 0x99, 0x53, 0xab, 0xc5, 0xa1, 0x7d, 0xa1, 0x45, 0xdd,
                 0x70, 0x09, 0x4f, 0x5b, 0x9a, 0xa5, 0xbf, 0xa3, 0x2e, 0x3b, 0x6d, 0x54, 0x2f,
@@ -2555,6 +2556,145 @@ mod test {
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Write request to name
+        {
+            let incoming_data: &[u8] = &[
+                0x5e, 0x7b, 0xa0, 0x2b, 0x34, 0xcf, 0x30, 0xeb, 0xa5, 0xab, 0x30, 0xd9, 0x1d, 0x3e,
+                0x75, 0xa7, 0xef, 0xbb, 0xf3, 0x22, 0x6b,
+            ];
+            let outgoing: &[u8] = &[
+                0xb9, 0x71, 0xfc, 0x5a, 0x41, 0xe5, 0xc8, 0xd0, 0x57, 0x51, 0x0a, 0x9c, 0x4b, 0x3d,
+                0x05, 0x47, 0x21, 0xf7, 0xd9, 0xa7, 0xa9, 0xc2, 0xcd, 0x2e, 0xd3, 0xb6, 0x10, 0x45,
+                0x9c, 0x22, 0x12, 0x00, 0xd8, 0xf4, 0x62, 0x64, 0xb3, 0xc6,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_lightbulb_name,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Write request to firmware revision.
+        {
+            let incoming_data: &[u8] = &[
+                0x21, 0x23, 0x0f, 0xbd, 0x0b, 0xf6, 0x1d, 0xef, 0x31, 0xe1, 0xfb, 0xaa, 0x09, 0x48,
+                0xd5, 0xb2, 0x1c, 0x6e, 0x89, 0x51, 0xc9,
+            ];
+            let outgoing: &[u8] = &[
+                0x00, 0xb3, 0x6c, 0x60, 0x8e, 0x80, 0x80, 0x5c, 0x75, 0x03, 0xb5, 0xdb, 0x85, 0x54,
+                0x96, 0xc2, 0x70, 0x2e, 0xcf, 0xdc, 0x0c, 0xef, 0x75, 0xdc,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &accessory,
+                incoming_data,
+                handle_firmware_version,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            let _ = outgoing;
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Write to name... three times... oh, different handles.
+        {
+            struct LightbulbNameTest {
+                handle: u16,
+                incoming: &'static [u8],
+                outgoing: &'static [u8],
+            }
+            let tests = [
+                LightbulbNameTest {
+                    handle: handle_lightbulb_name,
+                    incoming: &[
+                        0xa0, 0x04, 0x3c, 0x53, 0xab, 0xfb, 0xcd, 0x12, 0xaa, 0x11, 0x9b, 0xc7,
+                        0x7c, 0xf1, 0xdf, 0x26, 0x9b, 0x13, 0x51, 0x71, 0x6c,
+                    ],
+                    outgoing: &[
+                        0xbb, 0xe5, 0x86, 0x80, 0x08, 0xea, 0xfe, 0xbf, 0xda, 0x2a, 0xf5, 0xbd,
+                        0x76, 0x1f, 0x63, 0x63, 0x0a, 0xc7, 0x56, 0x27, 0x1c, 0x2f, 0x37, 0x9a,
+                        0xa5, 0xca, 0x36, 0x01, 0xfd, 0xa5, 0x9e, 0x2a, 0xda,
+                    ],
+                },
+                LightbulbNameTest {
+                    handle: handle_lightbulb_name,
+                    incoming: &[
+                        0xf8, 0xf7, 0x74, 0x51, 0xd9, 0x19, 0x82, 0x13, 0x6f, 0x74, 0x93, 0x6a,
+                        0xb4, 0x6d, 0xb4, 0xe2, 0x52, 0x97, 0x2d, 0xe9, 0xcd,
+                    ],
+                    outgoing: &[
+                        0x75, 0x72, 0xd3, 0x03, 0x1c, 0x1d, 0x46, 0x1b, 0xa4, 0xba, 0x08, 0x11,
+                        0x20, 0xb8, 0x56, 0xb5, 0xac, 0x44, 0xb5, 0xf1, 0x30, 0xbc, 0xc9, 0xfc,
+                        0xd9, 0x60, 0xbc, 0x59, 0xcb, 0x78, 0xb4, 0x49, 0x7b,
+                    ],
+                },
+                LightbulbNameTest {
+                    handle: handle_name,
+                    incoming: &[
+                        0x84, 0x32, 0x35, 0x2a, 0x17, 0xa9, 0x03, 0x54, 0x56, 0xf8, 0x41, 0x3f,
+                        0x30, 0x83, 0x35, 0x4e, 0xd7, 0x52, 0x62, 0x3e, 0x12,
+                    ],
+                    outgoing: &[
+                        0x97, 0x31, 0x55, 0x88, 0xbf, 0x18, 0x00, 0x0c, 0x60, 0x08, 0x56, 0x77,
+                        0xa9, 0x4f, 0x8c, 0xc2, 0x57, 0x83, 0x51, 0x7e, 0x9f, 0x0e, 0x0d, 0x32,
+                        0xd8, 0x3c, 0x80, 0xb8, 0x48, 0x33, 0xa8, 0x6c, 0x9e, 0x90, 0x72, 0x33,
+                        0xd3, 0x7e,
+                    ],
+                },
+            ];
+            for LightbulbNameTest {
+                incoming,
+                outgoing,
+                handle,
+            } in tests
+            {
+                ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming, handle)
+                    .await?;
+                let resp = ctx.handle_read_outgoing(handle).await?;
+                let resp_buffer = resp.expect("expecting a outgoing response");
+                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                assert_eq!(&*resp_buffer, outgoing);
+            }
+
+            // And then, a write to on.
+            {
+                let incoming_data: &[u8] = &[
+                    0xec, 0x4b, 0x97, 0xbd, 0x2f, 0xcf, 0x72, 0x7f, 0x2f, 0xf9, 0x69, 0x94, 0x64,
+                    0x8b, 0x55, 0x75, 0x58, 0xb1, 0xed, 0xaf, 0x75, 0x7d, 0xd5, 0x82, 0x16, 0xbc,
+                    0xb5, 0x52, 0x4e, 0x78,
+                ];
+                let outgoing: &[u8] = &[
+                    0xcd, 0xa9, 0x7e, 0x31, 0x07, 0xb8, 0x08, 0x94, 0xea, 0xd6, 0x86, 0x8b, 0x13,
+                    0x60, 0x17, 0xc5, 0xe1, 0x6c, 0xc7, 0x8e, 0x7a, 0xbc, 0x54, 0xdf, 0xfb, 0xc3,
+                    0x9d, 0xe3,
+                ];
+                ctx.handle_write_incoming_test(
+                    &hap,
+                    &mut support,
+                    &accessory,
+                    incoming_data,
+                    handle_lightbulb_on,
+                )
+                .await?;
+                let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+                let resp_buffer = resp.expect("expecting a outgoing response");
+                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                let _ = outgoing;
+                assert_eq!(&*resp_buffer, outgoing);
+            }
         }
 
         Ok(())
