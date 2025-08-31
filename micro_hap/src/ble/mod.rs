@@ -2,6 +2,7 @@ use crate::AccessoryInformationStatic;
 use crate::{characteristic, descriptor, service};
 use trouble_host::prelude::*;
 
+pub mod broadcast;
 mod pdu;
 use crate::{AccessoryInterface, BleProperties, DataSource};
 use bitfield_struct::bitfield;
@@ -974,7 +975,9 @@ impl HapPeripheralContext {
 
             if generate_key {
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
-                todo!();
+                let mut ctx = self.pair_ctx.borrow_mut();
+                broadcast::broadcast_generate_key(&mut *ctx, pair_support)
+                    .map_err(|_| HapBleError::InvalidValue)?;
             }
             if get_all {
                 todo!();

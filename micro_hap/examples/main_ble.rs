@@ -44,6 +44,7 @@ mod ble_bas_peripheral {
         pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
         pub pairings:
             std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
+        pub global_state_number: u16,
     }
     impl micro_hap::pairing::PairSupport for ActualPairSupport {
         fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
@@ -62,6 +63,15 @@ mod ble_bas_peripheral {
 
         fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
             Ok(self.pairings.get(id))
+        }
+
+        fn get_global_state_number(&self) -> Result<u16, PairingError> {
+            Ok(self.global_state_number)
+        }
+        /// Set the global state number, this is used by the BLE transport.
+        fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+            self.global_state_number = value;
+            Ok(())
         }
     }
 

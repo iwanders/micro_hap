@@ -299,7 +299,7 @@ impl Attribute {
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
 #[derive(Clone, Debug, Default)]
 pub struct Session {
-    // The following four are in the hap substruct.
+    // The following 5 are in the hap substruct.
     /// Accessory to Controller control channel.
     pub a_to_c: ControlChannel,
     /// Controller to Accessory control channel.
@@ -308,6 +308,8 @@ pub struct Session {
     pub transient: bool,
     /// Whether the security session is active.
     pub security_active: bool,
+    /// The pairing id that this session was created for.
+    pub pairing_id: crate::pairing::PairingId,
     // ble specific data here?
 }
 

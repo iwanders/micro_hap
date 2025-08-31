@@ -296,6 +296,7 @@ pub fn pair_verify_process_m3(
 
     // NONCOMPLIANCE reference stores session->state.pairVerify.pairingID = (int) key;, but we use the full pairing id?
     // do we need to track integers?
+    ctx.session.pairing_id = pairing_id;
 
     // What's next, we collect: IOS public key, pairing id, accessory public key, check if signature matches that.
     // We use the 'right' slot in our scratch memory.
@@ -346,7 +347,8 @@ pub fn pair_verify_start_session(
     support: &mut impl PairSupport,
 ) -> Result<(), PairingError> {
     let _ = support;
-    ctx.session = Default::default();
+    // Do not wipe the session here, we already stored the pairing id into it.
+    //ctx.session = Default::default();
     hkdf_sha512(
         &ctx.server.pair_verify.cv_key,
         CONTROL_CHANNEL_SALT.as_bytes(),

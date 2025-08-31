@@ -100,7 +100,7 @@ pub const PAIR_SETUP_M6_NONCE: &'static str = "PS-Msg06";
 pub const PAIR_SETUP_M6_SIGN_SALT: &'static str = "Pair-Setup-Accessory-Sign-Salt";
 pub const PAIR_SETUP_M6_SIGN_INFO: &'static str = "Pair-Setup-Accessory-Sign-Info";
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
 #[repr(transparent)]
 pub struct PairingId(pub uuid::Uuid);
 impl PairingId {
@@ -464,15 +464,35 @@ impl Default for PairContext {
     }
 }
 
+// Todo; this should be renamed... its effectively the key-value-store.
 pub trait PairSupport {
     /// Retrieve the long term secret key.
     fn get_ltsk(&self) -> &[u8; ED25519_LTSK];
+
     /// Produce a random byte, this should be from a cryptographically secure source.
     fn get_random(&mut self) -> u8;
+
     /// Store a new pairing.
     fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
     /// Retrieve a pairing, or None if it doesn't exist.
     fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError>;
+
+    /// Retrieve the global state number, this is used by the BLE transport.
+    fn get_global_state_number(&self) -> Result<u16, PairingError>;
+    /// Set the global state number, this is used by the BLE transport.
+    fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
+
+    fn get_ble_broadcast_parameters(
+        &self,
+    ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError> {
+        unimplemented!()
+    }
+    fn set_ble_broadcast_parameters(
+        &mut self,
+        params: &crate::ble::broadcast::BleBroadcastParameters,
+    ) -> Result<(), PairingError> {
+        unimplemented!()
+    }
 }
 
 /*
@@ -1025,11 +1045,14 @@ pub fn pair_setup_process_get_m6(
 pub mod test {
     use super::*;
 
+    use crate::ble::broadcast::BleBroadcastParameters;
     #[derive(Debug, Clone, Default)]
     pub struct TestPairSupport {
         pub ed_ltsk: [u8; ED25519_LTSK],
         pub random: std::collections::VecDeque<u8>,
         pub pairings: std::collections::HashMap<PairingId, Pairing>,
+        pub global_state_number: u16,
+        pub ble_broadcast_parameters: BleBroadcastParameters,
     }
     impl TestPairSupport {
         pub fn add_random(&mut self, v: &[u8]) {
@@ -1049,11 +1072,32 @@ pub mod test {
 
         fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
             self.pairings.insert(pairing.id, *pairing);
+            error!("Writing pairing for {:?}", pairing.id);
             Ok(())
         }
 
         fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
             Ok(self.pairings.get(id))
+        }
+
+        fn get_global_state_number(&self) -> Result<u16, PairingError> {
+            Ok(self.global_state_number)
+        }
+        /// Set the global state number, this is used by the BLE transport.
+        fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+            self.global_state_number = value;
+            Ok(())
+        }
+
+        fn get_ble_broadcast_parameters(&self) -> Result<BleBroadcastParameters, PairingError> {
+            Ok(self.ble_broadcast_parameters)
+        }
+        fn set_ble_broadcast_parameters(
+            &mut self,
+            params: &BleBroadcastParameters,
+        ) -> Result<(), PairingError> {
+            self.ble_broadcast_parameters = *params;
+            Ok(())
         }
     }
 
