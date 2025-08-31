@@ -1109,24 +1109,29 @@ impl HapPeripheralContext {
         self.should_encrypt_reply = security_active;
         let mut tmp_buffer = [0u8; 1024];
         let data = if security_active {
-            warn!("handle_write_incoming raw {:0>2x?}", data);
-            // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
-            // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
-            // Yes, these are encrypted.
-            //
-            // Collect the context
-            let buffer = &mut tmp_buffer;
-            let mut pair_ctx = self.pair_ctx.borrow_mut();
+            if handle == hap.pairing.pair_verify.handle {
+                // pair verify is always plaintext!
+                data
+            } else {
+                warn!("handle_write_incoming raw {:0>2x?}", data);
+                // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
+                // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
+                // Yes, these are encrypted.
+                //
+                // Collect the context
+                let buffer = &mut tmp_buffer;
+                let mut pair_ctx = self.pair_ctx.borrow_mut();
 
-            // Copy the payload into the buffer
-            buffer.fill(0);
-            // parsed.copy_body(&mut *buffer)?;
-            buffer[0..data.len()].copy_from_slice(data);
+                // Copy the payload into the buffer
+                buffer.fill(0);
+                // parsed.copy_body(&mut *buffer)?;
+                buffer[0..data.len()].copy_from_slice(data);
 
-            pair_ctx
-                .session
-                .c_to_a
-                .decrypt(&mut buffer[0..data.len()])?
+                pair_ctx
+                    .session
+                    .c_to_a
+                    .decrypt(&mut buffer[0..data.len()])?
+            }
         } else {
             data
         };
@@ -1639,6 +1644,12 @@ mod test {
         let mut support = crate::pairing::test::TestPairSupport::default();
         support.ed_ltsk = ed_ltsk;
         support.add_random(&random_buffer);
+
+        struct ExchangeTest {
+            handle: u16,
+            incoming: &'static [u8],
+            outgoing: &'static [u8],
+        }
 
         // it would be nice if we understood why the handle ids are different.
         let handle_pair_setup = 84;
@@ -2683,13 +2694,8 @@ mod test {
 
         // Write to name... three times... oh, different handles.
         {
-            struct LightbulbNameTest {
-                handle: u16,
-                incoming: &'static [u8],
-                outgoing: &'static [u8],
-            }
             let tests = [
-                LightbulbNameTest {
+                ExchangeTest {
                     handle: handle_lightbulb_name,
                     incoming: &[
                         0xa0, 0x04, 0x3c, 0x53, 0xab, 0xfb, 0xcd, 0x12, 0xaa, 0x11, 0x9b, 0xc7,
@@ -2701,7 +2707,7 @@ mod test {
                         0xa5, 0xca, 0x36, 0x01, 0xfd, 0xa5, 0x9e, 0x2a, 0xda,
                     ],
                 },
-                LightbulbNameTest {
+                ExchangeTest {
                     handle: handle_lightbulb_name,
                     incoming: &[
                         0xf8, 0xf7, 0x74, 0x51, 0xd9, 0x19, 0x82, 0x13, 0x6f, 0x74, 0x93, 0x6a,
@@ -2713,7 +2719,7 @@ mod test {
                         0xd9, 0x60, 0xbc, 0x59, 0xcb, 0x78, 0xb4, 0x49, 0x7b,
                     ],
                 },
-                LightbulbNameTest {
+                ExchangeTest {
                     handle: handle_name,
                     incoming: &[
                         0x84, 0x32, 0x35, 0x2a, 0x17, 0xa9, 0x03, 0x54, 0x56, 0xf8, 0x41, 0x3f,
@@ -2727,7 +2733,7 @@ mod test {
                     ],
                 },
             ];
-            for LightbulbNameTest {
+            for ExchangeTest {
                 incoming,
                 outgoing,
                 handle,
@@ -2814,6 +2820,36 @@ mod test {
             }
 
             // And now we go into pair verify yet again!
+            {
+                let incoming_data: &[u8] = &[
+                    0x00, 0x02, 0x61, 0x23, 0x00, 0x49, 0x00, 0x01, 0x44, 0x06, 0x01, 0x01, 0x00,
+                    0x01, 0x06, 0x0e, 0x08, 0x19, 0xaa, 0x62, 0xff, 0xbe, 0xf3, 0x84, 0x94, 0x05,
+                    0x10, 0x3f, 0x50, 0x1c, 0xa6, 0x65, 0xe4, 0xa7, 0x45, 0x33, 0xf9, 0x29, 0x14,
+                    0x5a, 0xe3, 0x52, 0x2e, 0x03, 0x20, 0xfe, 0x6c, 0x05, 0xc7, 0x34, 0xa5, 0xf0,
+                    0x04, 0x59, 0x0e, 0xa5, 0x8e, 0x5c, 0x9f, 0x6c, 0x31, 0xd6, 0x36, 0xc1, 0xd4,
+                    0x7b, 0xd5, 0xc5, 0x31, 0x6d, 0x68, 0xac, 0x3f, 0x5d, 0x87, 0x79, 0x28, 0x09,
+                    0x01, 0x01,
+                ];
+                let outgoing: &[u8] = &[
+                    0x02, 0x61, 0x00, 0x24, 0x00, 0x01, 0x22, 0x06, 0x01, 0x02, 0x00, 0x01, 0x06,
+                    0x0e, 0x08, 0x4b, 0xff, 0x03, 0x1d, 0x7d, 0x97, 0x5f, 0x01, 0x05, 0x10, 0x7a,
+                    0x38, 0x77, 0x82, 0x85, 0x2a, 0xdf, 0xc4, 0x38, 0x40, 0x7e, 0x49, 0x49, 0x0d,
+                    0x27, 0x98,
+                ];
+                ctx.handle_write_incoming_test(
+                    &hap,
+                    &mut support,
+                    &accessory,
+                    incoming_data,
+                    handle_pair_verify,
+                )
+                .await?;
+                let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
+                let resp_buffer = resp.expect("expecting a outgoing response");
+                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                let _ = outgoing;
+                assert_eq!(&*resp_buffer, outgoing);
+            }
         }
 
         Ok(())

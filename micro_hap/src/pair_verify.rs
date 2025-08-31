@@ -347,6 +347,7 @@ pub fn pair_verify_start_session(
     support: &mut impl PairSupport,
 ) -> Result<(), PairingError> {
     let _ = support;
+    ctx.server.pair_verify.setup.state = Default::default();
     // Do not wipe the session here, we already stored the pairing id into it.
     //ctx.session = Default::default();
     hkdf_sha512(
