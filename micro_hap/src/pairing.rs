@@ -482,11 +482,16 @@ pub trait PairSupport {
     /// Set the global state number, this is used by the BLE transport.
     fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
 
+    fn get_config_number(&self) -> Result<u16, PairingError>;
+    fn set_config_number(&mut self, value: u16) -> Result<(), PairingError>;
+
+    /// Retrieve the BLE broadcast parameters
     fn get_ble_broadcast_parameters(
         &self,
     ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError> {
         unimplemented!()
     }
+    /// Set the BLE broadcast parameters
     fn set_ble_broadcast_parameters(
         &mut self,
         params: &crate::ble::broadcast::BleBroadcastParameters,
@@ -1046,14 +1051,28 @@ pub mod test {
     use super::*;
 
     use crate::ble::broadcast::BleBroadcastParameters;
-    #[derive(Debug, Clone, Default)]
+    #[derive(Debug, Clone)]
     pub struct TestPairSupport {
         pub ed_ltsk: [u8; ED25519_LTSK],
         pub random: std::collections::VecDeque<u8>,
         pub pairings: std::collections::HashMap<PairingId, Pairing>,
         pub global_state_number: u16,
+        pub config_number: u16,
         pub ble_broadcast_parameters: BleBroadcastParameters,
     }
+    impl Default for TestPairSupport {
+        fn default() -> Self {
+            Self {
+                ed_ltsk: Default::default(),
+                random: Default::default(),
+                pairings: Default::default(),
+                global_state_number: 1,
+                config_number: 1,
+                ble_broadcast_parameters: Default::default(),
+            }
+        }
+    }
+
     impl TestPairSupport {
         pub fn add_random(&mut self, v: &[u8]) {
             self.random.extend(v.iter())
@@ -1086,6 +1105,14 @@ pub mod test {
         /// Set the global state number, this is used by the BLE transport.
         fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
             self.global_state_number = value;
+            Ok(())
+        }
+
+        fn get_config_number(&self) -> Result<u16, PairingError> {
+            Ok(self.config_number)
+        }
+        fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
+            self.config_number = value;
             Ok(())
         }
 

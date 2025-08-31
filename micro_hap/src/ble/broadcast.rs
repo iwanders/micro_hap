@@ -21,6 +21,9 @@ pub fn broadcast_generate_key(
 
     parameters.expiration_gsn = gsn.wrapping_add(32767 - 1);
 
+    // NONCOMPLIANCE: setting the advertising id to the device id here.
+    parameters.advertising_id = Some(ctx.accessory.device_id);
+
     // Fetch controller's public key.
     info!("Retrieving pairing id: {:?}", ctx.session.pairing_id);
 

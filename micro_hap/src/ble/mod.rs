@@ -956,6 +956,7 @@ impl HapPeripheralContext {
 
             let mut generate_key: bool = false;
             let mut get_all: bool = false;
+            let mut have_advertising_id: bool = false;
 
             // This TLV stuff has zero lengths, which the reader (AND the reference?) considers invalid.
             let mut reader = crate::tlv::TLVReader::new(&payload);
@@ -968,26 +969,69 @@ impl HapPeripheralContext {
                         as u8
                 {
                     generate_key = true;
+                } else if z.type_id
+                    == pdu::ProtocolConfigurationRequestTLVType::SetAccessoryAdvertisingIdentifier
+                        as u8
+                {
+                    have_advertising_id = true;
                 } else {
                     todo!("unhandled protocol configuration type id: {}", z.type_id);
                 }
             }
 
+            if have_advertising_id {
+                todo!();
+            }
             if generate_key {
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
                 let mut ctx = self.pair_ctx.borrow_mut();
                 broadcast::broadcast_generate_key(&mut *ctx, pair_support)
                     .map_err(|_| HapBleError::InvalidValue)?;
             }
-            if get_all {
-                todo!();
+
+            if !get_all {
+                // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProcedure.c#L155
+                error!("untested, seems this just returns success?");
+                return Ok(BufferResponse(len));
             }
 
-            todo!();
+            // That was the request... next is creating the response.
+            // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L132
 
-            let len = BodyBuilder::new_at(*buffer, len)
-                // .add_slice(pdu::InfoResponseTLVType::SetupHash, &setup_hash)
-                .end();
+            // Basically, we just write values here.
+            //
+            let global_state_number = pair_support
+                .get_global_state_number()
+                .map_err(|_e| HapBleError::InvalidValue)?;
+
+            // This is odd, they write the configuration number as a single byte!
+            let config_number = pair_support
+                .get_config_number()
+                .map_err(|_e| HapBleError::InvalidValue)? as u8;
+            let parameters = pair_support
+                .get_ble_broadcast_parameters()
+                .map_err(|_e| HapBleError::InvalidValue)?;
+
+            let mut builder = BodyBuilder::new_at(*buffer, len)
+                .add_slice(
+                    pdu::ProtocolConfigurationTLVType::CurrentStateNumber,
+                    &global_state_number.to_le_bytes(),
+                )
+                .add_slice(
+                    pdu::ProtocolConfigurationTLVType::CurrentConfigNumber,
+                    &config_number.to_le_bytes(),
+                );
+            if let Some(advertising_id) = parameters.advertising_id {
+                builder = builder.add_slice(
+                    pdu::ProtocolConfigurationTLVType::AccessoryAdvertisingIdentifier,
+                    &advertising_id.0,
+                );
+            }
+            builder = builder.add_slice(
+                pdu::ProtocolConfigurationTLVType::BroadcastEncryptionKey,
+                parameters.key.as_ref().as_bytes(),
+            );
+            let len = builder.end();
             Ok(BufferResponse(len))
         } else {
             error!("Got protocol configure on unknown service: {:?}", svc_id);
@@ -2482,8 +2526,11 @@ mod test {
             assert_eq!(&*resp_buffer, outgoing);
         }
 
-        // Write to service signature?
+        // Write to service signature -> Protocol Configuration!
         {
+            // got:          02, 1f, 00, 31, 00, 01, 02, 00, 00, 02, 01, 00, 03, 06, 57, 3b, 20, a7, e7, c4, 04, 20, 17, 2d, 94, 5b, e1, 8e, fe, 3d, b3, ba, 9b, 97, ce, 1b, 48, b4, 71, ab, a3, cd, ee, 11, de, 7d, 03, c1, b0, 59, 70, 3c, a0, 4d
+            // Expected;                         01, 02, 01, 00, 02, 01, 01, 03, 06, 57, 3b, 20, a7, e7, c4, 04, 20, 17, 2d, 94, 5b, e1, 8e, fe, 3d, b3, ba, 9b, 97, ce, 1b, 48, b4, 71, ab, a3, cd, ee, 11, de, 7d, 03, c1, b0, 59, 70, 3c, a0, 4d
+            // This: 03, 06, 57, 3b, 20, a7, e7, c4, is the device id.
             let incoming_data: &[u8] = &[
                 0xdb, 0x5c, 0xf3, 0x57, 0x88, 0x99, 0x53, 0xab, 0xc5, 0xa1, 0x7d, 0xa1, 0x45, 0xdd,
                 0x70, 0x09, 0x4f, 0x5b, 0x9a, 0xa5, 0xbf, 0xa3, 0x2e, 0x3b, 0x6d, 0x54, 0x2f,
