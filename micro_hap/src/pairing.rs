@@ -489,7 +489,7 @@ pub trait PairSupport {
         let old = self.get_global_state_number()?;
         let new = old.wrapping_add(1);
         let new = new.max(1); // overflow to 1, not to zero.
-        self.set_global_state_number(new);
+        self.set_global_state_number(new)?;
         Ok(new)
     }
 

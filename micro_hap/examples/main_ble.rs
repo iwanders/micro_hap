@@ -4,6 +4,11 @@ use bt_hci::controller::ExternalController;
 //use trouble_example_apps::ble_bas_peripheral;
 use trouble_linux_examples::Transport;
 
+// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] v: Ok(TLV { type_id: 6, length: 1, data: [[3]] })
+// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] Pair Verify M3: Verify Start Request
+// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] decrypted: [01, 24, 37, 37, 37, 35, 35, 44, 44, 35, 2d, 37, 32, 32, 33, 2d, 34, 41, 33, 42, 2d, 38, 37, 44, 32, 2d, 43, 32, 34, 41, 32, 34, 46, 34, 30, 36, 39, 35, 0a, 40, d7, e3, d6, 0a, df, 3b, 9d, d9, 2d, 0a, 06, 80, 5f, 22, 7d, 29, 23, c1, df, 1d, 7a, 9d, 5e, 70, ca, 72, 78, 69, b1, c9, 0e, e0, 8d, 6f, 79, 4b, fe, d8, ae, 2a, 28, 23, 95, 8d, 16, 5b, 98, 64, 5f, bb, f5, f7, aa, 33, d4, 1e, 30, 67, 82, 51, 1a, 00, f1, 0a]
+// [2025-09-01T14:53:37Z ERROR main_ble::ble_bas_peripheral] Error occured in processing: InvalidValue
+
 mod ble_bas_peripheral {
     use embassy_futures::join::join;
     use embassy_futures::select::select;
@@ -11,7 +16,51 @@ mod ble_bas_peripheral {
     use log::{info, warn};
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
+    use zerocopy::IntoBytes;
 
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse};
+
+    struct LightBulbAccessory {
+        name: HeaplessString<32>,
+        bulb_on_state: bool,
+    }
+    impl AccessoryInterface for LightBulbAccessory {
+        fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
+                Some(self.name.as_bytes())
+            } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                Some(self.bulb_on_state.as_bytes())
+            } else {
+                todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+            }
+        }
+        fn write_characteristic(
+            &mut self,
+            char_id: CharId,
+            data: &[u8],
+        ) -> Result<CharacteristicResponse, ()> {
+            info!(
+                "AccessoryInterface to characterstic: 0x{:0>2x?} data: {:0>2x?}",
+                char_id, data
+            );
+
+            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                let value = data.get(0).ok_or(())?;
+                let val_as_bool = *value != 0;
+
+                let response = if self.bulb_on_state != val_as_bool {
+                    CharacteristicResponse::Modified
+                } else {
+                    CharacteristicResponse::Unmodified
+                };
+                self.bulb_on_state = val_as_bool;
+                info!("Set bulb to: {:?}", self.bulb_on_state);
+                Ok(response)
+            } else {
+                todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+            }
+        }
+    }
     /// Max number of connections
     const CONNECTIONS_MAX: usize = 3;
 
@@ -163,7 +212,12 @@ mod ble_bas_peripheral {
         };
         // let _ = server.accessory_information.unwrap();
 
-        let mut accessory = micro_hap::NopAccessory;
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
+        let mut accessory = LightBulbAccessory {
+            name: "Light Bulb".try_into().unwrap(),
+            bulb_on_state: false,
+        };
+        // let mut accessory = micro_hap::NopAccessory;
         let pair_ctx = {
             static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
             STATE.init_with(micro_hap::pairing::PairContext::default)
