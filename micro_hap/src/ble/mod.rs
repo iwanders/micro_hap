@@ -869,6 +869,93 @@ impl HapPeripheralContext {
         }
     }
 
+    pub async fn characteristic_write_request(
+        &mut self,
+        pair_support: &mut impl crate::pairing::PairSupport,
+        accessory: &mut impl crate::AccessoryInterface,
+        req: &pdu::CharacteristicWriteRequest<'_>,
+    ) -> Result<BufferResponse, HapBleError> {
+        let parsed = req;
+        // Write the body to our internal buffer here.
+        use crate::DataSource;
+        let mut buffer = self.buffer.borrow_mut();
+        buffer.fill(0);
+
+        let halfway = buffer.len() / 2;
+        let (left_buffer, outgoing) = buffer.split_at_mut(halfway);
+        let body_length = parsed.copy_body(left_buffer)?;
+        let mut pair_ctx = self.pair_ctx.borrow_mut();
+
+        // So now we craft the reply, technically this could happen on the read... should it happen on the read?
+        //
+        let char_id = req.header.char_id;
+        if let Some(chr) = self.get_attribute_by_char(char_id) {
+            let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
+            let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
+            let incoming_data = &left_buffer[0..body_length];
+            // let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
+            if is_pair_setup {
+                crate::pairing::pair_setup_handle_incoming(
+                    &mut **pair_ctx,
+                    pair_support,
+                    incoming_data,
+                )
+                .map_err(|_| HapBleError::InvalidValue)?;
+
+                // Put the reply in the second half.
+                let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
+                    &mut **pair_ctx,
+                    pair_support,
+                    outgoing,
+                )
+                .map_err(|_| HapBleError::InvalidValue)?;
+
+                let reply = parsed.header.header.to_success();
+                let len = reply.write_into_length(left_buffer)?;
+
+                let len = BodyBuilder::new_at(left_buffer, len)
+                    .add_value(&outgoing[0..outgoing_len])
+                    .end();
+
+                Ok(BufferResponse(len))
+            } else if is_pair_verify {
+                crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
+                    .map_err(|_| HapBleError::InvalidValue)?;
+
+                // Put the reply in the second half.
+                let outgoing_len =
+                    crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
+                        .map_err(|_| HapBleError::InvalidValue)?;
+
+                let reply = parsed.header.header.to_success();
+                let len = reply.write_into_length(left_buffer)?;
+
+                let len = BodyBuilder::new_at(left_buffer, len)
+                    .add_value(&outgoing[0..outgoing_len])
+                    .end();
+
+                Ok(BufferResponse(len))
+            } else {
+                match chr.data_source {
+                    DataSource::Nop => {
+                        todo!()
+                    }
+                    DataSource::AccessoryInterface => {
+                        let r = accessory.write_characteristic(char_id, incoming_data);
+                        let reply = parsed.header.header.to_success();
+                        let len = reply.write_into_length(left_buffer)?;
+                        return Ok(BufferResponse(len));
+                    }
+                    DataSource::Constant(data) => {
+                        todo!()
+                    }
+                }
+            }
+        } else {
+            // Unknown characteristic, how do we handle this?
+            todo!()
+        }
+    }
     #[allow(unreachable_code)]
     pub async fn info_request(
         &mut self,
@@ -1101,7 +1188,7 @@ impl HapPeripheralContext {
         &mut self,
         hap: &HapServices<'hap>,
         pair_support: &mut impl crate::pairing::PairSupport,
-        accessory: &impl crate::AccessoryInterface,
+        accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
@@ -1165,59 +1252,8 @@ impl HapPeripheralContext {
                 let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
                 info!("got write on pair setup with: {:?}", parsed);
 
-                // Write the body to our internal buffer here.
-                let mut buffer = self.buffer.borrow_mut();
-                buffer.fill(0);
-                parsed.copy_body(&mut *buffer)?;
-                let mut pair_ctx = self.pair_ctx.borrow_mut();
-
-                // So now we craft the reply, technically this could happen on the read... should it happen on the read?
-
-                let full_len = buffer.len();
-                let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
-                let outgoing_len = if handle == hap.pairing.pair_setup.handle {
-                    crate::pairing::pair_setup_handle_incoming(
-                        &mut **pair_ctx,
-                        pair_support,
-                        &*first_half,
-                    )
-                    .map_err(|_| HapBleError::InvalidValue)?;
-
-                    // Put the reply in the second half.
-                    let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
-                        &mut **pair_ctx,
-                        pair_support,
-                        &mut second_half,
-                    )
-                    .map_err(|_| HapBleError::InvalidValue)?;
-                    outgoing_len
-                } else if handle == hap.pairing.pair_verify.handle {
-                    crate::pair_verify::handle_incoming(
-                        &mut **pair_ctx,
-                        pair_support,
-                        &*first_half,
-                    )
-                    .map_err(|_| HapBleError::InvalidValue)?;
-
-                    // Put the reply in the second half.
-                    let outgoing_len = crate::pair_verify::handle_outgoing(
-                        &mut **pair_ctx,
-                        pair_support,
-                        &mut second_half,
-                    )
-                    .map_err(|_| HapBleError::InvalidValue)?;
-                    outgoing_len
-                } else {
-                    todo!("Need dispatch to correct method");
-                };
-                let reply = parsed.header.header.to_success();
-                let len = reply.write_into_length(first_half)?;
-
-                let len = BodyBuilder::new_at(first_half, len)
-                    .add_value(&second_half[0..outgoing_len])
-                    .end();
-
-                BufferResponse(len)
+                self.characteristic_write_request(pair_support, accessory, &parsed)
+                    .await?
             }
             pdu::OpCode::Info => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L623
@@ -1326,7 +1362,7 @@ impl HapPeripheralContext {
         &mut self,
         hap: &HapServices<'hap>,
         pair_support: &mut impl crate::pairing::PairSupport,
-        accessory: &impl crate::AccessoryInterface,
+        accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
@@ -1348,7 +1384,7 @@ impl HapPeripheralContext {
         &mut self,
         hap: &HapServices<'hap>,
         pair_support: &mut impl crate::pairing::PairSupport,
-        accessory: &impl crate::AccessoryInterface,
+        accessory: &mut impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
     {
@@ -1559,10 +1595,26 @@ mod test {
                     todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
                 }
             }
+            fn write_characteristic(&mut self, char_id: CharId, data: &[u8]) -> Result<(), ()> {
+                info!(
+                    "AccessoryInterface to characterstic: 0x{:0>2x?} data: {:0>2x?}",
+                    char_id, data
+                );
+
+                if char_id == CHAR_ID_LIGHTBULB_ON {
+                    let value = data.get(0).ok_or(())?;
+                    let val_as_bool = *value != 0;
+                    self.bulb_on_state = val_as_bool;
+                    info!("Set bulb to: {:?}", self.bulb_on_state);
+                    Ok(())
+                } else {
+                    todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                }
+            }
         }
 
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
-        let accessory = LightBulbAccessory {
+        let mut accessory = LightBulbAccessory {
             name: "Light Bulb".try_into().unwrap(),
             bulb_on_state: false,
         };
@@ -1705,8 +1757,14 @@ mod test {
             let outgoing_data: &[u8] = &[
                 0x02, 0x0d, 0x00, 0x06, 0x00, 0x0f, 0x02, 0x04, 0x00, 0x10, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1724,8 +1782,14 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x10, 0x00, 0x0c, 0x07, 0x1b, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1745,8 +1809,14 @@ mod test {
                 0x00, 0x00, 0x00, 0x0a, 0x02, 0x01, 0x00, 0x0c, 0x07, 0x04, 0x00, 0x00, 0x27, 0x01,
                 0x00, 0x00,
             ];
-            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1756,8 +1826,14 @@ mod test {
             let incoming_data: &[u8] = &[0x00, 0x03, 0x58, 0x24, 0x00];
             let handle = 0x24;
             let outgoing_data: &[u8] = &[0x02, 0x58, 0x00, 0x03, 0x00, 0x01, 0x01, 0x00];
-            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1773,8 +1849,14 @@ mod test {
             let handle = 0x11;
 
             // We don't know what outgoing should be here.
-            ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming_data, handle)
-                .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle,
+            )
+            .await?;
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
@@ -1823,7 +1905,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_setup,
             )
@@ -1883,7 +1965,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_setup,
             )
@@ -1927,7 +2009,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_setup,
             )
@@ -1976,7 +2058,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_verify,
             )
@@ -2006,7 +2088,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_verify,
             )
@@ -2038,7 +2120,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_hardware_revision,
             )
@@ -2066,7 +2148,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_serial_number,
             )
@@ -2094,7 +2176,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_serial_number,
             )
@@ -2122,7 +2204,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_name,
             )
@@ -2150,7 +2232,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_adk_version,
             )
@@ -2178,7 +2260,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_manufacturer,
             )
@@ -2206,7 +2288,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_firmware_version,
             )
@@ -2234,7 +2316,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_identify,
             )
@@ -2284,7 +2366,7 @@ mod test {
                 ctx.handle_write_incoming_test(
                     &hap,
                     &mut support,
-                    &accessory,
+                    &mut accessory,
                     incoming,
                     handle_service_signature,
                 )
@@ -2313,7 +2395,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_version,
             )
@@ -2341,7 +2423,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_pair_pairings,
             )
@@ -2365,7 +2447,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_service_signature,
             )
@@ -2393,7 +2475,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_service_signature,
             )
@@ -2421,7 +2503,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_lightbulb_on,
             )
@@ -2449,7 +2531,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_lightbulb_name,
             )
@@ -2473,7 +2555,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_firmware_version,
             )
@@ -2498,7 +2580,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_manufacturer,
             )
@@ -2524,7 +2606,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_model,
             )
@@ -2550,7 +2632,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_model,
             )
@@ -2576,7 +2658,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_model,
             )
@@ -2602,7 +2684,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_lightbulb_name,
             )
@@ -2630,7 +2712,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_service_signature,
             )
@@ -2656,7 +2738,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_lightbulb_name,
             )
@@ -2681,7 +2763,7 @@ mod test {
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
-                &accessory,
+                &mut accessory,
                 incoming_data,
                 handle_firmware_version,
             )
@@ -2740,8 +2822,14 @@ mod test {
                 handle,
             } in tests
             {
-                ctx.handle_write_incoming_test(&hap, &mut support, &accessory, incoming, handle)
-                    .await?;
+                ctx.handle_write_incoming_test(
+                    &hap,
+                    &mut support,
+                    &mut accessory,
+                    incoming,
+                    handle,
+                )
+                .await?;
                 let resp = ctx.handle_read_outgoing(handle).await?;
                 let resp_buffer = resp.expect("expecting a outgoing response");
                 info!("outgoing: {:0>2x?}", &*resp_buffer);
@@ -2763,7 +2851,7 @@ mod test {
                 ctx.handle_write_incoming_test(
                     &hap,
                     &mut support,
-                    &accessory,
+                    &mut accessory,
                     incoming_data,
                     handle_lightbulb_on,
                 )
@@ -2808,7 +2896,7 @@ mod test {
                     ctx.handle_write_incoming_test(
                         &hap,
                         &mut support,
-                        &accessory,
+                        &mut accessory,
                         incoming,
                         handle_lightbulb_on,
                     )
@@ -2842,7 +2930,7 @@ mod test {
                 ctx.handle_write_incoming_test(
                     &hap,
                     &mut support,
-                    &accessory,
+                    &mut accessory,
                     incoming_data,
                     handle_pair_verify,
                 )
@@ -2853,6 +2941,31 @@ mod test {
                 let _ = outgoing;
                 assert_eq!(&*resp_buffer, outgoing);
             }
+        }
+
+        // Next we have an write to the ON characteristic, this seems to be the real first toggle? But currently it
+        // fails to decrypt.
+        {
+            let incoming_data: &[u8] = &[
+                0x72, 0xb3, 0x58, 0x33, 0x0f, 0xc7, 0xb2, 0x16, 0x74, 0xbe, 0x51, 0xcf, 0x82, 0xa4,
+                0x1b, 0x1b, 0x14, 0x96, 0x15, 0x2f, 0x4a, 0x0d, 0x7a, 0x88, 0x9a, 0x57,
+            ];
+            let outgoing: &[u8] = &[
+                0x57, 0xc9, 0x4a, 0xf0, 0x9f, 0x5a, 0x32, 0xe3, 0xf1, 0x41, 0xc8, 0x50, 0x4a, 0x0b,
+                0x86, 0x06, 0x9d, 0xb7, 0x98,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle_lightbulb_on,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
         }
 
         Ok(())

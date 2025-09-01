@@ -326,6 +326,7 @@ pub struct Session {
 // Something to retrieve the accessory callbacks.
 pub trait AccessoryInterface {
     fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;
+    fn write_characteristic(&mut self, char_id: CharId, data: &[u8]) -> Result<(), ()>;
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -334,6 +335,9 @@ impl AccessoryInterface for NopAccessory {
     fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
         let _ = char_id;
         None::<&[u8]>
+    }
+    fn write_characteristic(&mut self, char_id: CharId, data: &[u8]) -> Result<(), ()> {
+        todo!("write characteristic on 0x{:0>2x?}, handle this?", char_id);
     }
 }
 

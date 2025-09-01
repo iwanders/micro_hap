@@ -279,6 +279,14 @@ impl<'a> CharacteristicWriteRequest<'a> {
         }
         Ok(total_length)
     }
+
+    pub fn len(&self) -> usize {
+        let mut total_length = 0;
+        for s in self.body.iter() {
+            total_length += s.len()
+        }
+        total_length
+    }
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26

@@ -493,6 +493,8 @@ pub fn pair_verify_start_session(
     ctx.server.pair_verify.setup.state = Default::default();
     // Do not wipe the session here, we already stored the pairing id into it.
     //ctx.session = Default::default();
+    ctx.session.a_to_c.nonce = 0;
+    ctx.session.c_to_a.nonce = 0;
     hkdf_sha512(
         &ctx.server.pair_verify.cv_key,
         CONTROL_CHANNEL_SALT.as_bytes(),
