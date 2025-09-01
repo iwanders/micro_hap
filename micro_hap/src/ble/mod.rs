@@ -4,7 +4,8 @@ use trouble_host::prelude::*;
 
 pub mod broadcast;
 mod pdu;
-use crate::{AccessoryInterface, BleProperties, DataSource};
+use crate::{AccessoryInterface, BleProperties, CharacteristicResponse, DataSource};
+
 use bitfield_struct::bitfield;
 
 use crate::{CharId, SvcId};
@@ -877,7 +878,6 @@ impl HapPeripheralContext {
     ) -> Result<BufferResponse, HapBleError> {
         let parsed = req;
         // Write the body to our internal buffer here.
-        use crate::DataSource;
         let mut buffer = self.buffer.borrow_mut();
         buffer.fill(0);
 
@@ -941,7 +941,20 @@ impl HapPeripheralContext {
                         todo!()
                     }
                     DataSource::AccessoryInterface => {
-                        let r = accessory.write_characteristic(char_id, incoming_data);
+                        let r = accessory
+                            .write_characteristic(char_id, incoming_data)
+                            .map_err(|_| HapBleError::UnexpectedRequest)?;
+
+                        if r == CharacteristicResponse::Modified {
+                            // Do things to this characteristic to mark it dirty.
+                            error!(
+                                "SHould mark the characteristic dirty and advance the global state number, and notify!"
+                            );
+                            let _ = pair_support
+                                .advance_global_state_number()
+                                .map_err(|_| HapBleError::InvalidValue)?;
+                        }
+
                         let reply = parsed.header.header.to_success();
                         let len = reply.write_into_length(left_buffer)?;
                         return Ok(BufferResponse(len));
@@ -1595,7 +1608,11 @@ mod test {
                     todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
                 }
             }
-            fn write_characteristic(&mut self, char_id: CharId, data: &[u8]) -> Result<(), ()> {
+            fn write_characteristic(
+                &mut self,
+                char_id: CharId,
+                data: &[u8],
+            ) -> Result<CharacteristicResponse, ()> {
                 info!(
                     "AccessoryInterface to characterstic: 0x{:0>2x?} data: {:0>2x?}",
                     char_id, data
@@ -1604,9 +1621,15 @@ mod test {
                 if char_id == CHAR_ID_LIGHTBULB_ON {
                     let value = data.get(0).ok_or(())?;
                     let val_as_bool = *value != 0;
+
+                    let response = if self.bulb_on_state != val_as_bool {
+                        CharacteristicResponse::Modified
+                    } else {
+                        CharacteristicResponse::Unmodified
+                    };
                     self.bulb_on_state = val_as_bool;
                     info!("Set bulb to: {:?}", self.bulb_on_state);
-                    Ok(())
+                    Ok(response)
                 } else {
                     todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
                 }
@@ -1680,15 +1703,6 @@ mod test {
         ctx.assign_static_data(&accessory_static_data);
 
         ctx.print_handles();
-        /*
-                let counter = core::cell::RefCell::new(0);
-                let rng = move || {
-                    let mut c = counter.borrow_mut();
-                    let v = random_buffer[*c];
-                    *c += 1;
-                    v
-                };
-        */
         let random_buffer = vec![
             0x75, 0x35, 0xcb, 0x53, 0x6e, 0xbb, 0x8c, 0x63, 0x94, 0xf5, 0x85, 0xe6, 0x7d, 0xc5,
             0x65, 0x2d, 0x83, 0xe4, 0xea, 0x76, 0x4c, 0xa3, 0x61, 0xe3, 0x85, 0xca, 0x07, 0x57,
@@ -2966,8 +2980,32 @@ mod test {
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:0>2x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(support.global_state_number, 2);
         }
 
+        {
+            let incoming_data: &[u8] = &[
+                0x66, 0xf5, 0x79, 0xc9, 0x36, 0xf0, 0x6d, 0xe7, 0x44, 0xc9, 0x9e, 0x6c, 0xfa, 0xa4,
+                0x9f, 0xd9, 0x1e, 0x88, 0xea, 0x09, 0xdd, 0x9c, 0x02, 0x89, 0x61, 0xb6,
+            ];
+            let outgoing: &[u8] = &[
+                0x30, 0xc7, 0xd8, 0xe2, 0x96, 0x4e, 0xef, 0x42, 0xdd, 0x70, 0xf9, 0x0e, 0xe0, 0x12,
+                0xb1, 0xd4, 0x23, 0x2b, 0x60,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle_lightbulb_on,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(support.global_state_number, 3);
+        }
         Ok(())
     }
 }

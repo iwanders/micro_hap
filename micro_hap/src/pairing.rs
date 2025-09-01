@@ -485,6 +485,14 @@ pub trait PairSupport {
     /// Set the global state number, this is used by the BLE transport.
     fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
 
+    fn advance_global_state_number(&mut self) -> Result<u16, PairingError> {
+        let old = self.get_global_state_number()?;
+        let new = old.wrapping_add(1);
+        let new = new.max(1); // overflow to 1, not to zero.
+        self.set_global_state_number(new);
+        Ok(new)
+    }
+
     fn get_config_number(&self) -> Result<u16, PairingError>;
     fn set_config_number(&mut self, value: u16) -> Result<(), PairingError>;
 
