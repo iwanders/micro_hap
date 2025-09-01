@@ -398,7 +398,7 @@ impl Into<u8> for TLVType {
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/HAPBase.h#L178-L182
 /// Setup information created during device commissioning.
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug)]
 pub struct SetupInfo {
     pub salt: [u8; 16],
     pub verifier: [u8; 384],
@@ -448,6 +448,7 @@ pub enum PairState {
     SentM6 = 6,
 }
 
+#[derive(Debug)]
 pub struct PairContext {
     pub server: PairServer,
     pub setup: PairSetup,

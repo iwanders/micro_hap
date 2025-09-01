@@ -618,6 +618,7 @@ pub struct HapServices<'a> {
 
 use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 
+#[derive(Debug)]
 struct Reply {
     payload: BufferResponse,
     handle: u16,
@@ -625,6 +626,7 @@ struct Reply {
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct BufferResponse(pub usize);
 
+#[derive(Debug)]
 pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,

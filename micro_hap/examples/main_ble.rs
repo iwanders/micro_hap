@@ -70,8 +70,6 @@ mod ble_bas_peripheral {
     // GATT Server definition
     #[gatt_server]
     struct Server {
-        //battery_service: BatteryService,
-        //protocol_service: micro_hap::ProtocolInformationServiceFacade,
         accessory_information: micro_hap::ble::AccessoryInformationService,
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
@@ -88,13 +86,26 @@ mod ble_bas_peripheral {
     }
 
     use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
-    #[derive(Debug, Clone, Default)]
+    #[derive(Debug, Clone)]
     pub struct ActualPairSupport {
         pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
         pub pairings:
             std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
         pub global_state_number: u16,
         pub config_number: u16,
+    }
+    impl Default for ActualPairSupport {
+        fn default() -> Self {
+            Self {
+                ed_ltsk: [
+                    182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235, 192, 207,
+                    15, 80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204, 159, 230,
+                ],
+                pairings: Default::default(),
+                global_state_number: 1,
+                config_number: 1,
+            }
+        }
     }
     impl micro_hap::pairing::PairSupport for ActualPairSupport {
         fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
@@ -109,12 +120,10 @@ mod ble_bas_peripheral {
         fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
             error!("Storing {:?}", pairing);
             self.pairings.insert(pairing.id, *pairing);
-            error!("all pairings {:?}", self.pairings);
             Ok(())
         }
 
         fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
-            error!("all pairings {:?}", self.pairings);
             error!("retrieving id {:?}", id);
             Ok(self.pairings.get(id))
         }
@@ -136,17 +145,6 @@ mod ble_bas_peripheral {
         }
     }
 
-    /// Battery service
-    // #[gatt_service(uuid = service::BATTERY)]
-    // struct BatteryService {
-    //     /// Battery Level
-    //     #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 100])]
-    //     #[descriptor(uuid = descriptors::MEASUREMENT_DESCRIPTION, name = "hello", read, value = "Battery Level")]
-    //     #[characteristic(uuid = characteristic::BATTERY_LEVEL, read, notify, value = 10)]
-    //     level: u8,
-    //     #[characteristic(uuid = "408813df-5dd4-1f87-ec11-cdb001100000", write, read, notify)]
-    //     status: bool,
-    // }
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
@@ -277,16 +275,13 @@ mod ble_bas_peripheral {
             &server.pairing,
         )
         .unwrap();
+        hap_context.add_service(&server.lightbulb).unwrap();
 
         hap_context.assign_static_data(&static_information);
 
-        let mut support = ActualPairSupport {
-            ed_ltsk: [
-                182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235, 192, 207, 15,
-                80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204, 159, 230,
-            ],
-            ..Default::default()
-        };
+        info!("hap_context: {:0>#2x?}", hap_context);
+
+        let mut support = ActualPairSupport::default();
 
         let _ = join(ble_task(runner), async {
             loop {

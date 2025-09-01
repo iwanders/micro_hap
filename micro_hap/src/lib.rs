@@ -168,11 +168,11 @@ impl Default for SetupId {
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
 pub struct ServiceProperties {
     #[bits(1)]
-    primary: bool,
+    pub primary: bool,
     #[bits(1)]
-    hidden: bool,
+    pub hidden: bool,
     #[bits(1)]
-    configurable: bool,
+    pub configurable: bool,
 
     #[bits(13)]
     __: u16,
@@ -239,7 +239,6 @@ impl BleProperties {
     }
     pub fn with_properties(self, properties: ble::CharacteristicProperties) -> Self {
         let x = Self { properties, ..self };
-        info!("x: {:#?}", x);
         x
     }
 }
