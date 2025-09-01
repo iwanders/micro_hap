@@ -428,13 +428,17 @@ pub fn pair_verify_process_m3(
     let mut identifier = TLVIdentifier::tied(&decrypted);
     let mut signature = TLVSignature::tied(&decrypted);
     TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
+    info!("identifier: {:0>2x?}", identifier);
+    info!("signature {:0>2x?}", signature);
 
     // need to retrieve pairing that we created during the setup now.
     let pairing_id = PairingId::from_tlv(&identifier)?;
+    info!("pairing to retrieve: {:0>2x?}", pairing_id);
 
-    let pairing = support
-        .get_pairing(&pairing_id)?
-        .ok_or(PairingError::UnknownPairing)?;
+    let pairing = support.get_pairing(&pairing_id)?;
+    info!("pairing retrieved: {:?}", pairing);
+
+    let pairing = pairing.ok_or(PairingError::UnknownPairing)?;
     info!("found pairing: {:?}", pairing);
 
     // NONCOMPLIANCE reference stores session->state.pairVerify.pairingID = (int) key;, but we use the full pairing id?
@@ -515,4 +519,27 @@ pub fn pair_verify_start_session(
     ctx.session.transient = false;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_pair_verify_decode_verify_start() -> Result<(), PairingError> {
+        let decrypted = [
+            0x01, 0x24, 0x37, 0x37, 0x37, 0x35, 0x35, 0x44, 0x44, 0x35, 0x2d, 0x37, 0x32, 0x32,
+            0x33, 0x2d, 0x34, 0x41, 0x33, 0x42, 0x2d, 0x38, 0x37, 0x44, 0x32, 0x2d, 0x43, 0x32,
+            0x34, 0x41, 0x32, 0x34, 0x46, 0x34, 0x30, 0x36, 0x39, 0x35, 0x0a, 0x40, 0xd7, 0xe3,
+            0xd6, 0x0a, 0xdf, 0x3b, 0x9d, 0xd9, 0x2d, 0x0a, 0x06, 0x80, 0x5f, 0x22, 0x7d, 0x29,
+            0x23, 0xc1, 0xdf, 0x1d, 0x7a, 0x9d, 0x5e, 0x70, 0xca, 0x72, 0x78, 0x69, 0xb1, 0xc9,
+            0x0e, 0xe0, 0x8d, 0x6f, 0x79, 0x4b, 0xfe, 0xd8, 0xae, 0x2a, 0x28, 0x23, 0x95, 0x8d,
+            0x16, 0x5b, 0x98, 0x64, 0x5f, 0xbb, 0xf5, 0xf7, 0xaa, 0x33, 0xd4, 0x1e, 0x30, 0x67,
+            0x82, 0x51, 0x1a, 0x00, 0xf1, 0x0a,
+        ];
+        let mut identifier = TLVIdentifier::tied(&decrypted);
+        let mut signature = TLVSignature::tied(&decrypted);
+        TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
+        let pairing_id = PairingId::from_tlv(&identifier)?;
+        Ok(())
+    }
 }

@@ -1337,9 +1337,10 @@ impl HapPeripheralContext {
                 };
                 // HAPBLECharacteristicGetConfigurationResponse
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L172C10-L172C54
-                let chr = self
+                let _attr = self
                     .get_attribute_by_char(req.char_id)
                     .ok_or(HapBleError::InvalidValue)?;
+                // NONCOMPLIANCE; probably need to store the interval & properties into the attribute?
 
                 let mut buffer = self.buffer.borrow_mut();
                 let reply = req.header.to_success();

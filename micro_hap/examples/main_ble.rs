@@ -13,7 +13,7 @@ mod ble_bas_peripheral {
     use embassy_futures::join::join;
     use embassy_futures::select::select;
     use embassy_time::Timer;
-    use log::{info, warn};
+    use log::{error, info, warn};
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
@@ -107,11 +107,15 @@ mod ble_bas_peripheral {
         }
 
         fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+            error!("Storing {:?}", pairing);
             self.pairings.insert(pairing.id, *pairing);
+            error!("all pairings {:?}", self.pairings);
             Ok(())
         }
 
         fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
+            error!("all pairings {:?}", self.pairings);
+            error!("retrieving id {:?}", id);
             Ok(self.pairings.get(id))
         }
 
@@ -276,6 +280,14 @@ mod ble_bas_peripheral {
 
         hap_context.assign_static_data(&static_information);
 
+        let mut support = ActualPairSupport {
+            ed_ltsk: [
+                182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235, 192, 207, 15,
+                80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204, 159, 230,
+            ],
+            ..Default::default()
+        };
+
         let _ = join(ble_task(runner), async {
             loop {
                 match advertise(name, &mut peripheral, &server, &static_information).await {
@@ -288,7 +300,13 @@ mod ble_bas_peripheral {
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let a = gatt_events_task(&mut hap_context, &mut accessory, &server, &conn);
+                        let a = gatt_events_task(
+                            &mut hap_context,
+                            &mut accessory,
+                            &mut support,
+                            &server,
+                            &conn,
+                        );
                         let b = custom_task(&server, &conn, &stack);
                         // run until any task ends (usually because the connection has been closed),
                         // then return to advertising state.
@@ -345,6 +363,7 @@ mod ble_bas_peripheral {
     async fn gatt_events_task<P: PacketPool>(
         hap_context: &mut micro_hap::ble::HapPeripheralContext,
         accessory: &mut impl micro_hap::AccessoryInterface,
+        support: &mut impl micro_hap::pairing::PairSupport,
         server: &Server<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), Error> {
@@ -403,17 +422,8 @@ mod ble_bas_peripheral {
                     // This step is also performed at drop(), but writing it explicitly is necessary
                     // in order to ensure reply is sent.
 
-                    let mut support = ActualPairSupport {
-                        ed_ltsk: [
-                            182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235,
-                            192, 207, 15, 80, 115, 241, 91, 203, 234, 46, 135, 77, 137, 203, 204,
-                            159, 230,
-                        ],
-                        ..Default::default()
-                    };
-
                     let fallthrough_event = hap_context
-                        .process_gatt_event(&server.as_hap(), &mut support, accessory, event)
+                        .process_gatt_event(&server.as_hap(), support, accessory, event)
                         .await?;
 
                     if let Some(event) = fallthrough_event {
