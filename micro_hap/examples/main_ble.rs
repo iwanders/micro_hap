@@ -62,13 +62,16 @@ mod ble_bas_peripheral {
     /// Max number of L2CAP channels.
     const L2CAP_CHANNELS_MAX: usize = 5; // Signal + att
 
+    // Putting the bulb at the end means ios will jump over the service request.
+    // Is this because of the +1 here?
+    // https://github.com/embassy-rs/trouble/blob/366ee88a2aa19db11eb0707c71d797156abe23f5/host/src/attribute.rs#L616
     // GATT Server definition
     #[gatt_server]
     struct Server {
-        accessory_information: micro_hap::ble::AccessoryInformationService,
-        lightbulb: micro_hap::ble::LightbulbService,
-        protocol: micro_hap::ble::ProtocolInformationService,
-        pairing: micro_hap::ble::PairingService,
+        accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
+        protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
+        pairing: micro_hap::ble::PairingService,                            // 0x0055
+        lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
@@ -275,6 +278,15 @@ mod ble_bas_peripheral {
         hap_context.assign_static_data(&static_information);
 
         info!("hap_context: {:0>#2x?}", hap_context);
+
+        // The handle exists... where does it go wrong??
+        info!(
+            "table {:?}",
+            server
+                .table()
+                .find_characteristic_by_value_handle::<[u8; 0]>(0x6a)
+        );
+
         hap_context.print_handles();
 
         let mut support = ActualPairSupport::default();

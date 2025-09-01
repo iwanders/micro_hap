@@ -13,8 +13,8 @@ edition = "2024"
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
-], git = "https://github.com/embassy-rs/trouble", rev = "a2cdd1444370185b2a5b118b446a8947b200b602" }
-# ], path = "../../trouble/host" }
+    #], git = "https://github.com/embassy-rs/trouble", rev = "a2cdd1444370185b2a5b118b446a8947b200b602" }
+], path = "../../trouble/host" }
 # ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",
