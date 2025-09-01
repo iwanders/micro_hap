@@ -501,6 +501,20 @@ pub trait PairSupport {
     fn get_ble_broadcast_parameters(
         &self,
     ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError> {
+        /*
+         * [2025-09-01T19:37:13Z WARN  micro_hap::ble] Raw write data [99, 22, 66, 83, e5, 7a, fb, 2c, fa, 88, c3, ba, 1a, f2, bf, 8e, ed, 99, bc, 14, 03, 5b, f3, 55, e0, be, 18]
+         [2025-09-01T19:37:13Z WARN  micro_hap::ble] Writing protocol.service_signature  0x[99, 22, 66, 83, e5, 7a, fb, 2c, fa, 88, c3, ba, 1a, f2, bf, 8e, ed, 99, bc, 14, 03, 5b, f3, 55, e0, be, 18]
+         [2025-09-01T19:37:13Z WARN  micro_hap::ble] handle_write_incoming raw [99, 22, 66, 83, e5, 7a, fb, 2c, fa, 88, c3, ba, 1a, f2, bf, 8e, ed, 99, bc, 14, 03, 5b, f3, 55, e0, be, 18]
+         [2025-09-01T19:37:13Z WARN  micro_hap::ble] handle_write_incoming [00, 08, aa, 10, 00, 04, 00, 01, 00, 02, 00]
+         [2025-09-01T19:37:13Z WARN  micro_hap::ble] Write header RequestHeader { control: ControlField { pdu_type: Request, extended_iid: false, continuation: false }, opcode: ProtocolConfiguration, tid: TId(aa) }
+         [2025-09-01T19:37:13Z INFO  micro_hap::ble] Info req: ProtocolConfigurationRequestHeader { header: RequestHeader { control: ControlField { pdu_type: Request, extended_iid: false, continuation: false }, opcode: ProtocolConfiguration, tid: TId(170) }, svc_id: SvcId(16), body_length: 4 }
+
+         thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/repo/micro_hap/src/pairing.rs:504:9:
+         not implemented
+         note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+         [2025-09-01T19:37:13Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
+
+        */
         unimplemented!()
     }
     /// Set the BLE broadcast parameters

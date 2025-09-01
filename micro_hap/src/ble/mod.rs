@@ -476,12 +476,12 @@ pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33);
 pub struct LightbulbService {
     //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x30)]
-    service_instance: u16,
+    pub service_instance: u16,
 
     /// Service signature, only two bytes.
     #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=0x31u16.to_le_bytes())]
-    service_signature: FacadeDummyType,
+    pub service_signature: FacadeDummyType,
 
     // 0x0023
     /// Name for the device.
@@ -491,7 +491,7 @@ pub struct LightbulbService {
 
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_LIGHTBULB_ON.0.to_le_bytes())]
     #[characteristic(uuid=characteristic::ON, read, write )]
-    on: FacadeDummyType,
+    pub on: FacadeDummyType,
 }
 impl HapBleService for LightbulbService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {

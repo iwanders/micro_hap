@@ -4,11 +4,6 @@ use bt_hci::controller::ExternalController;
 //use trouble_example_apps::ble_bas_peripheral;
 use trouble_linux_examples::Transport;
 
-// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] v: Ok(TLV { type_id: 6, length: 1, data: [[3]] })
-// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] Pair Verify M3: Verify Start Request
-// [2025-09-01T14:53:37Z INFO  micro_hap::pair_verify] decrypted: [01, 24, 37, 37, 37, 35, 35, 44, 44, 35, 2d, 37, 32, 32, 33, 2d, 34, 41, 33, 42, 2d, 38, 37, 44, 32, 2d, 43, 32, 34, 41, 32, 34, 46, 34, 30, 36, 39, 35, 0a, 40, d7, e3, d6, 0a, df, 3b, 9d, d9, 2d, 0a, 06, 80, 5f, 22, 7d, 29, 23, c1, df, 1d, 7a, 9d, 5e, 70, ca, 72, 78, 69, b1, c9, 0e, e0, 8d, 6f, 79, 4b, fe, d8, ae, 2a, 28, 23, 95, 8d, 16, 5b, 98, 64, 5f, bb, f5, f7, aa, 33, d4, 1e, 30, 67, 82, 51, 1a, 00, f1, 0a]
-// [2025-09-01T14:53:37Z ERROR main_ble::ble_bas_peripheral] Error occured in processing: InvalidValue
-
 mod ble_bas_peripheral {
     use embassy_futures::join::join;
     use embassy_futures::select::select;
@@ -65,15 +60,15 @@ mod ble_bas_peripheral {
     const CONNECTIONS_MAX: usize = 3;
 
     /// Max number of L2CAP channels.
-    const L2CAP_CHANNELS_MAX: usize = 4; // Signal + att
+    const L2CAP_CHANNELS_MAX: usize = 5; // Signal + att
 
     // GATT Server definition
     #[gatt_server]
     struct Server {
         accessory_information: micro_hap::ble::AccessoryInformationService,
+        lightbulb: micro_hap::ble::LightbulbService,
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
-        lightbulb: micro_hap::ble::LightbulbService,
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
@@ -280,6 +275,7 @@ mod ble_bas_peripheral {
         hap_context.assign_static_data(&static_information);
 
         info!("hap_context: {:0>#2x?}", hap_context);
+        hap_context.print_handles();
 
         let mut support = ActualPairSupport::default();
 
@@ -465,8 +461,8 @@ mod ble_bas_peripheral {
             &mut advertiser_data[..],
         )?;
         let params = AdvertisementParameters {
-            interval_min: embassy_time::Duration::from_millis(1000),
-            interval_max: embassy_time::Duration::from_millis(5000),
+            interval_min: embassy_time::Duration::from_millis(100),
+            interval_max: embassy_time::Duration::from_millis(500),
             ..Default::default()
         };
         let advertiser = peripheral
