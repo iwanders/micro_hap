@@ -1111,6 +1111,7 @@ impl HapPeripheralContext {
         let data = if security_active {
             if handle == hap.pairing.pair_verify.handle {
                 // pair verify is always plaintext!
+                self.should_encrypt_reply = false;
                 data
             } else {
                 warn!("handle_write_incoming raw {:0>2x?}", data);
@@ -2820,6 +2821,8 @@ mod test {
             }
 
             // And now we go into pair verify yet again!
+            // Feed the device the necessary random.
+            support.add_random(&[0x4b, 0xff, 0x03, 0x1d, 0x7d, 0x97, 0x5f, 0x01]);
             {
                 let incoming_data: &[u8] = &[
                     0x00, 0x02, 0x61, 0x23, 0x00, 0x49, 0x00, 0x01, 0x44, 0x06, 0x01, 0x01, 0x00,

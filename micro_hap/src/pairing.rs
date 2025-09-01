@@ -120,6 +120,9 @@ impl PairingId {
             .map_err(|_| PairingError::UuidError)?,
         ))
     }
+    pub fn is_none(&self) -> bool {
+        self == &Default::default()
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]

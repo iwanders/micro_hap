@@ -2,7 +2,7 @@
 use zerocopy::{IntoBytes, TryFromBytes};
 
 use crate::crypto::{
-    aead,
+    aead::{self, CHACHA20_POLY1305_KEY_BYTES},
     ed25519::{ed25519_sign, ed25519_verify},
     hkdf_sha512,
 };
@@ -15,6 +15,13 @@ use crate::tlv::{TLVReader, TLVWriter};
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L972
 
 // constants used in the pair verify process
+
+const PAIR_VERIFY_M1_RESUME_INFO: &'static str = "Pair-Resume-Request-Info";
+const PAIR_VERIFY_M1_RESUME_NONCE: &'static str = "PR-Msg01";
+const PAIR_VERIFY_M2_RESUME_INFO: &'static str = "Pair-Resume-Response-Info";
+const PAIR_VERIFY_M2_RESUME_SHARED_SECRET_INFO: &'static str = "Pair-Resume-Shared-Secret-Info";
+const PAIR_VERIFY_M2_RESUME_NONCE: &'static str = "PR-Msg02";
+
 const PAIR_VERIFY_M2_SALT: &'static str = "Pair-Verify-Encrypt-Salt";
 const PAIR_VERIFY_M2_INFO: &'static str = "Pair-Verify-Encrypt-Info";
 const PAIR_VERIFY_M2_NONCE: &'static str = "PV-Msg02";
@@ -89,7 +96,7 @@ pub fn handle_outgoing(
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1136
             // Advance the state, and write M2.
             if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
-                todo!();
+                pair_verify_process_get_m2_ble(ctx, support, data)
             } else {
                 pair_verify_process_get_m2(ctx, support, data)
             }
@@ -116,7 +123,7 @@ pub fn pair_verify_process_m1(
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
     info!("Pair Verify M1: Verify Start Request");
-    let _ = (session_id, encrypted_data);
+    // let _ = (session_id, encrypted_data);
 
     let state = *state.try_from::<PairState>()?;
     if state != PairState::ReceivedM1 {
@@ -140,9 +147,54 @@ pub fn pair_verify_process_m1(
     public_key.copy_body(&mut ctx.server.pair_verify.controller_cv_pk)?;
 
     if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
-        //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
         info!("Pair Resume M1: Resume Request");
-        todo!();
+        // NONCOMPLIANCE; They have a session cache here... we don't have a session cache?
+
+        let provided_session_id = session_id.short_data()?;
+        info!(
+            "Pair resume with {:0>2x?}, {:0>2x?} {:0>2x?}",
+            provided_session_id, public_key, encrypted_data
+        );
+
+        if ctx.session.pairing_id.is_none() {
+            ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
+            // NONCOMPLIANCE? do we ever use this method field?
+            return Ok(());
+        }
+
+        let mut scratch = ctx.server.pair_setup.B;
+        let request_key_idx = 0..CHACHA20_POLY1305_KEY_BYTES;
+        let salt_idx = request_key_idx.end..request_key_idx.end + X25519_BYTES;
+        let session_idx = salt_idx.end..salt_idx.end + provided_session_id.len();
+
+        // Copy the data there.
+        public_key.copy_body(&mut scratch[salt_idx.clone()])?;
+        session_id.copy_body(&mut scratch[session_idx.clone()])?;
+
+        let (first_section, right_scratch) = scratch.split_at_mut(session_idx.end);
+
+        // Calculate the request key.
+        let (result, remainder) = first_section.split_at_mut(request_key_idx.end);
+        let shifted_salt_session_idx =
+            (salt_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
+        let salt = &remainder[shifted_salt_session_idx];
+        let key = &ctx.server.pair_verify.cv_key;
+        let info = PAIR_VERIFY_M1_RESUME_INFO.as_bytes();
+        hkdf_sha512(key, salt, info, result)?;
+
+        info!("Pair Resume M1: RequestKey: {:0>2x?}", result);
+
+        // Next up is decrypting the data.
+        let len = encrypted_data.copy_body(right_scratch)?;
+
+        let decrypted = aead::decrypt(
+            &mut right_scratch[0..len],
+            result,
+            PAIR_VERIFY_M1_RESUME_NONCE.as_bytes(),
+        )?;
+        // There is no actual data, we merely need to check the authentication tag?
+        info!("Decrypted data: {:0>2x?}", decrypted);
         // Seems the fallback of this is just doing a pair verify? Perhaps we can just do that and skip implementing this?
     }
 
@@ -253,6 +305,94 @@ pub fn pair_verify_process_get_m2(
 
     writer = writer.add_slice(TLVType::EncryptedData, &encrypted_sub)?;
     // info!("plain: {:0>2x?}", &subwriter_scratch[0..subwriter_length]);
+
+    Ok(writer.end())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L553
+// HAPPairingPairVerifyGetM2ForBLEPairResume
+pub fn pair_verify_process_get_m2_ble(
+    ctx: &mut PairContext,
+    support: &mut impl PairSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    info!("Pair Resume M2: Resume Response.");
+    if ctx.server.pair_verify.setup.state != PairState::SentM2 {
+        return Err(PairingError::IncorrectState);
+    }
+
+    // NONCOMPLIANCE This whole session_id seems to be proper and often used... where is it actually stored?
+
+    const SESSION_ID_LENGTH: usize = 8;
+    let mut scratch = ctx.server.pair_setup.B;
+    let request_key_idx = 0..CHACHA20_POLY1305_KEY_BYTES;
+    let salt_idx = request_key_idx.end..request_key_idx.end + X25519_BYTES;
+    let session_idx = salt_idx.end..salt_idx.end + SESSION_ID_LENGTH;
+
+    // Generated random session id.
+    scratch[session_idx.clone()].fill_with(|| support.get_random());
+
+    // Copy the cv key
+    scratch[salt_idx.clone()].copy_from_slice(&ctx.server.pair_verify.controller_cv_pk);
+
+    let (first_section, right_scratch) = scratch.split_at_mut(session_idx.end);
+
+    // Calculate the request key.
+    let (result_key, remainder) = first_section.split_at_mut(request_key_idx.end);
+    let shifted_salt_session_idx =
+        (salt_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
+    let salt = &remainder[shifted_salt_session_idx];
+    info!("Pair Resume M2: salt.: {:0>2x?}", salt);
+    let key = &ctx.server.pair_verify.cv_key;
+    let info = PAIR_VERIFY_M2_RESUME_INFO.as_bytes();
+    hkdf_sha512(key, salt, info, result_key)?;
+    info!("Pair Resume M2: ResponseKey.: {:0>2x?}", result_key);
+    let shifted_session_idx =
+        (session_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
+    let session_id = &remainder[shifted_session_idx];
+    info!("session_id: {:0>2x?}", session_id);
+
+    // with that key we encrypt some empty data.
+
+    // const PAIR_VERIFY_M2_RESUME_INFO: &'static str = "Pair-Resume-Response-Info";
+    // const PAIR_VERIFY_M2_RESUME_INFO: &'static str = "Pair-Resume-Shared-Secret-Info";
+    // const PAIR_VERIFY_M2_RESUME_NONCE: &'static str = "PR-Msg02";
+
+    let encrypted_response = aead::encrypt(
+        right_scratch,
+        0,
+        result_key,
+        PAIR_VERIFY_M2_RESUME_NONCE.as_bytes(),
+    )?;
+
+    // Next up is creating the new shared secret.
+    hkdf_sha512(
+        key,
+        salt,
+        PAIR_VERIFY_M2_RESUME_SHARED_SECRET_INFO.as_bytes(),
+        result_key,
+    )?;
+    // Huh, we just rotated the key here??
+    ctx.server.pair_verify.cv_key.copy_from_slice(result_key);
+    info!(
+        "Pair Resume M2: cv_KEY.: {:0>2x?}",
+        ctx.server.pair_verify.cv_key
+    );
+
+    // NONCOMPLIANCE save session to cache.
+
+    let mut writer = TLVWriter::new(data);
+    writer = writer.add_slice(
+        TLVType::State,
+        ctx.server.pair_verify.setup.state.as_bytes(),
+    )?;
+    writer = writer.add_slice(
+        TLVType::Method,
+        ctx.server.pair_verify.setup.method.as_bytes(),
+    )?;
+    writer = writer.add_slice(TLVType::SessionID, session_id)?;
+    writer = writer.add_slice(TLVType::EncryptedData, &encrypted_response)?;
+    pair_verify_start_session(ctx, support)?;
 
     Ok(writer.end())
 }
