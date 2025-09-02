@@ -23,6 +23,8 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // Maybe the instance ids and the like need to be monotonically increasing? Which is not explicitly stated.
 // changing ids definitely fixed things. Do they need to be 16 aligned on the service start??
+// That's what the reference does:
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L18
 //
 // We're now on the pair verify characteristic response not being accepted.
 //

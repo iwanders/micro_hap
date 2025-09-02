@@ -277,7 +277,7 @@ mod ble_bas_peripheral {
 
         hap_context.assign_static_data(&static_information);
 
-        info!("hap_context: {:0>#2x?}", hap_context);
+        //info!("hap_context: {:0>#2x?}", hap_context);
 
         // The handle exists... where does it go wrong??
         info!(
