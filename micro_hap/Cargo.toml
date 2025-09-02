@@ -13,8 +13,8 @@ edition = "2024"
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
-    #], git = "https://github.com/embassy-rs/trouble", rev = "a2cdd1444370185b2a5b118b446a8947b200b602" }
-], path = "../../trouble/host" }
+], git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
+#], path = "../../trouble/host" }
 # ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",
@@ -60,8 +60,8 @@ log = { version = "0.4", optional = true }
 
 
 [dev-dependencies]
-trouble-linux-examples = { git = "https://github.com/embassy-rs/trouble", rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
-trouble-example-apps = { git = "https://github.com/embassy-rs/trouble", rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
+trouble-linux-examples = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
+trouble-example-apps = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
 tokio = { version = "1", features = [
     "io-util",
     "net",
@@ -71,7 +71,7 @@ tokio = { version = "1", features = [
     "sync",
     "time",
 ] }
-bt-hci = { version = "0.3.2", default-features = false }
+bt-hci = { version = "0.4.0", default-features = false }
 env_logger = "0.11"
 log = { version = "0.4" }
 rand = "0.9.2"
