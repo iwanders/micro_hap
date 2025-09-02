@@ -13,7 +13,9 @@ mod ble_bas_peripheral {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse};
+    use micro_hap::{
+        AccessoryInterface, CharId, CharacteristicResponse, ble::broadcast::BleBroadcastParameters,
+    };
 
     struct LightBulbAccessory {
         name: HeaplessString<32>,
@@ -91,6 +93,7 @@ mod ble_bas_peripheral {
             std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
         pub global_state_number: u16,
         pub config_number: u16,
+        pub broadcast_parameters: BleBroadcastParameters,
     }
     impl Default for ActualPairSupport {
         fn default() -> Self {
@@ -102,6 +105,7 @@ mod ble_bas_peripheral {
                 pairings: Default::default(),
                 global_state_number: 1,
                 config_number: 1,
+                broadcast_parameters: Default::default(),
             }
         }
     }
@@ -139,6 +143,18 @@ mod ble_bas_peripheral {
         }
         fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
             self.config_number = value;
+            Ok(())
+        }
+        fn get_ble_broadcast_parameters(
+            &self,
+        ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, PairingError> {
+            Ok(self.broadcast_parameters)
+        }
+        fn set_ble_broadcast_parameters(
+            &mut self,
+            params: &micro_hap::ble::broadcast::BleBroadcastParameters,
+        ) -> Result<(), PairingError> {
+            self.broadcast_parameters = *params;
             Ok(())
         }
     }
