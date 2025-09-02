@@ -4,7 +4,7 @@ use trouble_host::prelude::*;
 
 pub mod broadcast;
 mod pdu;
-use crate::{AccessoryInterface, BleProperties, CharacteristicResponse, DataSource};
+use crate::{BleProperties, CharacteristicResponse, DataSource};
 
 use bitfield_struct::bitfield;
 
@@ -942,7 +942,9 @@ impl HapPeripheralContext {
             } else {
                 match chr.data_source {
                     DataSource::Nop => {
-                        todo!()
+                        let reply = parsed.header.header.to_success();
+                        let len = reply.write_into_length(left_buffer)?;
+                        Ok(BufferResponse(len))
                     }
                     DataSource::AccessoryInterface => {
                         let r = accessory
@@ -961,10 +963,10 @@ impl HapPeripheralContext {
 
                         let reply = parsed.header.header.to_success();
                         let len = reply.write_into_length(left_buffer)?;
-                        return Ok(BufferResponse(len));
+                        Ok(BufferResponse(len))
                     }
-                    DataSource::Constant(data) => {
-                        todo!()
+                    DataSource::Constant(_data) => {
+                        unimplemented!("a constant data source should not be writable")
                     }
                 }
             }
@@ -973,6 +975,7 @@ impl HapPeripheralContext {
             todo!()
         }
     }
+
     #[allow(unreachable_code)]
     pub async fn info_request(
         &mut self,

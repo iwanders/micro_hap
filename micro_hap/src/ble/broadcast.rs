@@ -57,6 +57,7 @@ pub fn configure_broadcast_notification(
     interval: super::pdu::BleBroadcastInterval,
     char_id: CharId,
 ) -> Result<(), super::HapBleError> {
+    let _ = (broadcast_enabled, interval);
     // How does this work is it just 3 bytes ( bool | interval[0,1] )
 
     // NONCOMPLIANCE: Completely ignoring this whole broadcast thing.
