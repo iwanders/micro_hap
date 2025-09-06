@@ -762,7 +762,7 @@ impl HapPeripheralContext {
                 let handle = a.ble_ref().handle;
                 let uuid = &a.uuid;
                 info!(
-                    "iid 0x{:0>2x?}, handle: 0x{:0>2x?}  uid: {:0>2x?}",
+                    "iid 0x{:02x?}, handle: 0x{:02x?}  uid: {:02x?}",
                     attr_id, handle, uuid
                 );
             }
@@ -795,7 +795,7 @@ impl HapPeripheralContext {
             Ok(BufferResponse(len))
         } else {
             // What do we return if the id is not known??
-            error!("Could not find service for req.svc_id: 0x{:0>2x?}", req_svc);
+            error!("Could not find service for req.svc_id: 0x{:02x?}", req_svc);
             todo!()
         }
     }
@@ -840,7 +840,7 @@ impl HapPeripheralContext {
         if let Some(chr) = self.get_attribute_by_char(char_id) {
             match chr.data_source {
                 DataSource::Nop => {
-                    error!("Got NOP data on char_id: 0x{:0>2x?}", char_id);
+                    error!("Got NOP data on char_id: 0x{:02x?}", char_id);
                     Ok(BufferResponse(0))
                 }
                 DataSource::AccessoryInterface => {
@@ -854,7 +854,7 @@ impl HapPeripheralContext {
                         Ok(BufferResponse(len))
                     } else {
                         error!(
-                            "Characteristic is using interface data source, but it returned None; 0x{:0>2x?}",
+                            "Characteristic is using interface data source, but it returned None; 0x{:02x?}",
                             char_id
                         );
                         Ok(BufferResponse(0))
@@ -1179,10 +1179,10 @@ impl HapPeripheralContext {
             // Perform the encryption, then respond with the buffer that is encrypted.
             let mut ctx = self.pair_ctx.borrow_mut();
             let mut buff = self.buffer.borrow_mut();
-            info!("Encrypting reply: {:0>2x?}", &buff[0..value.0]);
+            info!("Encrypting reply: {:02x?}", &buff[0..value.0]);
 
             let res = ctx.session.a_to_c.encrypt(&mut **buff, value.0)?;
-            info!("Encrypted reply: {:0>2x?}", &res);
+            info!("Encrypted reply: {:02x?}", &res);
 
             Ok(BufferResponse(res.len()))
         } else {
@@ -1221,7 +1221,7 @@ impl HapPeripheralContext {
                 self.should_encrypt_reply = false;
                 data
             } else {
-                warn!("handle_write_incoming raw {:0>2x?}", data);
+                warn!("handle_write_incoming raw {:02x?}", data);
                 // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
                 // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
                 // Yes, these are encrypted.
@@ -1243,7 +1243,7 @@ impl HapPeripheralContext {
         } else {
             data
         };
-        warn!("handle_write_incoming {:0>2x?}", data);
+        warn!("handle_write_incoming {:02x?}", data);
 
         let header = pdu::RequestHeader::parse_pdu(data)?;
         warn!("Write header {:x?}", header);
@@ -1301,14 +1301,14 @@ impl HapPeripheralContext {
             }
             pdu::OpCode::CharacteristicConfiguration => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L336
-                info!("CharacteristicConfiguration req: {:0>2x?}", data);
+                info!("CharacteristicConfiguration req: {:02x?}", data);
                 if !security_active {
                     // Nope...
                     return Err(HapBleError::EncryptionError);
                 }
 
                 let req = pdu::CharacteristicConfigurationRequest::parse_pdu(data)?;
-                info!("CharacteristicConfiguration req: {:0>2x?}", req);
+                info!("CharacteristicConfiguration req: {:02x?}", req);
 
                 let interval = req.broadcast_interval.unwrap_or_default();
 
@@ -1458,7 +1458,7 @@ impl HapPeripheralContext {
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
-                warn!("Raw write data {:0>2x?}", event.data());
+                warn!("Raw write data {:02x?}", event.data());
 
                 if event.handle() == hap.information.hardware_revision.handle {
                     warn!("Writing information.hardware_revision {:?}", event.data());
@@ -1613,7 +1613,7 @@ mod test {
                 } else if char_id == CHAR_ID_LIGHTBULB_ON {
                     Some(self.bulb_on_state.as_bytes())
                 } else {
-                    todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                    todo!("accessory interface for char id: 0x{:02x?}", char_id)
                 }
             }
             fn write_characteristic(
@@ -1622,7 +1622,7 @@ mod test {
                 data: &[u8],
             ) -> Result<CharacteristicResponse, ()> {
                 info!(
-                    "AccessoryInterface to characterstic: 0x{:0>2x?} data: {:0>2x?}",
+                    "AccessoryInterface to characterstic: 0x{:02x?} data: {:02x?}",
                     char_id, data
                 );
 
@@ -1639,7 +1639,7 @@ mod test {
                     info!("Set bulb to: {:?}", self.bulb_on_state);
                     Ok(response)
                 } else {
-                    todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                    todo!("accessory interface for char id: 0x{:02x?}", char_id)
                 }
             }
         }
@@ -1882,7 +1882,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
         }
 
         // Writing to pair setup.  ------------
@@ -1935,7 +1935,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
         // m3 & m4
@@ -1995,7 +1995,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
         // m5 & m6
@@ -2039,7 +2039,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2088,7 +2088,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2118,7 +2118,7 @@ mod test {
 
             let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2149,7 +2149,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_hardware_revision).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2177,7 +2177,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2205,7 +2205,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_serial_number).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2233,7 +2233,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2261,7 +2261,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_adk_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2289,7 +2289,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_manufacturer).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2317,7 +2317,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2345,7 +2345,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_identify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2395,7 +2395,7 @@ mod test {
                 .await?;
                 let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
                 let resp_buffer = resp.expect("expecting a outgoing response");
-                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                info!("outgoing: {:02x?}", &*resp_buffer);
                 assert_eq!(&*resp_buffer, *outgoing);
             }
         }
@@ -2424,7 +2424,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2452,7 +2452,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2476,7 +2476,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2504,7 +2504,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2532,7 +2532,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2560,7 +2560,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
         }
 
@@ -2584,7 +2584,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2609,7 +2609,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_manufacturer).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2635,7 +2635,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_model).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2661,7 +2661,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_model).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2687,7 +2687,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_model).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2713,7 +2713,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2741,7 +2741,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_service_signature).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2767,7 +2767,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_name).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2792,7 +2792,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_firmware_version).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             let _ = outgoing;
             assert_eq!(&*resp_buffer, outgoing);
         }
@@ -2854,7 +2854,7 @@ mod test {
                 .await?;
                 let resp = ctx.handle_read_outgoing(handle).await?;
                 let resp_buffer = resp.expect("expecting a outgoing response");
-                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                info!("outgoing: {:02x?}", &*resp_buffer);
                 assert_eq!(&*resp_buffer, outgoing);
             }
 
@@ -2880,7 +2880,7 @@ mod test {
                 .await?;
                 let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
                 let resp_buffer = resp.expect("expecting a outgoing response");
-                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                info!("outgoing: {:02x?}", &*resp_buffer);
                 let _ = outgoing;
                 assert_eq!(&*resp_buffer, outgoing);
             }
@@ -2925,7 +2925,7 @@ mod test {
                     .await?;
                     let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
                     let resp_buffer = resp.expect("expecting a outgoing response");
-                    info!("outgoing: {:0>2x?}", &*resp_buffer);
+                    info!("outgoing: {:02x?}", &*resp_buffer);
                     assert_eq!(&*resp_buffer, outgoing);
                 }
             }
@@ -2959,7 +2959,7 @@ mod test {
                 .await?;
                 let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
                 let resp_buffer = resp.expect("expecting a outgoing response");
-                info!("outgoing: {:0>2x?}", &*resp_buffer);
+                info!("outgoing: {:02x?}", &*resp_buffer);
                 let _ = outgoing;
                 assert_eq!(&*resp_buffer, outgoing);
             }
@@ -2986,7 +2986,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
             assert_eq!(support.global_state_number, 2);
         }
@@ -3010,7 +3010,7 @@ mod test {
             .await?;
             let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
-            info!("outgoing: {:0>2x?}", &*resp_buffer);
+            info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
             assert_eq!(support.global_state_number, 3);
         }

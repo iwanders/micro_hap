@@ -560,7 +560,7 @@ pub fn pair_setup_handle_incoming(
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             //let mut flags = TLVFlags::tied(&data);
-            info!("before read into, data: {:0>2x?}", data);
+            info!("before read into, data: {:02?}", data);
             TLVReader::new(&data).require_into(&mut [&mut method, &mut state])?;
 
             info!("pair_setup_process_m1 next");
@@ -699,7 +699,7 @@ pub fn pair_setup_process_m5(
     let key = &ctx.server.pair_setup.session_key;
     let data = left;
     let decrypted = aead::decrypt(data, key, &PAIR_SETUP_M5_NONCE.as_bytes())?;
-    info!("decrypted: {:0>2x?}", decrypted);
+    info!("decrypted: {:02?}", decrypted);
 
     let mut identifier = TLVIdentifier::tied(&decrypted);
     let mut public_key = TLVPublicKey::tied(&decrypted);
@@ -709,9 +709,9 @@ pub fn pair_setup_process_m5(
         &mut public_key,
         &mut signature,
     ])?;
-    info!("identifier: {:0>2x?}", identifier);
-    info!("public_key: {:0>2x?}", public_key);
-    info!("signature: {:0>2x?}", signature);
+    info!("identifier: {:02?}", identifier);
+    info!("public_key: {:02?}", public_key);
+    info!("signature: {:02?}", signature);
 
     // NONCOMPLIANCE not checking the sizes of the above things.
 
@@ -739,7 +739,7 @@ pub fn pair_setup_process_m5(
     signature.copy_body(&mut right[sig_start..sig_end])?;
 
     let iosdevice_info = &right[0..X_LENGTH + identifier.len() + public_key.len()];
-    info!("iosdevice_info: {:0>2x?}", iosdevice_info);
+    info!("iosdevice_info: {:02?}", iosdevice_info);
 
     // Now we need to verify that;
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L988-L991
@@ -876,12 +876,12 @@ pub fn pair_setup_process_get_m4(
         .compute_shared_secret(public_b, b, v, public_a, &mut premaster)
         .map_err(|_| PairingError::BadPublicKey)?;
 
-    info!("premaster: {:0>2x?}", &premaster);
+    info!("premaster: {:02?}", &premaster);
 
     server.session_key(&premaster, &mut ctx.server.pair_setup.K);
 
     // What's the difference between K and S? First 64 bytes of S seems to be K?
-    info!("Calculated K: {:0>2x?}", ctx.server.pair_setup.K);
+    info!("Calculated K: {:02?}", ctx.server.pair_setup.K);
 
     // we also have to check m1 :(
     let mut calculated_m1 = [0u8; SRP_PROOF_BYTES];
@@ -896,8 +896,8 @@ pub fn pair_setup_process_get_m4(
         &mut calculated_m1,
     );
 
-    info!("got_m1: {:0>2x?}", ctx.server.pair_setup.m1);
-    info!("calculated_m1: {:0>2x?}", calculated_m1);
+    info!("got_m1: {:02?}", ctx.server.pair_setup.m1);
+    info!("calculated_m1: {:02?}", calculated_m1);
     if &ctx.server.pair_setup.m1 != &calculated_m1 {
         // NONCOMPLIANCE: Do something with counters to keep track of unsuccessful attempts.
         return Err(PairingError::BadProof);
@@ -910,7 +910,7 @@ pub fn pair_setup_process_get_m4(
         client_proof_m1,
         &mut ctx.server.pair_setup.m2,
     );
-    info!("calculated_m2: {:0>2x?}", ctx.server.pair_setup.m2);
+    info!("calculated_m2: {:02?}", ctx.server.pair_setup.m2);
 
     // oh, now we need something with hkdf_sha512...
 
@@ -921,7 +921,7 @@ pub fn pair_setup_process_get_m4(
         &mut ctx.server.pair_setup.session_key,
     )?;
     info!(
-        "ctx.server.pair_setup.session_key: {:0>2x?}",
+        "ctx.server.pair_setup.session_key: {:02?}",
         ctx.server.pair_setup.session_key
     );
 
@@ -949,14 +949,14 @@ pub fn pair_setup_process_get_m4(
             CONTROL_CHANNEL_ACCESSORY.as_bytes(),
             &mut ctx.session.a_to_c.key,
         )?;
-        info!("a_to_c key: {:0>2x?}", ctx.session.a_to_c.key);
+        info!("a_to_c key: {:02?}", ctx.session.a_to_c.key);
         hkdf_sha512(
             &ctx.server.pair_setup.K,
             CONTROL_CHANNEL_SALT.as_bytes(),
             CONTROL_CHANNEL_CONTROLLER.as_bytes(),
             &mut ctx.session.c_to_a.key,
         )?;
-        info!("c_to_a key: {:0>2x?}", ctx.session.c_to_a.key);
+        info!("c_to_a key: {:02?}", ctx.session.c_to_a.key);
 
         ctx.session.security_active = true;
         ctx.session.transient = true;
@@ -1057,7 +1057,7 @@ pub fn pair_setup_process_get_m6(
     // let mut copied_plaintext = [0u8; 1024];
     // let mut plain_slice = &mut copied_plaintext[0..subwriter_length];
     // plain_slice.copy_from_slice(&subwriter_scratch[0..subwriter_length]);
-    // info!("plain: {:0>2x?}", plain_slice);
+    // info!("plain: {:02?}", plain_slice);
 
     // Now we need to encrypt the data in the subwriter.
     let key = &ctx.server.pair_setup.session_key;
@@ -1198,7 +1198,7 @@ pub mod test {
         // This is M4: SRP verify response.
         let l = pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer)?;
         let response = &buffer[0..l];
-        info!("m4 response: {:0>2x?}", &response);
+        info!("m4 response: {:02?}", &response);
         let expected_response = [
             0x06, 0x01, 0x04, 0x04, 0x40, 0x64, 0xe8, 0xca, 0xfc, 0x4e, 0xba, 0x56, 0x65, 0x06,
             0xc4, 0x9a, 0xf8, 0x4a, 0x47, 0x82, 0x56, 0x2a, 0x41, 0xa9, 0xa6, 0x7d, 0xec, 0xcc,
@@ -1281,8 +1281,8 @@ pub mod test {
             .expect("decryption should work");
 
         assert_eq!(&buffer.as_ref(), &[0x00u8, 0x12, 0x03, 0x11, 0x00]);
-        info!("ciphertext now: {:0>2x?}", buffer.as_ref());
-        info!("ciphertext now: {:0>2x?}", ciphertext);
+        info!("ciphertext now: {:02?}", buffer.as_ref());
+        info!("ciphertext now: {:02?}", ciphertext);
     }
 
     // Lets keep values for the unit tests below this line, such that I don't have to scroll too much :)
@@ -1440,6 +1440,6 @@ pub mod test {
         ];
         let decrypted =
             aead::decrypt(&mut decryption_buffer, key, &PAIR_SETUP_M6_NONCE.as_bytes()).unwrap();
-        info!("decrypted: {:0>2x?}", decrypted);
+        info!("decrypted: {:02?}", decrypted);
     }
 }

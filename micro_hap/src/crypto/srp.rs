@@ -257,7 +257,7 @@ fn hash_n<D: Digest>() -> impl Digest {
     // Use zerocopy to cast that to bytes.
     use zerocopy::IntoBytes;
     let n_bytes = n_words.as_bytes();
-    // info!("g.n_bytes(): {:0>2x?}", n_bytes);
+    // info!("g.n_bytes(): {:02?}", n_bytes);
 
     let mut hasher = D::new();
     // Oh man, this is all big endian instead of little endian...
@@ -282,7 +282,7 @@ pub fn compute_k<D: Digest>(g: u32, n: &U3072) -> U3072 {
     // Use zerocopy to cast that to bytes.
     use zerocopy::IntoBytes;
     let n_bytes = n_words.as_bytes();
-    // info!("g.n_bytes(): {:0>2x?}", n_bytes);
+    // info!("g.n_bytes(): {:02?}", n_bytes);
 
     let mut hasher = D::new();
     // Oh man, this is all big endian instead of little endian...
@@ -463,7 +463,7 @@ mod test {
         assert_eq!(our_shared_secret, SRP_S);
 
         let mut our_session_key = [0u8; 64];
-        info!("our_shared_secret: {:0>2x?}", &our_shared_secret);
+        info!("our_shared_secret: {:02?}", &our_shared_secret);
         our_server.session_key(&our_shared_secret, &mut our_session_key);
         assert_eq!(&our_session_key, &SRP_k);
         let session_key = &our_session_key;

@@ -263,7 +263,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
                 let data = entry.short_data()?;
                 res.return_response = data.len() == 1 && data[0] == 1;
             } else {
-                todo!("unhandled entry type: 0x{:0>2x}", entry.type_id);
+                todo!("unhandled entry type: 0x{:02}", entry.type_id);
             }
         }
         Ok(res)
@@ -529,7 +529,7 @@ impl CharacteristicConfigurationRequest {
                 // param properties
                 res.broadcast_enabled = Some(entry.to_u32()? == 1);
             } else {
-                todo!("unhandled entry type: 0x{:0>2x}", entry.type_id);
+                todo!("unhandled entry type: 0x{:02}", entry.type_id);
             }
         }
         Ok(res)

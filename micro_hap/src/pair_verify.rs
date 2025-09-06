@@ -47,7 +47,7 @@ pub fn handle_incoming(
             let mut public_key = TLVPublicKey::tied(&data);
             let mut session_id = TLVSessionId::tied(&data);
             let mut encrypted_data = TLVEncryptedData::tied(&data);
-            info!("before read into, data: {:0>2x?}", data);
+            info!("before read into, data: {:02?}", data);
             for v in TLVReader::new(&data) {
                 info!("v: {:?}", v);
             }
@@ -153,7 +153,7 @@ pub fn pair_verify_process_m1(
 
         let provided_session_id = session_id.short_data()?;
         info!(
-            "Pair resume with {:0>2x?}, {:0>2x?} {:0>2x?}",
+            "Pair resume with {:02?}, {:02?} {:02?}",
             provided_session_id, public_key, encrypted_data
         );
 
@@ -183,7 +183,7 @@ pub fn pair_verify_process_m1(
         let info = PAIR_VERIFY_M1_RESUME_INFO.as_bytes();
         hkdf_sha512(key, salt, info, result)?;
 
-        info!("Pair Resume M1: RequestKey: {:0>2x?}", result);
+        info!("Pair Resume M1: RequestKey: {:02?}", result);
 
         // Next up is decrypting the data.
         let len = encrypted_data.copy_body(right_scratch)?;
@@ -194,7 +194,7 @@ pub fn pair_verify_process_m1(
             PAIR_VERIFY_M1_RESUME_NONCE.as_bytes(),
         )?;
         // There is no actual data, we merely need to check the authentication tag?
-        info!("Decrypted data: {:0>2x?}", decrypted);
+        info!("Decrypted data: {:02?}", decrypted);
         // Seems the fallback of this is just doing a pair verify? Perhaps we can just do that and skip implementing this?
     }
 
@@ -219,7 +219,7 @@ pub fn pair_verify_process_get_m2(
 
     // What is HAP_X25519_scalarmult_base(session->state.pairVerify.cv_PK, session->state.pairVerify.cv_SK); ? :/
     // That makes the Public key from our private secret!
-    info!(" pair_verify.cv_sk: {:0>2x?}", ctx.server.pair_verify.cv_sk);
+    info!(" pair_verify.cv_sk: {:02?}", ctx.server.pair_verify.cv_sk);
     let secret = x25519_dalek::StaticSecret::from(ctx.server.pair_verify.cv_sk);
     let our_public = x25519_dalek::PublicKey::from(&secret);
 
@@ -227,7 +227,7 @@ pub fn pair_verify_process_get_m2(
         .pair_verify
         .cv_pk
         .copy_from_slice(our_public.as_bytes());
-    // info!("verify.cv_pk: {:0>2x?}", ctx.server.pair_verify.cv_pk);
+    // info!("verify.cv_pk: {:02?}", ctx.server.pair_verify.cv_pk);
 
     // Shared secret
     let controller_public = x25519_dalek::PublicKey::from(ctx.server.pair_verify.controller_cv_pk);
@@ -236,7 +236,7 @@ pub fn pair_verify_process_get_m2(
         .pair_verify
         .cv_key
         .copy_from_slice(common_secret.as_bytes());
-    // info!("verify.cv_key: {:0>2x?}", ctx.server.pair_verify.cv_key);
+    // info!("verify.cv_key: {:02?}", ctx.server.pair_verify.cv_key);
 
     let mut writer = TLVWriter::new(data);
 
@@ -295,7 +295,7 @@ pub fn pair_verify_process_get_m2(
 
     // Now we need to encrypt the data in the subwriter.
     let key = &ctx.server.pair_verify.session_key;
-    info!("verify.session_key: {:0>2x?}", key);
+    info!("verify.session_key: {:02?}", key);
     let encrypted_sub = aead::encrypt(
         subwriter_scratch,
         subwriter_length,
@@ -304,7 +304,7 @@ pub fn pair_verify_process_get_m2(
     )?;
 
     writer = writer.add_slice(TLVType::EncryptedData, &encrypted_sub)?;
-    // info!("plain: {:0>2x?}", &subwriter_scratch[0..subwriter_length]);
+    // info!("plain: {:02?}", &subwriter_scratch[0..subwriter_length]);
 
     Ok(writer.end())
 }
@@ -342,15 +342,15 @@ pub fn pair_verify_process_get_m2_ble(
     let shifted_salt_session_idx =
         (salt_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
     let salt = &remainder[shifted_salt_session_idx];
-    info!("Pair Resume M2: salt.: {:0>2x?}", salt);
+    info!("Pair Resume M2: salt.: {:02?}", salt);
     let key = &ctx.server.pair_verify.cv_key;
     let info = PAIR_VERIFY_M2_RESUME_INFO.as_bytes();
     hkdf_sha512(key, salt, info, result_key)?;
-    info!("Pair Resume M2: ResponseKey.: {:0>2x?}", result_key);
+    info!("Pair Resume M2: ResponseKey.: {:02?}", result_key);
     let shifted_session_idx =
         (session_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
     let session_id = &remainder[shifted_session_idx];
-    info!("session_id: {:0>2x?}", session_id);
+    info!("session_id: {:02?}", session_id);
 
     // with that key we encrypt some empty data.
 
@@ -375,7 +375,7 @@ pub fn pair_verify_process_get_m2_ble(
     // Huh, we just rotated the key here??
     ctx.server.pair_verify.cv_key.copy_from_slice(result_key);
     info!(
-        "Pair Resume M2: cv_KEY.: {:0>2x?}",
+        "Pair Resume M2: cv_KEY.: {:02?}",
         ctx.server.pair_verify.cv_key
     );
 
@@ -423,17 +423,17 @@ pub fn pair_verify_process_m3(
     let key = &ctx.server.pair_verify.session_key;
     let data = left;
     let decrypted = aead::decrypt(data, key, &PAIR_VERIFY_M3_NONCE.as_bytes())?;
-    info!("decrypted: {:0>2x?}", decrypted);
+    info!("decrypted: {:02?}", decrypted);
 
     let mut identifier = TLVIdentifier::tied(&decrypted);
     let mut signature = TLVSignature::tied(&decrypted);
     TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
-    info!("identifier: {:0>2x?}", identifier);
-    info!("signature {:0>2x?}", signature);
+    info!("identifier: {:02?}", identifier);
+    info!("signature {:02?}", signature);
 
     // need to retrieve pairing that we created during the setup now.
     let pairing_id = PairingId::from_tlv(&identifier)?;
-    info!("pairing to retrieve: {:0>2x?}", pairing_id);
+    info!("pairing to retrieve: {:02?}", pairing_id);
 
     let pairing = support.get_pairing(&pairing_id)?;
     info!("pairing retrieved: {:?}", pairing);
@@ -505,14 +505,14 @@ pub fn pair_verify_start_session(
         CONTROL_CHANNEL_READ_KEY.as_bytes(),
         &mut ctx.session.a_to_c.key,
     )?;
-    info!("a_to_c key: {:0>2x?}", ctx.session.a_to_c.key);
+    info!("a_to_c key: {:02?}", ctx.session.a_to_c.key);
     hkdf_sha512(
         &ctx.server.pair_verify.cv_key,
         CONTROL_CHANNEL_SALT.as_bytes(),
         CONTROL_CHANNEL_WRITE_KEY.as_bytes(),
         &mut ctx.session.c_to_a.key,
     )?;
-    info!("c_to_a key: {:0>2x?}", ctx.session.c_to_a.key);
+    info!("c_to_a key: {:02?}", ctx.session.c_to_a.key);
 
     ctx.session.security_active = true;
     // Its now a non-transient session?

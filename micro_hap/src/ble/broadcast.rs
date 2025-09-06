@@ -38,7 +38,7 @@ pub fn broadcast_generate_key(
     let salt = &pairing.public_key.0;
     let info = "Broadcast-Encryption-Key".as_bytes();
     hkdf_sha512(key, salt, info, output_key)?;
-    info!("Broadcast key: {:0>2x?}", parameters.key);
+    info!("Broadcast key: {:02?}", parameters.key);
 
     // NONCOMPLIANCE if advertising id.
 
@@ -62,7 +62,7 @@ pub fn configure_broadcast_notification(
 
     // NONCOMPLIANCE: Completely ignoring this whole broadcast thing.
     error!(
-        "skipping broadcast configuration for char id 0x{:0>2x?}",
+        "skipping broadcast configuration for char id 0x{:02?}",
         char_id
     );
     Ok(())

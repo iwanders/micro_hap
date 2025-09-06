@@ -360,7 +360,7 @@ impl AccessoryInterface for NopAccessory {
         data: &[u8],
     ) -> Result<CharacteristicResponse, ()> {
         let _ = (char_id, data);
-        // todo!("write characteristic on 0x{:0>2x?}, handle this?", char_id);
+        // todo!("write characteristic on 0x{:02?}, handle this?", char_id);
         Ok(CharacteristicResponse::Unmodified)
     }
 }

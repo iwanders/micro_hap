@@ -28,7 +28,7 @@ mod ble_bas_peripheral {
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
                 Some(self.bulb_on_state.as_bytes())
             } else {
-                todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
         }
         fn write_characteristic(
@@ -37,7 +37,7 @@ mod ble_bas_peripheral {
             data: &[u8],
         ) -> Result<CharacteristicResponse, ()> {
             info!(
-                "AccessoryInterface to characterstic: 0x{:0>2x?} data: {:0>2x?}",
+                "AccessoryInterface to characterstic: 0x{:02?} data: {:02?}",
                 char_id, data
             );
 
@@ -54,7 +54,7 @@ mod ble_bas_peripheral {
                 info!("Set bulb to: {:?}", self.bulb_on_state);
                 Ok(response)
             } else {
-                todo!("accessory interface for char id: 0x{:0>2x?}", char_id)
+                todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
         }
     }

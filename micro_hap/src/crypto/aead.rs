@@ -179,8 +179,8 @@ mod test {
             .expect("decryption should work");
 
         assert_eq!(&buffer.as_ref(), &[0x00u8, 0x12, 0x03, 0x11, 0x00]);
-        // info!("ciphertext now: {:0>2x?}", buffer.as_ref());
-        // info!("ciphertext now: {:0>2x?}", ciphertext);
+        // info!("ciphertext now: {:02?}", buffer.as_ref());
+        // info!("ciphertext now: {:02?}", ciphertext);
 
         let mut decrypted_data_buffer = [0u8; 1024];
         decrypted_data_buffer[0..orig_ciphertext.len()].copy_from_slice(&orig_ciphertext);

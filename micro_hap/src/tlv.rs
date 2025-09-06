@@ -403,7 +403,7 @@ mod test {
         let mut method = crate::pairing::tlv::TLVMethod::tied(&payload);
         let mut state = crate::pairing::tlv::TLVState::tied(&payload);
         let mut flags = crate::pairing::tlv::TLVFlags::tied(&payload);
-        info!("before read into, data: {:0>2x?}", payload);
+        info!("before read into, data: {:02?}", payload);
         TLVReader::new(&payload).require_into(&mut [&mut method, &mut state, &mut flags])?;
         info!("method {:?}", method);
         info!("state {:?}", state);
