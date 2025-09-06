@@ -819,16 +819,19 @@ pub fn pair_setup_process_get_m2(
 
     // fill b with random;
     ctx.server.pair_setup.b.fill_with(|| support.get_random());
+    info!("random b: {:?}", &ctx.server.pair_setup.b);
     // Then, we derive the public key B.
 
     let server = homekit_srp();
 
+    info!("Going into public ephemeral");
     // Calculate the public ephemeral data.
     server.compute_public_ephemeral(
         &ctx.server.pair_setup.b,
         &ctx.info.verifier,
         &mut ctx.server.pair_setup.B,
     );
+    info!("ephemeral B: {:?}", &ctx.server.pair_setup.B);
     //todo!("need to write public ephemeral into B");
     //
     // Now we need a TLV writer; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L264
