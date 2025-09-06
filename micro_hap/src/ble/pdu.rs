@@ -181,6 +181,7 @@ pub struct ResponseHeader {
     pub status: Status,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct CharacteristicSignatureReadRequest {
@@ -189,6 +190,7 @@ pub struct CharacteristicSignatureReadRequest {
 }
 
 //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLETransaction.h#L120
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct ServiceSignatureReadRequest {

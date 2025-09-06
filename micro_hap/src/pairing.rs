@@ -125,6 +125,15 @@ impl PairingId {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for PairingId {
+    fn format(&self, f: defmt::Formatter) {
+        // format the bitfields of the register as struct fields
+        defmt::write!(f, "PairingId {{ {} }}", self.0.as_bytes(),)
+    }
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub struct PairingPublicKey(pub [u8; 32]);
 impl PairingPublicKey {
@@ -141,6 +150,7 @@ impl PairingPublicKey {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Pairing {
     pub id: PairingId,
@@ -153,6 +163,7 @@ pub struct Pairing {
 /// Flags for pairing
 #[bitfield(u32)]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PairingFlags {
     #[bits(4)]
     _1: u8,
@@ -176,6 +187,7 @@ pub struct PairingFlags {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L116
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairSetup {
     pub state: PairState,
@@ -185,6 +197,7 @@ pub struct PairSetup {
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L128
 /// Container struct for all the pairing temporary values.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[allow(non_snake_case)]
 pub struct ServerPairSetup {
@@ -220,6 +233,7 @@ impl Default for ServerPairSetup {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairServer {
     pub flags: PairingFlags,
@@ -228,6 +242,7 @@ pub struct PairServer {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairVerify {
     pub setup: PairSetup,
@@ -239,6 +254,7 @@ pub struct PairVerify {
     pub controller_cv_pk: [u8; X25519_BYTES],
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
 )]
@@ -269,6 +285,7 @@ pub enum PairingMethod {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairing.h#L122
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum TLVType {
@@ -398,6 +415,7 @@ impl Into<u8> for TLVType {
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/HAPBase.h#L178-L182
 /// Setup information created during device commissioning.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug)]
 pub struct SetupInfo {
     pub salt: [u8; 16],
@@ -413,6 +431,7 @@ impl Default for SetupInfo {
 }
 
 /// Setup code string, with zero byte; XXX-XX-XXX
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
 #[repr(transparent)]
 pub struct SetupCode(pub [u8; 11]);
@@ -433,6 +452,7 @@ pub mod tlv {
 }
 use tlv::*;
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(
     PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Default,
 )]

@@ -1,6 +1,7 @@
 // For interpreting the TLV wrapper itself
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TLVError {
     /// Not enough data to parse.
@@ -29,6 +30,7 @@ impl From<TLVError> for trouble_host::Error {
 ///   type_id: u8,
 ///   length: u8,
 ///   data: [u8;length]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TLVReader<'a> {
     buffer: &'a [u8],
     position: usize,
@@ -156,6 +158,7 @@ impl<'a> Iterator for TLVReader<'a> {
 
 /// A borrowed TLV entry, it is a thin wrapper around the segment in the original buffer.
 /// This may act as an optional when the length is zero, but the lifetime is still tied on an original buffer.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TLV<'a> {
     pub type_id: u8,
@@ -241,6 +244,7 @@ impl<'a> TLV<'a> {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TLVWriter<'a> {
     position: usize,
     buffer: &'a mut [u8],
@@ -321,6 +325,7 @@ impl<'a> TLVWriter<'a> {
 #[macro_export]
 macro_rules! typed_tlv {
     ( $name:ident, $tlv_type:expr  ) => {
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         #[derive(PartialEq, Eq, Debug, Clone)]
         pub struct $name<'a>(crate::tlv::TLV<'a>);
         impl<'a> $name<'a> {

@@ -76,6 +76,7 @@ use crypto::aead::ControlChannel;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 /// Helper to set all accessory information from static values in bulk.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
 pub struct AccessoryInformationStatic {
     pub hardware_revision: &'static str,
@@ -108,15 +109,18 @@ impl Default for AccessoryInformationStatic {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct CharId(pub u16);
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct DeviceId(pub [u8; 6]);
@@ -147,6 +151,8 @@ impl DeviceId {
         DeviceIdString(concat)
     }
 }
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceIdString(pub [u8; 6 * 2 + 5]);
 impl DeviceIdString {
     pub fn as_bytes(&self) -> &[u8] {
@@ -154,6 +160,7 @@ impl DeviceIdString {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SetupId(pub [u8; 4]);
@@ -243,6 +250,7 @@ impl BleProperties {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Default)]
 pub enum DataSource {
     /// Reads as 0 length data, writes discard data.
@@ -296,6 +304,7 @@ impl Attribute {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Debug, Default)]
 pub struct Session {
     // The following 5 are in the hap substruct.

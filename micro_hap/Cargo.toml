@@ -9,8 +9,8 @@ edition = "2024"
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
-    #], git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
-], path = "../../trouble/host" }
+    ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
+#], path = "../../trouble/host" }
 # ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",
@@ -45,6 +45,7 @@ lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 
 # logging
 defmt = { version = "1.0.1", optional = true }
+#defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4", optional = true }
 
 
@@ -58,9 +59,11 @@ log = { version = "0.4", optional = true }
 # /http deps
 
 embassy-futures = "0.1.1"
-# embassy-time = "0.5"
+embassy-time = "0.5"
 #trouble-linux-examples = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
-# trouble-example-apps = { git = "https://github.com/embassy-rs/trouble", rev = "b57bb1c32fa16d1f81a2b0123ec723c9da7defb4" }
+#
+#trouble-linux-examples = {  path = "../../trouble/examples/linux/" }
+bt-hci-linux = { git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
 tokio = { version = "1", features = [
     "io-util",
     "net",
@@ -89,5 +92,6 @@ num-bigint = "0.4"
 
 [features]
 
+defmt = ["dep:defmt", "bt-hci/defmt", "trouble-host/defmt", "heapless/defmt"]
 log = ["dep:log"]
 std = ["bt-hci/log", "trouble-host/log", "log"]

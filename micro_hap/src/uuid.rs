@@ -7,7 +7,6 @@ pub const HOMEKIT_BASE_UUID_BYTES: [u8; 16] = [
 pub const HOMEKIT_BASE_UUID: Uuid = Uuid::new_long(HOMEKIT_BASE_UUID_BYTES);
 
 /// Bluetooth UUID.
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct HomekitUuid16(u16);
