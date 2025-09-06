@@ -831,18 +831,21 @@ pub fn pair_setup_process_get_m2(
         &ctx.info.verifier,
         &mut ctx.server.pair_setup.B,
     );
-    info!("ephemeral B: {:?}", &ctx.server.pair_setup.B);
+    // info!("ephemeral B: {:?}", &ctx.server.pair_setup.B);
     //todo!("need to write public ephemeral into B");
     //
     // Now we need a TLV writer; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L264
 
     let mut writer = TLVWriter::new(data);
 
+    info!("writing setup state: {:?}", &ctx.setup.state);
     writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
 
     // NONCOMPLIANCE: They skip leading zeros, do we need that? Sounds like a minor improvement?
+    info!("writing B: ");
     writer = writer.add_slice(TLVType::PublicKey, &ctx.server.pair_setup.B)?;
 
+    info!("writing salt: {:?}", &ctx.info.salt);
     writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
 
     // Make flags, we only needed this during the software authentication approach from the start.
@@ -854,6 +857,7 @@ pub fn pair_setup_process_get_m2(
     writer = writer.add_entry(TLVType::Flags, &flags)?;
     */
 
+    info!("returning");
     Ok(writer.end())
 }
 

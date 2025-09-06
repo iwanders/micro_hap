@@ -898,6 +898,7 @@ impl HapPeripheralContext {
             let incoming_data = &left_buffer[0..body_length];
             // let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
             if is_pair_setup {
+                info!("pair setup at incoming");
                 crate::pairing::pair_setup_handle_incoming(
                     &mut **pair_ctx,
                     pair_support,
@@ -905,6 +906,7 @@ impl HapPeripheralContext {
                 )
                 .map_err(|_| HapBleError::InvalidValue)?;
 
+                info!("pair setup at outgoing");
                 // Put the reply in the second half.
                 let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
                     &mut **pair_ctx,
@@ -913,6 +915,8 @@ impl HapPeripheralContext {
                 )
                 .map_err(|_| HapBleError::InvalidValue)?;
 
+                info!("Populatig the body.");
+
                 let reply = parsed.header.header.to_success();
                 let len = reply.write_into_length(left_buffer)?;
 
@@ -920,6 +924,7 @@ impl HapPeripheralContext {
                     .add_value(&outgoing[0..outgoing_len])
                     .end();
 
+                info!("Done, len: {}", len);
                 Ok(BufferResponse(len))
             } else if is_pair_verify {
                 crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
