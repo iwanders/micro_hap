@@ -26,6 +26,9 @@ use crypto_bigint::{NonZero, U3072};
 // U3072 is 384 bytes... is that enough to do this logic here?
 use sha2::{Digest, Sha512};
 
+// The private secret is only assumed to be this many bytes.
+pub const SRP_PRIVATE_SECRET_BYTES: usize = 32;
+
 trait LoadFromBigEndianU8 {
     type Output;
     fn load_from_be(b: &[u8]) -> Self::Output;
@@ -86,8 +89,16 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
     /// k*v + g^b % N
     ///
+    /// b: Must be SRP_PRIVATE_SECRET_BYTES bytes long.
     /// public_b: Must be 384 bytes long.
     pub fn compute_public_ephemeral(&self, b: &[u8], v: &[u8], public_b: &mut [u8]) {
+        if b.len() != SRP_PRIVATE_SECRET_BYTES {
+            panic!(
+                "passed a private secret slice that was the incorrect length, expected {}",
+                SRP_PRIVATE_SECRET_BYTES
+            );
+        }
+
         let bi = U3072::load_from_be(b);
         let v = U3072::load_from_be(v);
         // info!("bi: {:x?}\n", bi);
@@ -101,8 +112,10 @@ impl<'a, D: Digest> SrpServer<'a, D> {
 
         // First, lets do inter.
         // let inter = (k * v) % &self.params.n;
+        // info!("start of compute_k");
         let k = compute_k::<Sha512>(self.params.g, self.params.n);
         let mut inter = k;
+        // info!("end of compute_k");
         // info!("inter: {:x?}, b: {}\n", inter, inter.bits());
 
         // Now we have k in intermediate, all that remains is mult with v and modulo. Modulo is odd, so;
@@ -116,7 +129,10 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         // https://github.com/RustCrypto/crypto-bigint/issues/775
         // g is the generator, b is the input data, and n is the prime. this is g^b % n
         // (inter + self.params.g.modpow(b, &self.params.n)) % &self.params.n
-        let right_side = groups::SRP_3072_G_CONST_MONTY.pow(&bi).retrieve();
+        let right_side = groups::SRP_3072_G_CONST_MONTY
+            .pow_bounded_exp(&bi, SRP_PRIVATE_SECRET_BYTES as u32 * 8)
+            // .pow(&bi)
+            .retrieve();
 
         // Finally, we add that to the intermediate we already had:
         let combined = inter.add_mod(&right_side, &groups::GROUP_3072.n);
@@ -446,8 +462,10 @@ mod test {
         //let mut our_b_pub = U3072::default();
         let mut our_b_pub = [0u8; 384];
 
+        let before = std::time::Instant::now();
         our_server.compute_public_ephemeral(&SRP_b, &SRP_V, &mut our_b_pub);
-        info!("our_b_pub: {our_b_pub:x?}");
+        let after = (std::time::Instant::now() - before).as_micros();
+        info!("our_b_pub: {our_b_pub:x?}, in {after} us");
         assert_eq!(U3072::load_from_be(&our_b_pub), U3072::load_from_be(&SRP_B));
 
         // next up is calculating the shared secret.

@@ -78,6 +78,8 @@ pub const SRP_SECRET_KEY_BYTES: usize = 32;
 pub const SRP_SESSION_KEY_BYTES: usize = 64;
 pub const SRP_PROOF_BYTES: usize = 64;
 
+const _: [(); 0] = [(); crate::crypto::srp::SRP_PRIVATE_SECRET_BYTES - SRP_SECRET_KEY_BYTES];
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessorySetupInfo.c#L324C45-L324C59
 // Zero byte at the end is not added.
 pub const SRP_USERNAME: &'static str = "Pair-Setup";
