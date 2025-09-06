@@ -28,6 +28,7 @@ use sha2::{Digest, Sha512};
 
 // The private secret is only assumed to be this many bytes.
 pub const SRP_PRIVATE_SECRET_BYTES: usize = 32;
+const SRP_HASH_BYTES: usize = 64;
 
 trait LoadFromBigEndianU8 {
     type Output;
@@ -153,12 +154,18 @@ impl<'a, D: Digest> SrpServer<'a, D> {
         // const_monty_form!(v, groups::Srp3072Modulus);
         // doesn't work, is that a bug?
         let v_m = const_monty_form!(v, Srp3072Modulus);
-        let base = v_m.pow(&u).retrieve();
+        // let base = v_m.pow(&u).retrieve();
+        let base = v_m
+            .pow_bounded_exp(&u, SRP_HASH_BYTES as u32 * 8)
+            .retrieve();
         let z = public_a.mul_mod(&base, groups::GROUP_3072.nz);
 
         let base_m = const_monty_form!(z, Srp3072Modulus);
 
-        base_m.pow(&b).retrieve()
+        // base_m.pow(&b).retrieve()
+        base_m
+            .pow_bounded_exp(&b, SRP_PRIVATE_SECRET_BYTES as u32 * 8)
+            .retrieve()
     }
 
     pub fn compute_shared_secret(
@@ -470,6 +477,7 @@ mod test {
 
         // next up is calculating the shared secret.
         let mut our_shared_secret = [0u8; 384];
+        let before = std::time::Instant::now();
         let r = our_server.compute_shared_secret(
             &our_b_pub,
             &SRP_b,
@@ -479,6 +487,8 @@ mod test {
         );
         assert!(r.is_ok());
         assert_eq!(our_shared_secret, SRP_S);
+        let after = (std::time::Instant::now() - before).as_micros();
+        info!("our_shared_secret, in {after} us");
 
         let mut our_session_key = [0u8; 64];
         info!("our_shared_secret: {:02?}", &our_shared_secret);
