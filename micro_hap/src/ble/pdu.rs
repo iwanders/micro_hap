@@ -67,6 +67,7 @@ impl<T: IntoBytes + Immutable> WriteIntoLength for T {
 }
 
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Status {
     // Success.
@@ -92,6 +93,7 @@ pub enum Status {
 }
 
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PduType {
     Request = 0,
@@ -113,6 +115,7 @@ impl PduType {
 
 #[bitfield(u8)]
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ControlField {
     #[bits(1)]
     __: u8, // 1 is reserved, so always zero.
@@ -140,6 +143,7 @@ impl ControlField {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPDU.h#L26
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, TryFromBytes, KnownLayout, IntoBytes, Immutable, PartialEq)]
 #[repr(u8)]
 pub enum OpCode {
@@ -156,6 +160,7 @@ pub enum OpCode {
     Info = 0x12,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Debug, Copy, Clone)]
 #[repr(C, packed)]
 pub struct RequestHeader {
@@ -181,21 +186,44 @@ pub struct ResponseHeader {
     pub status: Status,
 }
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct CharacteristicSignatureReadRequest {
     pub header: RequestHeader,
     pub char_id: CharId,
 }
+#[cfg(feature = "defmt")]
+impl defmt::Format for CharacteristicSignatureReadRequest {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.char_id.0;
+        defmt::write!(
+            f,
+            "CharacteristicSignatureReadRequest{{header: {:?}, char_id: {:?}}}",
+            self.header,
+            v
+        )
+    }
+}
 
 //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLETransaction.h#L120
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct ServiceSignatureReadRequest {
     pub header: RequestHeader,
     pub svc_id: SvcId,
+}
+#[cfg(feature = "defmt")]
+impl defmt::Format for ServiceSignatureReadRequest {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.svc_id.0;
+        defmt::write!(
+            f,
+            "ServiceSignatureReadRequest{{header: {:?}, svc_id: {:?}}}",
+            self.header,
+            v
+        )
+    }
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
@@ -204,12 +232,36 @@ pub struct CharacteristicReadRequest {
     pub header: RequestHeader,
     pub char_id: CharId,
 }
+#[cfg(feature = "defmt")]
+impl defmt::Format for CharacteristicReadRequest {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.char_id.0;
+        defmt::write!(
+            f,
+            "CharacteristicReadRequest{{header: {:?}, char_id: {:?}}}",
+            self.header,
+            v
+        )
+    }
+}
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct InfoRequest {
     pub header: RequestHeader,
     pub char_id: CharId,
+}
+#[cfg(feature = "defmt")]
+impl defmt::Format for InfoRequest {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.char_id.0;
+        defmt::write!(
+            f,
+            "InfoRequest{{header: {:?}, char_id: {:?} }}",
+            self.header,
+            v,
+        )
+    }
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
@@ -227,7 +279,22 @@ pub struct CharacteristicWriteRequestHeader {
     //tlv: WriteRequestBodyValue,
     //pub inner_length: u8,
 }
+#[cfg(feature = "defmt")]
+impl defmt::Format for CharacteristicWriteRequestHeader {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.char_id.0;
+        let bl = self.body_length;
+        defmt::write!(
+            f,
+            "CharacteristicWriteRequestHeader{{header: {:?}, char_id: {:?}, body_length: {:?} }}",
+            self.header,
+            v,
+            bl,
+        )
+    }
+}
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
 pub struct CharacteristicWriteRequest<'a> {
     /// The header as it was read.
@@ -426,6 +493,20 @@ pub struct ProtocolConfigurationRequestHeader {
     pub svc_id: SvcId,
     pub body_length: u16,
 }
+#[cfg(feature = "defmt")]
+impl defmt::Format for ProtocolConfigurationRequestHeader {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.svc_id.0;
+        let bl = self.body_length;
+        defmt::write!(
+            f,
+            "ProtocolConfigurationRequestHeader{{header: {:?}, svc_id: {:?}, body_length: {:?}}}",
+            self.header,
+            v,
+            bl
+        )
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProtocol%2BConfiguration.c#L117-L129
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
@@ -480,6 +561,7 @@ pub enum BleBroadcastTLV {
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L17
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, Default, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum BleBroadcastInterval {
     #[default]
@@ -489,8 +571,8 @@ pub enum BleBroadcastInterval {
 }
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L37
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone)]
-#[repr(C, packed)]
 pub struct CharacteristicConfigurationRequest {
     pub header: RequestHeader,
     pub char_id: CharId,

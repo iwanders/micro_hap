@@ -1061,7 +1061,7 @@ pub fn pair_setup_process_get_m6(
 
     // Now we need to encrypt the data in the subwriter.
     let key = &ctx.server.pair_setup.session_key;
-    info!("key: {key:?}");
+    info!("key: {:?}", key);
     let encrypted_sub = aead::encrypt(
         subwriter_scratch,
         subwriter_length,

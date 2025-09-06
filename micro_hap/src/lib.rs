@@ -109,15 +109,29 @@ impl Default for AccessoryInformationStatic {
     }
 }
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct CharId(pub u16);
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg(feature = "defmt")]
+impl defmt::Format for CharId {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.0;
+        defmt::write!(f, "CharId(0x{:04X})", v)
+    }
+}
+
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for SvcId {
+    fn format(&self, f: defmt::Formatter) {
+        let v = self.0;
+        defmt::write!(f, "SvcId(0x{:04X})", v)
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

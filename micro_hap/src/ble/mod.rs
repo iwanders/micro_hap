@@ -43,10 +43,12 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 pub mod sig;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(transparent)]
 pub struct TId(pub u8);
 
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HapBleError {
     UnexpectedDataLength {
         expected: usize,
@@ -761,10 +763,7 @@ impl HapPeripheralContext {
                 let attr_id = a.iid;
                 let handle = a.ble_ref().handle;
                 let uuid = &a.uuid;
-                info!(
-                    "iid 0x{:02x?}, handle: 0x{:02x?}  uid: {:02x?}",
-                    attr_id, handle, uuid
-                );
+                info!("iid  {:?}, handle:  {:?}  uid: {:?}", attr_id, handle, uuid);
             }
         }
     }
@@ -795,7 +794,7 @@ impl HapPeripheralContext {
             Ok(BufferResponse(len))
         } else {
             // What do we return if the id is not known??
-            error!("Could not find service for req.svc_id: 0x{:02x?}", req_svc);
+            error!("Could not find service for req.svc_id: 0x{:02?}", req_svc);
             todo!()
         }
     }
@@ -840,7 +839,7 @@ impl HapPeripheralContext {
         if let Some(chr) = self.get_attribute_by_char(char_id) {
             match chr.data_source {
                 DataSource::Nop => {
-                    error!("Got NOP data on char_id: 0x{:02x?}", char_id);
+                    error!("Got NOP data on char_id: {:?}", char_id);
                     Ok(BufferResponse(0))
                 }
                 DataSource::AccessoryInterface => {
@@ -854,7 +853,7 @@ impl HapPeripheralContext {
                         Ok(BufferResponse(len))
                     } else {
                         error!(
-                            "Characteristic is using interface data source, but it returned None; 0x{:02x?}",
+                            "Characteristic is using interface data source, but it returned None; {:?}",
                             char_id
                         );
                         Ok(BufferResponse(0))
@@ -1157,7 +1156,7 @@ impl HapPeripheralContext {
 
         //let data = self.get_response(reply.payload);
         let reply = trouble_host::att::AttRsp::Read { data: &data };
-        warn!("Replying with: {:02x?}", reply);
+        warn!("Replying with: {:?}", reply);
         // We see this print,
         //
         // but nothing ever ends up in the aether
@@ -1179,10 +1178,10 @@ impl HapPeripheralContext {
             // Perform the encryption, then respond with the buffer that is encrypted.
             let mut ctx = self.pair_ctx.borrow_mut();
             let mut buff = self.buffer.borrow_mut();
-            info!("Encrypting reply: {:02x?}", &buff[0..value.0]);
+            info!("Encrypting reply: {:?}", &buff[0..value.0]);
 
             let res = ctx.session.a_to_c.encrypt(&mut **buff, value.0)?;
-            info!("Encrypted reply: {:02x?}", &res);
+            info!("Encrypted reply: {:?}", &res);
 
             Ok(BufferResponse(res.len()))
         } else {
@@ -1221,7 +1220,7 @@ impl HapPeripheralContext {
                 self.should_encrypt_reply = false;
                 data
             } else {
-                warn!("handle_write_incoming raw {:02x?}", data);
+                warn!("handle_write_incoming raw {:?}", data);
                 // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
                 // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
                 // Yes, these are encrypted.
@@ -1243,10 +1242,10 @@ impl HapPeripheralContext {
         } else {
             data
         };
-        warn!("handle_write_incoming {:02x?}", data);
+        warn!("handle_write_incoming {:?}", data);
 
         let header = pdu::RequestHeader::parse_pdu(data)?;
-        warn!("Write header {:x?}", header);
+        warn!("Write header {:?}", header);
 
         #[allow(unreachable_code)]
         let resp = match header.opcode {
@@ -1268,7 +1267,7 @@ impl HapPeripheralContext {
             pdu::OpCode::CharacteristicWrite => {
                 info!("handle is: {}", handle);
                 info!("pair setup handle is {}", hap.pairing.pair_setup.handle);
-                info!("write raw req event data: {:02x?}", data);
+                info!("write raw req event data: {:?}", data);
                 let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
                 info!("got write on pair setup with: {:?}", parsed);
 
@@ -1301,14 +1300,14 @@ impl HapPeripheralContext {
             }
             pdu::OpCode::CharacteristicConfiguration => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L336
-                info!("CharacteristicConfiguration req: {:02x?}", data);
+                info!("CharacteristicConfiguration req: {:?}", data);
                 if !security_active {
                     // Nope...
                     return Err(HapBleError::EncryptionError);
                 }
 
                 let req = pdu::CharacteristicConfigurationRequest::parse_pdu(data)?;
-                info!("CharacteristicConfiguration req: {:02x?}", req);
+                info!("CharacteristicConfiguration req: {:?}", req);
 
                 let interval = req.broadcast_interval.unwrap_or_default();
 
@@ -1458,7 +1457,7 @@ impl HapPeripheralContext {
                 Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
-                warn!("Raw write data {:02x?}", event.data());
+                warn!("Raw write data {:?}", event.data());
 
                 if event.handle() == hap.information.hardware_revision.handle {
                     warn!("Writing information.hardware_revision {:?}", event.data());
@@ -1479,10 +1478,7 @@ impl HapPeripheralContext {
                 if event.handle() == hap.protocol.service_instance.handle {
                     warn!("Writing protocol.service_instance  {:?}", event.data());
                 } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!(
-                        "Writing protocol.service_signature  0x{:02x?}",
-                        event.data()
-                    );
+                    warn!("Writing protocol.service_signature  {:?}", event.data());
                     // Writing protocol.service_signature  [0, 6, 107, 2, 0]
                     // Yes, that matches the hap service signature read
 
@@ -1544,13 +1540,13 @@ mod test {
         assert_eq!(v.0, 0x0001 | 0x0010 | 0x0040);
 
         let z = CharacteristicProperties::from_bits(0x03);
-        info!("0x03: {z:#?}");
+        info!("0x03: {:#?}", z);
         let z = CharacteristicProperties::from_bits(0x10);
-        info!("0x10: {z:#?}");
+        info!("0x10: {:#?}", z);
 
         // b0 03
         let z = CharacteristicProperties::from_bits(u16::from_le_bytes([0xb0, 0x03]));
-        info!("[0xb0, 0x03]: {z:#?}");
+        info!("[0xb0, 0x03]: {:#?}", z);
     }
 
     #[gatt_server]
