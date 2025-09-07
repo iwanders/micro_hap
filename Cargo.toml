@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+
+members = ["micro_hap", "example_std" ]
+
+
+[workspace.dependencies]
+
+#micro_hap = { version = "0.1.0", path = "../micro_hap/micro_hap/", features=["defmt"]}
+#micro_hap = { version = "0.1.0", git = "https://github.com/iwanders/micro_hap.git", rev="0d8ca03310b44c449e260141be459330cffe25b3", features=["defmt"]}
+#https://github.com/iwanders/micro_hap
