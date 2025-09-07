@@ -43,6 +43,8 @@ To help people understand the code and the concepts, here's an information dump:
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - Any errors currently drop the request instead of returning the correct HAP error code.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
+- Make the accessory interface async.
+- Modify add second example to show how to add a service, ensure common stuff is shared.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.
@@ -50,6 +52,10 @@ This is the main binary used for debugging & development of the actual interacti
 Build this with `cargo b`, it has to be ran as root to bind the linux HCI interface.
 It also requires freeing that interface, usually by disabling your bluetooth service with `service bluetooth stop`.
 
+## example_pico_2w
+This example is a gutted version of the project I'm originally developing this for.
+It contains a bunch of stuff that is not really relevant for the HAP example, but the current state at least puts a working bare metal example in the repo.
+It expects the lightbulb pin on 26.
 
 ## License
 License is [`LICENSE-APACHE`](./LICENSE-APACHE) since it is based on [HomeKitADK](https://github.com/apple/HomeKitADK).

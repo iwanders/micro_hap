@@ -1,0 +1,55 @@
+#
+# Cargo Configuration for the https://github.com/rp-rs/rp-hal.git repository.
+#
+# You might want to make a similar file in your own repository if you are
+# writing programs for Raspberry Silicon microcontrollers.
+#
+
+# Add aliases for building and running for the ARM and RISC-V targets.
+[alias]
+
+# Build arm or riscv
+build-arm = "build --bin example_pico_2w --target=thumbv8m.main-none-eabihf"
+run-arm = "run --bin example_pico_2w --target=thumbv8m.main-none-eabihf"
+
+[build]
+# Set the default target to match the Cortex-M33 in the RP2350
+#target = "thumbv8m.main-none-eabihf"
+
+# This is the hard-float ABI for Arm mode.
+#
+# The FPU is enabled by default, and float function arguments use FPU
+# registers.
+[target.thumbv8m.main-none-eabihf]
+# Pass some extra options to rustc, some of which get passed on to the linker.
+#
+# * linker argument --nmagic turns off page alignment of sections (which saves
+#   flash space)
+# * linker argument -Tlink.x tells the linker to use link.x as a linker script.
+#   This is usually provided by the cortex-m-rt crate, and by default the
+#   version in that crate will include a file called `memory.x` which describes
+#   the particular memory layout for your specific chip.
+# * linker argument -Tdefmt.x also tells the linker to use `defmt.x` as a
+#   secondary linker script. This is required to make defmt_rtt work.
+rustflags = [
+  "-C",
+  "link-arg=--nmagic",
+  "-C",
+  "link-arg=-Tlink.x",
+  "-C",
+  "link-arg=-Tdefmt.x",
+  "-C",
+  "target-cpu=cortex-m33",
+]
+
+# Use picotool for loading.
+#
+# Load an elf, skipping unchanged flash sectors, verify it, and execute it
+runner = "picotool load -F -u -v -x -t elf"
+#runner = "probe-rs run --chip RP235x"
+
+
+
+
+[env]
+DEFMT_LOG = "debug"
