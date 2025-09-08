@@ -26,7 +26,7 @@ To help people understand the code and the concepts, here's an information dump:
 - An accessory is comprised of Services, the `accessory_information`, `protocol` and `pairing` services are required.
 - A service has attributes (in the BLE transport moddeled as characteristics).
 - HomeKit's pairing, session and permission management has nothing to do with BLE's equivalents.
-- On the BLE level, all characteristics are read/write without a secure session.
+- On the BLE level, all characteristics are read/write without a secure BLE session.
 - Attributes are interacted with through a BLE write AND read, together they form a request.
 - For example, toggling the lightbulb performs a BLE write on the `On` attribute of the `Lightbulb` Service, the response of this request is verified with a BLE Read on the same characteristic.
 - The HAP protocol is merely transported over the BLE write/reads.
@@ -37,8 +37,12 @@ To help people understand the code and the concepts, here's an information dump:
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.
 
 ## Todo
+- Clean up error handling.
+- Correctly return HAP errors.
+- Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
 - The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
+- Add periodic 'service' method to handle global state and advertisement.
 - Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - Any errors currently drop the request instead of returning the correct HAP error code.
