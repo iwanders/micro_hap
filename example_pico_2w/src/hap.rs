@@ -18,15 +18,13 @@ use micro_hap::{
     ble::broadcast::BleBroadcastParameters, AccessoryInterface, CharId, CharacteristicResponse,
 };
 
-type BulbInterface<'a> = &'a mut dyn FnMut(bool);
-
 struct LightBulbAccessory<'a> {
     name: HeaplessString<32>,
     bulb_on_state: bool,
-    bulb: BulbInterface<'a>,
+    bulb_control: cyw43::Control<'a>,
 }
 impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
-    fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+    async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
             Some(self.name.as_bytes())
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
@@ -35,7 +33,7 @@ impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
             todo!("accessory interface for char id: 0x{:02?}", char_id)
         }
     }
-    fn write_characteristic(
+    async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
@@ -56,7 +54,7 @@ impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
             };
             self.bulb_on_state = val_as_bool;
             info!("Set bulb to: {:?}", self.bulb_on_state);
-            (self.bulb)(val_as_bool);
+            self.bulb_control.gpio_set(0, self.bulb_on_state).await;
             Ok(response)
         } else {
             todo!("accessory interface for char id: 0x{:02?}", char_id)
@@ -209,7 +207,7 @@ impl micro_hap::pairing::PairSupport for ActualPairSupport {
 // use bt_hci::controller::ControllerCmdSync;
 const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1a, 0x07, 0xe4, 0xff];
 /// Run the BLE stack.
-pub async fn run<'p, C>(controller: C, bulb: BulbInterface<'p>)
+pub async fn run<'p, 'cyw, C>(controller: C, bulb_control: cyw43::Control<'_>)
 where
     C: Controller, // + ControllerCmdSync<LeReadLocalSupportedFeatures>
                    // + ControllerCmdSync<LeSetDataLength>,
@@ -260,7 +258,7 @@ where
     let mut accessory = LightBulbAccessory {
         name: "Light Bulb".try_into().unwrap(),
         bulb_on_state: false,
-        bulb,
+        bulb_control,
     };
     // let mut accessory = micro_hap::NopAccessory;
     let pair_ctx = {
@@ -618,13 +616,13 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
 
     let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
 
-    let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
+    // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
 
-    let mut bulb = move |state: bool| {
-        //embassy_futures::block_on(control.gpio_set(0, true));
-        info!("setting pin to: {}", state);
-        bulb_pin.set_level(if state { Level::High } else { Level::Low });
-    };
+    // let mut bulb = move |state: bool| {
+    //     //embassy_futures::block_on(control.gpio_set(0, true));
+    //     info!("setting pin to: {}", state);
+    //     bulb_pin.set_level(if state { Level::High } else { Level::Low });
+    // };
 
-    run(controller, &mut bulb).await;
+    run(controller, control).await;
 }

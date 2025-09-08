@@ -22,7 +22,7 @@ mod ble_bas_peripheral {
         bulb_on_state: bool,
     }
     impl AccessoryInterface for LightBulbAccessory {
-        fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
                 Some(self.name.as_bytes())
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
@@ -31,7 +31,7 @@ mod ble_bas_peripheral {
                 todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
         }
-        fn write_characteristic(
+        async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],

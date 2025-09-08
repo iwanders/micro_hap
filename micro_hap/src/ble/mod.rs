@@ -843,7 +843,7 @@ impl HapPeripheralContext {
                     Ok(BufferResponse(0))
                 }
                 DataSource::AccessoryInterface => {
-                    if let Some(data) = accessory.read_characteristic(char_id) {
+                    if let Some(data) = accessory.read_characteristic(char_id).await {
                         let mut buffer = self.buffer.borrow_mut();
                         let reply = req.header.to_success();
                         let len = reply.write_into_length(*buffer)?;
@@ -953,12 +953,13 @@ impl HapPeripheralContext {
                     DataSource::AccessoryInterface => {
                         let r = accessory
                             .write_characteristic(char_id, incoming_data)
+                            .await
                             .map_err(|_| HapBleError::UnexpectedRequest)?;
 
                         if r == CharacteristicResponse::Modified {
                             // Do things to this characteristic to mark it dirty.
                             error!(
-                                "SHould mark the characteristic dirty and advance the global state number, and notify!"
+                                "Should mark the characteristic dirty and advance the global state number, and notify!"
                             );
                             let _ = pair_support
                                 .advance_global_state_number()
@@ -1608,7 +1609,7 @@ mod test {
             bulb_on_state: bool,
         }
         impl crate::AccessoryInterface for LightBulbAccessory {
-            fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+            async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
                 if char_id == CHAR_ID_LIGHTBULB_NAME {
                     Some(self.name.as_bytes())
                 } else if char_id == CHAR_ID_LIGHTBULB_ON {
@@ -1617,7 +1618,7 @@ mod test {
                     todo!("accessory interface for char id: 0x{:02x?}", char_id)
                 }
             }
-            fn write_characteristic(
+            async fn write_characteristic(
                 &mut self,
                 char_id: CharId,
                 data: &[u8],

@@ -347,8 +347,14 @@ pub struct Session {
 
 // Something to retrieve the accessory callbacks.
 pub trait AccessoryInterface {
-    fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;
-    fn write_characteristic(
+    /// Read the characteristic value.
+    ///
+    /// Note I got https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait on this method.
+    /// can we just ignore that for now? Does this need to be send?
+    #[allow(async_fn_in_trait)]
+    async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;
+    #[allow(async_fn_in_trait)]
+    async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
@@ -364,11 +370,11 @@ pub enum CharacteristicResponse {
 #[derive(Debug, Copy, Clone)]
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
-    fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+    async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
         let _ = char_id;
         None::<&[u8]>
     }
-    fn write_characteristic(
+    async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
