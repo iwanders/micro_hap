@@ -273,6 +273,83 @@ impl<'a, D: Digest> SrpServer<'a, D> {
     }
 }
 
+pub struct SrpClient<'a, D: Digest> {
+    params: &'a SrpGroup,
+    d: PhantomData<D>,
+}
+
+impl<'a, D: Digest> SrpClient<'a, D> {
+    /// Create new server state.
+    pub const fn new(params: &'a SrpGroup) -> Self {
+        Self {
+            params,
+            d: PhantomData::<D>,
+        }
+    }
+
+    // https://github.com/RustCrypto/PAKEs/blob/0be57fc1cf2ecb07f20a1b8bd15d6f9f069e2af8/srp/src/client.rs#L164-L176
+    // v = g^x % N
+    #[must_use]
+    fn compute_v(&self, x: &[u8]) -> U3072 {
+        if x.len() != SRP_HASH_BYTES {
+            panic!(
+                "passed an x slice that was the incorrect length, expected {}",
+                SRP_HASH_BYTES
+            );
+        }
+
+        // self.params.g.modpow(x, &self.params.n)
+        let bi = U3072::load_from_be(x);
+
+        // Next we need  this modpow calculation... this issue shows the way:
+        // https://github.com/RustCrypto/crypto-bigint/issues/775
+        // g is the generator, b is the input data, and n is the prime. this is g^b % n
+
+        groups::SRP_3072_G_CONST_MONTY
+            .pow_bounded_exp(&bi, SRP_HASH_BYTES as u32 * 8)
+            // .pow(&bi)
+            .retrieve()
+    }
+
+    /// Get password verifier (v in RFC5054) for user registration on the server.
+    #[must_use]
+    pub fn compute_verifier(
+        &self,
+        username: &[u8],
+        password: &[u8],
+        salt: &[u8],
+        verifier: &mut [u8],
+    ) -> Result<(), ()> {
+        let identity_hash = Self::compute_identity_hash(username, password);
+
+        // let x = Self::compute_x(identity_hash.as_slice(), salt);
+        let x = Self::compute_x(&identity_hash, salt);
+
+        let v = self.compute_v(&x);
+        // self.compute_v(&x).to_bytes_be()
+        v.store_to_be(verifier);
+        Ok(())
+    }
+
+    //  H(<username> | ":" | <raw password>)
+    #[must_use]
+    pub fn compute_identity_hash(username: &[u8], password: &[u8]) -> sha2::digest::Output<D> {
+        let mut d = D::new();
+        d.update(username);
+        d.update(b":");
+        d.update(password);
+        d.finalize()
+    }
+    // x = H(<salt> | H(<username> | ":" | <raw password>))
+    #[must_use]
+    pub fn compute_x(identity_hash: &[u8], salt: &[u8]) -> sha2::digest::Output<D> {
+        let mut x = D::new();
+        x.update(salt);
+        x.update(identity_hash);
+        x.finalize()
+    }
+}
+
 fn hash_n<D: Digest>() -> impl Digest {
     let n = groups::GROUP_3072.n;
     // to_be_bytes makes a copy... :(
@@ -515,6 +592,18 @@ mod test {
         // let mut our_session_key = [0u8; 64];
         // our_server.session_key(shared_secret, &mut our_session_key);
         // pub fn session_key(&self, premaster_secret: &[u8], session_key: &mut [u8]) {}
+
+        let our_client = SrpClient::<Sha512>::new(&groups::GROUP_3072);
+        let mut verifier = [0u8; 384];
+        let salt = &SRP_SALT;
+        let username = &SRP_USER.as_bytes();
+        let password = &SRP_PASS.as_bytes();
+        our_client
+            .compute_verifier(username, password, salt, &mut verifier)
+            .unwrap();
+        assert_eq!(&verifier, SRP_V);
+
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tools/AccessorySetupGenerator/Main.c#L247-L257
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/Tests/HAPCryptoTest.c#L165
