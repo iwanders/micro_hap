@@ -28,6 +28,7 @@ use sha2::{Digest, Sha512};
 
 // The private secret is only assumed to be this many bytes.
 pub const SRP_PRIVATE_SECRET_BYTES: usize = 32;
+pub const SRP_VERIFIER_SIZE: usize = U3072::BYTES;
 const SRP_HASH_BYTES: usize = 64;
 
 trait LoadFromBigEndianU8 {
@@ -64,6 +65,7 @@ macro_rules! implLoad {
     };
 }
 implLoad!(U3072);
+
 pub struct SrpGroup {
     g: u32,
     n: &'static U3072,
@@ -274,7 +276,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
 }
 
 pub struct SrpClient<'a, D: Digest> {
-    params: &'a SrpGroup,
+    _params: &'a SrpGroup,
     d: PhantomData<D>,
 }
 
@@ -282,7 +284,7 @@ impl<'a, D: Digest> SrpClient<'a, D> {
     /// Create new server state.
     pub const fn new(params: &'a SrpGroup) -> Self {
         Self {
-            params,
+            _params: params,
             d: PhantomData::<D>,
         }
     }

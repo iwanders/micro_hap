@@ -3,9 +3,13 @@ pub mod ed25519;
 pub mod srp;
 pub mod x25519;
 
-pub type HomekitSrp<'a> = srp::SrpServer<'a, sha2::Sha512>;
-pub fn homekit_srp() -> srp::SrpServer<'static, sha2::Sha512> {
-    HomekitSrp::new(&srp::groups::GROUP_3072)
+pub type HomekitSrpServer<'a> = srp::SrpServer<'a, sha2::Sha512>;
+pub fn homekit_srp_server() -> srp::SrpServer<'static, sha2::Sha512> {
+    HomekitSrpServer::new(&srp::groups::GROUP_3072)
+}
+pub type HomekitSrpClient<'a> = srp::SrpClient<'a, sha2::Sha512>;
+pub fn homekit_srp_client() -> srp::SrpClient<'static, sha2::Sha512> {
+    HomekitSrpClient::new(&srp::groups::GROUP_3072)
 }
 
 pub fn hkdf_sha512(

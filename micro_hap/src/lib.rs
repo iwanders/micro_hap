@@ -166,6 +166,7 @@ impl DeviceId {
     }
 }
 
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceIdString(pub [u8; 6 * 2 + 5]);
 impl DeviceIdString {
@@ -183,6 +184,8 @@ impl Default for SetupId {
         SetupId([b'A', b'B', b'C', b'D'])
     }
 }
+
+pub use pairing::PairCode;
 
 /// Properties for a service.
 #[bitfield(u16)]
