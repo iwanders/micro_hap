@@ -204,13 +204,13 @@ pub struct Service {
     pub uuid: uuid::Uuid,
     pub iid: SvcId,
     // 8 = accessory information service, its the one with the most attributes.
-    pub attributes: heapless::Vec<Attribute, 12>,
+    pub attributes: heapless::Vec<Characteristic, 12>,
     pub ble_handle: Option<u16>,
 
     pub properties: ServiceProperties,
 }
 impl Service {
-    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&Attribute> {
+    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&Characteristic> {
         for a in self.attributes.iter() {
             if a.iid == chr {
                 return Some(a);
@@ -221,7 +221,7 @@ impl Service {
     pub fn get_attribute_by_uuid_mut(
         &mut self,
         attribute_uuid: &uuid::Uuid,
-    ) -> Option<&mut Attribute> {
+    ) -> Option<&mut Characteristic> {
         for a in self.attributes.iter_mut() {
             if &a.uuid == attribute_uuid {
                 return Some(a);
@@ -277,14 +277,14 @@ pub enum DataSource {
 }
 
 #[derive(Clone, Debug)]
-pub struct Attribute {
+pub struct Characteristic {
     uuid: uuid::Uuid,
     iid: CharId,
     ble: Option<BleProperties>,
 
     data_source: DataSource,
 }
-impl Attribute {
+impl Characteristic {
     pub fn new(uuid: uuid::Uuid, iid: CharId) -> Self {
         Self {
             uuid,
