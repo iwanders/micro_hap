@@ -16,6 +16,7 @@ use zerocopy::IntoBytes;
 
 use micro_hap::{
     ble::broadcast::BleBroadcastParameters, AccessoryInterface, CharId, CharacteristicResponse,
+    PlatformSupport,
 };
 
 struct LightBulbAccessory<'a> {
@@ -150,7 +151,7 @@ impl Default for ActualPairSupport {
         }
     }
 }
-impl micro_hap::pairing::PairSupport for ActualPairSupport {
+impl PlatformSupport for ActualPairSupport {
     fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
         &self.ed_ltsk
     }
@@ -403,7 +404,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
 async fn gatt_events_task<P: PacketPool>(
     hap_context: &mut micro_hap::ble::HapPeripheralContext,
     accessory: &mut impl micro_hap::AccessoryInterface,
-    support: &mut impl micro_hap::pairing::PairSupport,
+    support: &mut impl PlatformSupport,
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
 ) -> Result<(), Error> {

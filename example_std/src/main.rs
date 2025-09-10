@@ -14,7 +14,8 @@ mod ble_bas_peripheral {
     use zerocopy::IntoBytes;
 
     use micro_hap::{
-        AccessoryInterface, CharId, CharacteristicResponse, ble::broadcast::BleBroadcastParameters,
+        AccessoryInterface, CharId, CharacteristicResponse, PlatformSupport,
+        ble::broadcast::BleBroadcastParameters,
     };
 
     struct LightBulbAccessory {
@@ -109,7 +110,7 @@ mod ble_bas_peripheral {
             }
         }
     }
-    impl micro_hap::pairing::PlatformSupport for ActualPairSupport {
+    impl PlatformSupport for ActualPairSupport {
         fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
             &self.ed_ltsk
         }
@@ -378,7 +379,7 @@ mod ble_bas_peripheral {
     async fn gatt_events_task<P: PacketPool>(
         hap_context: &mut micro_hap::ble::HapPeripheralContext,
         accessory: &mut impl micro_hap::AccessoryInterface,
-        support: &mut impl micro_hap::pairing::PlatformSupport,
+        support: &mut impl PlatformSupport,
         server: &Server<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), Error> {
