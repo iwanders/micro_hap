@@ -12,7 +12,7 @@ There are many HAP implementations available, a few implement the logic needed t
 - Example (and code) currently only supports a single pairing procedure and only the 'happy path'.
 
 ## Testing
-The main test for the BLE transport right now is in [./micro_hap/src/ble/mod.rs](./micro_hap/src/ble/mod.rs).
+The main test for the BLE transport right now is in [./micro_hap/src/ble/test.rs](./micro_hap/src/ble/test.rs).
 This contains a full pairing procedure, pair verify and toggling of the lightbulb.
 This tests pretty much everything except pairing storage, session invalidation and of course any messages that were not encountered in the recording.
 This data was captured using  [this repo](https://github.com/iwanders/HomeKitADK_program) which used the reference implementation to create a BLE peripheral from my desktop.
