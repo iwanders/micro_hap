@@ -47,7 +47,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - Any errors currently drop the request instead of returning the correct HAP error code.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
-- Make the accessory interface async.
+- ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
 - Modify add second example to show how to add a service, ensure common stuff is shared.
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 
