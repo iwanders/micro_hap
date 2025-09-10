@@ -38,7 +38,7 @@ To help people understand the code and the concepts, here's an information dump:
 
 ## Todo
 - Clean up error handling.
-- Correctly return HAP errors.
+- Correctly return HAP errors, instead of failing the BLE request.
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
 - The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
@@ -48,7 +48,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Any errors currently drop the request instead of returning the correct HAP error code.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
-- Modify add second example to show how to add a service, ensure common stuff is shared.
+- Modify/add second example to show how to add a service, ensure common stuff is shared.
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 
 ## example_std
@@ -59,8 +59,7 @@ It also requires freeing that interface, usually by disabling your bluetooth ser
 
 ## example_pico_2w
 This example is a gutted version of the project I'm originally developing this for.
-It contains a bunch of stuff that is not really relevant for the HAP example, but the current state at least puts a working bare metal example in the repo.
-It expects the lightbulb pin on 26.
+It contains a bunch of stuff that is not really relevant for the HAP example, but the current state at least puts a working bare metal example in the repo. It toggles the default LED on the pcb through the cyw43 chip.
 
 ## License
 License is [`LICENSE-APACHE`](./LICENSE-APACHE) since it is based on [HomeKitADK](https://github.com/apple/HomeKitADK).

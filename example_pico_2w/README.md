@@ -3,8 +3,7 @@
 This is a bit over-engineered atm as I gutted another project to make this example.
 As such it contains some stuff that we should remove still:
 
-- Replace defmt_serial with `embassy-usb-logger`.
-- Ensure the pico 2w onboard led is used instead of pin 26.
+- Replace defmt_serial with `embassy-usb-logger`, just to make it simpler.
 
 
 ## Usage
