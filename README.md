@@ -49,6 +49,7 @@ To help people understand the code and the concepts, here's an information dump:
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
 - Make the accessory interface async.
 - Modify add second example to show how to add a service, ensure common stuff is shared.
+- Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.
