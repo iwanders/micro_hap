@@ -1,14 +1,15 @@
 // use bitfield_struct::bitfield;
 use zerocopy::{IntoBytes, TryFromBytes};
 
+use crate::PlatformSupport;
 use crate::crypto::{
     aead::{self, CHACHA20_POLY1305_KEY_BYTES},
     ed25519::{ed25519_sign, ed25519_verify},
     hkdf_sha512,
 };
 use crate::pairing::{
-    ED25519_BYTES, PairContext, PairState, PairSupport, PairingError, PairingId, PairingMethod,
-    TLVType, X25519_BYTES, tlv::*,
+    ED25519_BYTES, PairContext, PairState, PairingError, PairingId, PairingMethod, TLVType,
+    X25519_BYTES, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
 
@@ -35,7 +36,7 @@ pub const CONTROL_CHANNEL_WRITE_KEY: &'static str = "Control-Write-Encryption-Ke
 // HAPPairingPairVerifyHandleWrite
 pub fn handle_incoming(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
@@ -87,7 +88,7 @@ pub fn handle_incoming(
 // HAPPairingPairVerifyHandleRead
 pub fn handle_outgoing(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     match ctx.server.pair_verify.setup.state {
@@ -205,7 +206,7 @@ pub fn pair_verify_process_m1(
 // HAPPairingPairVerifyGetM2
 pub fn pair_verify_process_get_m2(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Verify M2: Verify Start Response.");
@@ -313,7 +314,7 @@ pub fn pair_verify_process_get_m2(
 // HAPPairingPairVerifyGetM2ForBLEPairResume
 pub fn pair_verify_process_get_m2_ble(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Resume M2: Resume Response.");
@@ -401,7 +402,7 @@ pub fn pair_verify_process_get_m2_ble(
 // HAPPairingPairVerifyProcessM3
 pub fn pair_verify_process_m3(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     state: TLVState,
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
@@ -471,7 +472,7 @@ pub fn pair_verify_process_m3(
 // HAPPairingPairVerifyGetM4
 pub fn pair_verify_process_get_m4(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Verify M4: Verify Finish Response.");
@@ -491,7 +492,7 @@ pub fn pair_verify_process_get_m4(
 // HAPPairingPairVerifyStartSession
 pub fn pair_verify_start_session(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
 ) -> Result<(), PairingError> {
     let _ = support;
     ctx.server.pair_verify.setup.state = Default::default();

@@ -1,8 +1,9 @@
 # micro_hap
 
 This is a Rust (no-alloc, no_std) implementation of the HomeKit Accessory Protocol.
-Specifically aimed at running within [embassy](https://github.com/embassy-rs/embassy), currently it only implements the BLE transport.
-There are many HAP implementations available, a few implement the logic needed to create an IP peripheral but I could not find any that implemented a BLE one, so I wrote yet another one.
+Specifically aimed at running within [embassy](https://github.com/embassy-rs/embassy),
+currently it only implements the BLE transport, building on the [trouble](https://github.com/embassy-rs/trouble) Bluetooth stack.
+There are many HAP implementations available, a few implement the logic needed to create an IP peripheral but I could not find any that implemented a BLE one, so I wrote one to do just that.
 
 - It roughly follows the [reference implementation](https://github.com/apple/HomeKitADK), and thus has the same license.
 - It uses [trouble](https://github.com/embassy-rs/trouble) for interacting with Bluetooth.
@@ -32,7 +33,7 @@ To help people understand the code and the concepts, here's an information dump:
 - The HAP protocol is merely transported over the BLE write/reads.
 - The Trouble GATT server is merely a facade to provide the correct characteristics & services.
 - The `HapPeripheralContext::process_gatt_event` is the entry point for the bluetooth transport.
-- The `PairSupport` is effectively the platform interface.
+- The `PlatformSupport` is the platform interface / key-value store.
 - The `AccessoryInterface` is the interface the accessory's endpoints, so the actual lightbulb.
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.
 
@@ -50,6 +51,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
 - Modify/add second example to show how to add a service, ensure common stuff is shared.
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
+- Make the `PlatformSupport` methods async.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

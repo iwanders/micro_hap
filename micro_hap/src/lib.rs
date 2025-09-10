@@ -388,6 +388,49 @@ impl AccessoryInterface for NopAccessory {
     }
 }
 
+use crate::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
+/// Trait for functionality the platform should provide.
+///
+/// These methods provide things like random number generation and key value storage.
+pub trait PlatformSupport {
+    /// Retrieve the long term secret key.
+    fn get_ltsk(&self) -> &[u8; ED25519_LTSK];
+
+    /// Produce a random byte, this should be from a cryptographically secure source.
+    fn get_random(&mut self) -> u8;
+
+    /// Store a new pairing.
+    fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
+    /// Retrieve a pairing, or None if it doesn't exist.
+    fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError>;
+
+    /// Retrieve the global state number, this is used by the BLE transport.
+    fn get_global_state_number(&self) -> Result<u16, PairingError>;
+    /// Set the global state number, this is used by the BLE transport.
+    fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
+
+    fn advance_global_state_number(&mut self) -> Result<u16, PairingError> {
+        let old = self.get_global_state_number()?;
+        let new = old.wrapping_add(1);
+        let new = new.max(1); // overflow to 1, not to zero.
+        self.set_global_state_number(new)?;
+        Ok(new)
+    }
+
+    fn get_config_number(&self) -> Result<u16, PairingError>;
+    fn set_config_number(&mut self, value: u16) -> Result<(), PairingError>;
+
+    /// Retrieve the BLE broadcast parameters
+    fn get_ble_broadcast_parameters(
+        &self,
+    ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError>;
+    /// Set the BLE broadcast parameters
+    fn set_ble_broadcast_parameters(
+        &mut self,
+        params: &crate::ble::broadcast::BleBroadcastParameters,
+    ) -> Result<(), PairingError>;
+}
+
 #[cfg(test)]
 mod test {
     pub fn init() {

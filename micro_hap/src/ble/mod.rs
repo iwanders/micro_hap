@@ -1,4 +1,5 @@
 use crate::AccessoryInformationStatic;
+use crate::PlatformSupport;
 use crate::{characteristic, descriptor, service};
 use trouble_host::prelude::*;
 
@@ -883,7 +884,7 @@ impl HapPeripheralContext {
 
     pub async fn characteristic_write_request(
         &mut self,
-        pair_support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         req: &pdu::CharacteristicWriteRequest<'_>,
     ) -> Result<BufferResponse, HapBleError> {
@@ -1061,7 +1062,7 @@ impl HapPeripheralContext {
     // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L29
     pub async fn protocol_configure_request(
         &mut self,
-        pair_support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl PlatformSupport,
         req: &pdu::ProtocolConfigurationRequestHeader,
         payload: &[u8],
     ) -> Result<BufferResponse, HapBleError> {
@@ -1220,7 +1221,7 @@ impl HapPeripheralContext {
     pub async fn handle_write_incoming<'hap, 'support>(
         &mut self,
         hap: &HapServices<'hap>,
-        pair_support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
@@ -1395,7 +1396,7 @@ impl HapPeripheralContext {
     async fn handle_write_incoming_test<'hap, 'support>(
         &mut self,
         hap: &HapServices<'hap>,
-        pair_support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl crate::PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
@@ -1417,7 +1418,7 @@ impl HapPeripheralContext {
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
         &mut self,
         hap: &HapServices<'hap>,
-        pair_support: &mut impl crate::pairing::PairSupport,
+        pair_support: &mut impl crate::PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>

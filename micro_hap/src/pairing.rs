@@ -24,6 +24,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 use crate::tlv::{TLVError, TLVReader, TLVWriter};
 use uuid;
 
+use crate::PlatformSupport;
 use crate::crypto::{
     aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
@@ -152,9 +153,11 @@ impl PairingPublicKey {
     }
 }
 
+/// Represents the 8 digit pairing code the user is prompted for during the pairing procedure.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PairCode(pub [u8; 8 + 2]);
+pub struct PairCode([u8; 8 + 2]);
 impl PairCode {
+    /// Create the pairing code from an array of digits, for example [1,1,1,2,2,3,3,3].
     pub const fn from_digits(v: [u8; 8]) -> Result<Self, ()> {
         // all values must be within 0-9
         let mut i = 0;
@@ -179,6 +182,7 @@ impl PairCode {
             o + v[7],
         ]))
     }
+    /// Create a pairing code from a string, including the hyphens: `111-22-333`.
     pub fn from_str(v: &'static str) -> Result<Self, ()> {
         let mut r = [0u8; 10];
         for (i, x) in v.chars().enumerate() {
@@ -196,9 +200,12 @@ impl PairCode {
         Ok(Self(r))
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    /// Returns a slice of bytes including the hyphens, this is used for the verifier calculation.
+    fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    /// Calculate the verifier using the provided salt. This is usually done during the comissioning procedure.
     pub fn calculate_verifier(
         &self,
         salt: &[u8; 16],
@@ -483,7 +490,9 @@ impl Into<u8> for TLVType {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug)]
 pub struct SetupInfo {
+    /// Salt used to create the verifier.
     pub salt: [u8; 16],
+    /// Verifier created for the pairing code and salt. See `PairingCode` for how to create this.
     pub verifier: [u8; 384],
 }
 impl Default for SetupInfo {
@@ -494,12 +503,6 @@ impl Default for SetupInfo {
         }
     }
 }
-
-/// Setup code string, with zero byte; XXX-XX-XXX
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
-#[repr(transparent)]
-pub struct SetupCode(pub [u8; 11]);
 
 pub mod tlv {
     use super::*;
@@ -553,69 +556,10 @@ impl Default for PairContext {
     }
 }
 
-// Todo; this should be renamed... its effectively the key-value-store.
-pub trait PairSupport {
-    /// Retrieve the long term secret key.
-    fn get_ltsk(&self) -> &[u8; ED25519_LTSK];
-
-    /// Produce a random byte, this should be from a cryptographically secure source.
-    fn get_random(&mut self) -> u8;
-
-    /// Store a new pairing.
-    fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
-    /// Retrieve a pairing, or None if it doesn't exist.
-    fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError>;
-
-    /// Retrieve the global state number, this is used by the BLE transport.
-    fn get_global_state_number(&self) -> Result<u16, PairingError>;
-    /// Set the global state number, this is used by the BLE transport.
-    fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
-
-    fn advance_global_state_number(&mut self) -> Result<u16, PairingError> {
-        let old = self.get_global_state_number()?;
-        let new = old.wrapping_add(1);
-        let new = new.max(1); // overflow to 1, not to zero.
-        self.set_global_state_number(new)?;
-        Ok(new)
-    }
-
-    fn get_config_number(&self) -> Result<u16, PairingError>;
-    fn set_config_number(&mut self, value: u16) -> Result<(), PairingError>;
-
-    /// Retrieve the BLE broadcast parameters
-    fn get_ble_broadcast_parameters(
-        &self,
-    ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError>;
-    /// Set the BLE broadcast parameters
-    fn set_ble_broadcast_parameters(
-        &mut self,
-        params: &crate::ble::broadcast::BleBroadcastParameters,
-    ) -> Result<(), PairingError>;
-}
-
-/*
-/// Function signature for the random generator. It's not FnMut for convenience in case we need to add more to the
-/// support, use interior mutability if necessary.
-type RandomFunction<'a> = &'a dyn Fn() -> u8;
-
-/// Helper support for the pairing situations.
-pub struct PairSupport<'a> {
-    pub rng: RandomFunction<'a>,
-    pub ed_ltsk: [u8; ED25519_LTSK],
-}
-impl<'a> PairSupport<'a> {
-    pub fn store_pairing(&self, pairing: &Pairing) -> Result<(), PairingError> {
-        // NONCOMPLIANCE store something!
-        let _ = pairing;
-        error!("skiping storing of pairing");
-        Ok(())
-    }
-}*/
-
 // HAPPairingPairSetupHandleWrite
 pub fn pair_setup_handle_incoming(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
@@ -659,7 +603,7 @@ pub fn pair_setup_handle_incoming(
 // HAPPairingPairSetupHandleRead
 pub fn pair_setup_handle_outgoing(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     match ctx.setup.state {
@@ -742,7 +686,7 @@ pub fn pair_setup_process_m3(
 // HAPPairingPairSetupProcessM5
 pub fn pair_setup_process_m5(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     state: TLVState,
     encrypted_data: TLVEncryptedData,
 ) -> Result<(), PairingError> {
@@ -835,7 +779,7 @@ pub fn pair_setup_process_m5(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
 pub fn pair_setup_process_get_m2(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     info!("Pair Setup M2: SRP Start Response.");
@@ -929,7 +873,7 @@ pub fn pair_setup_process_get_m2(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L430
 pub fn pair_setup_process_get_m4(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     let _ = support;
@@ -1047,7 +991,7 @@ pub fn pair_setup_process_get_m4(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1041
 pub fn pair_setup_process_get_m6(
     ctx: &mut PairContext,
-    support: &mut impl PairSupport,
+    support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
     let _ = support;
@@ -1178,7 +1122,7 @@ pub mod test {
             self.random.extend(v.iter())
         }
     }
-    impl PairSupport for TestPairSupport {
+    impl PlatformSupport for TestPairSupport {
         fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
             &self.ed_ltsk
         }
