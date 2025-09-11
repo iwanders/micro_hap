@@ -38,7 +38,7 @@ To help people understand the code and the concepts, here's an information dump:
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.
 
 ## Todo
-- Clean up error handling.
+- Clean up error handling.n (snafu / thiserror?)
 - Correctly return HAP errors, instead of failing the BLE request.
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
