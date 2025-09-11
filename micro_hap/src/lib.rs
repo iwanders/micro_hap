@@ -352,7 +352,7 @@ pub struct Session {
 pub trait AccessoryInterface {
     /// Read the characteristic value.
     ///
-    /// Note I got https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait on this method.
+    /// Note I got <https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait> on this method.
     /// can we just ignore that for now? Does this need to be send?
     #[allow(async_fn_in_trait)]
     async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;

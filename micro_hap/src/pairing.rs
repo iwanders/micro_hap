@@ -157,7 +157,7 @@ impl PairingPublicKey {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PairCode([u8; 8 + 2]);
 impl PairCode {
-    /// Create the pairing code from an array of digits, for example [1,1,1,2,2,3,3,3].
+    /// Create the pairing code from an array of digits, for example \[1,1,1,2,2,3,3,3\].
     pub const fn from_digits(v: [u8; 8]) -> Result<Self, ()> {
         // all values must be within 0-9
         let mut i = 0;

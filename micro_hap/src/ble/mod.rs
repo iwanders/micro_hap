@@ -141,13 +141,13 @@ pub struct AccessoryInformationService {
     pub serial_number: FacadeDummyType,
 
     //0x0052
-    /// Firmware revision string; "<major>.<minor>.<revision>"
+    /// Firmware revision string; `<major>.<minor>.<revision>`
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=7u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::FIRMWARE_REVISION, read, write)]
     pub firmware_revision: FacadeDummyType,
 
     //0x0053
-    /// Describes hardware revision string; "<major>.<minor>.<revision>"
+    /// Describes hardware revision string; `<major>.<minor>.<revision>`
     #[characteristic(uuid=characteristic::HARDWARE_REVISION, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=8u16.to_le_bytes())]
     pub hardware_revision: FacadeDummyType,

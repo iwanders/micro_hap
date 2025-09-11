@@ -89,7 +89,7 @@ impl<'a, D: Digest> SrpServer<'a, D> {
 
     /// Get public ephemeral value for sending to the client.
     ///
-    /// https://datatracker.ietf.org/doc/html/rfc2945#section-3
+    /// <https://datatracker.ietf.org/doc/html/rfc2945#section-3>
     /// k*v + g^b % N
     ///
     /// b: Must be SRP_PRIVATE_SECRET_BYTES bytes long.

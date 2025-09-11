@@ -29,7 +29,7 @@ impl From<TLVError> for trouble_host::Error {
 /// Yielding entries that hold:
 ///   type_id: u8,
 ///   length: u8,
-///   data: [u8;length]
+///   data: \[u8;length\]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TLVReader<'a> {
     buffer: &'a [u8],
