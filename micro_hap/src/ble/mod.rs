@@ -165,12 +165,12 @@ impl HapBleService for AccessoryInformationService {
             ble_handle: Some(self.handle),
             uuid: service::ACCESSORY_INFORMATION.into(),
             iid: SvcId(1),
-            attributes: Default::default(),
+            characteristics: Default::default(),
             properties: Default::default(),
         };
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::SERVICE_INSTANCE.into(), CharId(1))
                     .with_ble_properties(BleProperties::from_handle(self.service_instance.handle)),
@@ -178,7 +178,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::IDENTIFY.into(), CharId(2))
                     .with_ble_properties(
@@ -190,7 +190,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::MANUFACTURER.into(), CharId(3))
                     .with_ble_properties(
@@ -202,7 +202,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::MODEL.into(), CharId(4))
                     .with_ble_properties(
@@ -214,7 +214,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::NAME.into(), CharId(5))
                     .with_ble_properties(
@@ -226,7 +226,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::SERIAL_NUMBER.into(), CharId(6))
                     .with_ble_properties(
@@ -238,7 +238,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::FIRMWARE_REVISION.into(), CharId(7))
                     .with_ble_properties(
@@ -250,7 +250,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::HARDWARE_REVISION.into(), CharId(8))
                     .with_ble_properties(
@@ -262,7 +262,7 @@ impl HapBleService for AccessoryInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::ADK_VERSION.into(), CharId(9))
                     .with_ble_properties(
@@ -330,7 +330,7 @@ impl HapBleService for ProtocolInformationService {
             ble_handle: Some(self.handle),
             uuid: service::PROTOCOL_INFORMATION.into(),
             iid: SvcId(0x10),
-            attributes: Default::default(),
+            characteristics: Default::default(),
             properties: crate::ServiceProperties::new().with_configurable(true),
         };
 
@@ -349,7 +349,7 @@ impl HapBleService for ProtocolInformationService {
             */
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::SERVICE_SIGNATURE.into(), CharId(0x11))
                     .with_ble_properties(
@@ -361,7 +361,7 @@ impl HapBleService for ProtocolInformationService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::VERSION.into(), CharId(0x12))
                     .with_ble_properties(
@@ -409,7 +409,7 @@ impl HapBleService for PairingService {
             ble_handle: Some(self.handle),
             uuid: service::PAIRING.into(),
             iid: SvcId(0x20),
-            attributes: Default::default(),
+            characteristics: Default::default(),
             properties: Default::default(),
         };
 
@@ -428,7 +428,7 @@ impl HapBleService for PairingService {
             */
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_PAIR_SETUP.into(), CharId(0x22))
                     .with_ble_properties(
@@ -439,7 +439,7 @@ impl HapBleService for PairingService {
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(
                     characteristic::PAIRING_PAIR_VERIFY.into(),
@@ -454,7 +454,7 @@ impl HapBleService for PairingService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_FEATURES.into(), CharId(0x24))
                     .with_ble_properties(
@@ -466,7 +466,7 @@ impl HapBleService for PairingService {
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_PAIRINGS.into(), CharId(0x25))
                     .with_ble_properties(
@@ -509,7 +509,7 @@ impl HapBleService for LightbulbService {
             ble_handle: Some(self.handle),
             uuid: service::LIGHTBULB.into(),
             iid: SvcId(0x30),
-            attributes: Default::default(),
+            characteristics: Default::default(),
             properties: crate::ServiceProperties::new().with_primary(true),
         };
 
@@ -528,7 +528,7 @@ impl HapBleService for LightbulbService {
             */
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(
                     characteristic::SERVICE_SIGNATURE.into(),
@@ -543,7 +543,7 @@ impl HapBleService for LightbulbService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::NAME.into(), CharId(0x32u16))
                     .with_ble_properties(
@@ -556,7 +556,7 @@ impl HapBleService for LightbulbService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         service
-            .attributes
+            .characteristics
             .push(
                 crate::Characteristic::new(characteristic::ON.into(), CharId(0x33u16))
                     .with_ble_properties(
@@ -676,7 +676,7 @@ impl HapPeripheralContext {
 
     pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Characteristic> {
         for s in self.services() {
-            if let Some(a) = s.get_attribute_by_iid(chr) {
+            if let Some(a) = s.get_characteristic_by_iid(chr) {
                 return Some(a);
             }
         }
@@ -685,7 +685,7 @@ impl HapPeripheralContext {
 
     pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
         for s in self.services() {
-            if let Some(_attribute) = s.get_attribute_by_iid(chr) {
+            if let Some(_attribute) = s.get_characteristic_by_iid(chr) {
                 return Some(s);
             }
         }
@@ -738,22 +738,22 @@ impl HapPeripheralContext {
         if let Some(ref mut svc) =
             self.get_service_by_uuid_mut(&service::ACCESSORY_INFORMATION.into())
         {
-            svc.get_attribute_by_uuid_mut(&characteristic::FIRMWARE_REVISION.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::FIRMWARE_REVISION.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.firmware_revision.as_bytes()));
-            svc.get_attribute_by_uuid_mut(&characteristic::HARDWARE_REVISION.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::HARDWARE_REVISION.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.hardware_revision.as_bytes()));
-            svc.get_attribute_by_uuid_mut(&characteristic::MANUFACTURER.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::MANUFACTURER.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.manufacturer.as_bytes()));
-            svc.get_attribute_by_uuid_mut(&characteristic::MODEL.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::MODEL.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.model.as_bytes()));
-            svc.get_attribute_by_uuid_mut(&characteristic::SERIAL_NUMBER.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::SERIAL_NUMBER.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.serial_number.as_bytes()));
-            svc.get_attribute_by_uuid_mut(&characteristic::NAME.into())
+            svc.get_characteristic_by_uuid_mut(&characteristic::NAME.into())
                 .unwrap()
                 .set_data(DataSource::Constant(data.name.as_bytes()));
         }
@@ -768,7 +768,7 @@ impl HapPeripheralContext {
 
     pub fn print_handles(&self) {
         for k in self.services() {
-            for a in k.attributes.iter() {
+            for a in k.characteristics.iter() {
                 let attr_id = a.iid;
                 let handle = a.ble_ref().handle;
                 let uuid = &a.uuid;

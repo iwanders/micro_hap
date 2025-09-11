@@ -22,14 +22,11 @@ pub mod pairing;
 pub mod tlv;
 
 pub mod crypto;
+use crate::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
 use crypto::aead::ControlChannel;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
-//
-
-// This is also a bit of a problem;
-// https://github.com/embassy-rs/trouble/issues/375
 //
 
 // Hmm, maybe this does what we need;
@@ -109,6 +106,7 @@ impl Default for AccessoryInformationStatic {
     }
 }
 
+/// A characteristic id.
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct CharId(pub u16);
@@ -121,6 +119,7 @@ impl defmt::Format for CharId {
     }
 }
 
+/// A service id.
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
@@ -133,6 +132,7 @@ impl defmt::Format for SvcId {
     }
 }
 
+/// A device id, could be the MAC address.
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -166,6 +166,7 @@ impl DeviceId {
     }
 }
 
+/// The device id as a ':' delimited hexadecimal string.
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceIdString(pub [u8; 6 * 2 + 5]);
@@ -175,6 +176,7 @@ impl DeviceIdString {
     }
 }
 
+/// The setup id (is this always 4 letters upper case?)
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -202,30 +204,42 @@ pub struct ServiceProperties {
     __: u16,
 }
 
+/// Container to represent a service.
 #[derive(Clone, Debug)]
 pub struct Service {
+    /// The uuid that describes the service.
     pub uuid: uuid::Uuid,
+    /// The service id it is referred to by, note these are aligned to 16 boundaries.
+    ///
+    /// See <https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L18>
     pub iid: SvcId,
     // 8 = accessory information service, its the one with the most attributes.
-    pub attributes: heapless::Vec<Characteristic, 12>,
+    /// The attributes that this service holds.
+    pub characteristics: heapless::Vec<Characteristic, 12>,
+
+    /// The bluetooth service handle.
     pub ble_handle: Option<u16>,
 
+    /// The properties of this service.
     pub properties: ServiceProperties,
 }
 impl Service {
-    pub fn get_attribute_by_iid(&self, chr: CharId) -> Option<&Characteristic> {
-        for a in self.attributes.iter() {
+    /// Retrieve a characteristic by its instance id.
+    pub fn get_characteristic_by_iid(&self, chr: CharId) -> Option<&Characteristic> {
+        for a in self.characteristics.iter() {
             if a.iid == chr {
                 return Some(a);
             }
         }
         None
     }
-    pub fn get_attribute_by_uuid_mut(
+
+    /// Retrieve a characteristic by its uuid.
+    pub fn get_characteristic_by_uuid_mut(
         &mut self,
         attribute_uuid: &uuid::Uuid,
     ) -> Option<&mut Characteristic> {
-        for a in self.attributes.iter_mut() {
+        for a in self.characteristics.iter_mut() {
             if &a.uuid == attribute_uuid {
                 return Some(a);
             }
@@ -234,6 +248,8 @@ impl Service {
     }
 }
 
+// Can this be generalised?
+/// The bluetooth properties of a characteristic.
 #[derive(Clone, Debug)]
 pub struct BleProperties {
     pub handle: u16,
@@ -267,6 +283,7 @@ impl BleProperties {
     }
 }
 
+/// The datasource for a characteristic, this specifies how its data is written / read.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Default)]
 pub enum DataSource {
@@ -279,13 +296,20 @@ pub enum DataSource {
     Constant(&'static [u8]),
 }
 
+/// Representation for a characteristic.
 #[derive(Clone, Debug)]
 pub struct Characteristic {
-    uuid: uuid::Uuid,
-    iid: CharId,
-    ble: Option<BleProperties>,
+    /// The uuid that describes this characteristic.
+    pub uuid: uuid::Uuid,
 
-    data_source: DataSource,
+    /// The characteristic instance id.
+    pub iid: CharId,
+
+    /// The bluetooth properties for this characteristic.
+    pub ble: Option<BleProperties>,
+
+    /// The data source for this characteristic.
+    pub data_source: DataSource,
 }
 impl Characteristic {
     pub fn new(uuid: uuid::Uuid, iid: CharId) -> Self {
@@ -320,6 +344,7 @@ impl Characteristic {
     }
 }
 
+/// Session state container.
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Debug, Default)]
@@ -349,6 +374,8 @@ pub struct Session {
 // Ah yes, it is a peripheral, peripherals in general get only one connection.
 
 // Something to retrieve the accessory callbacks.
+
+/// Interface through which the characteristics interact with the accessory.
 pub trait AccessoryInterface {
     /// Read the characteristic value.
     ///
@@ -364,12 +391,14 @@ pub trait AccessoryInterface {
     ) -> Result<CharacteristicResponse, ()>;
 }
 
+/// Enum that specifies whether a characteristic was changed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CharacteristicResponse {
     Modified,
     Unmodified,
 }
 
+/// Dummy no-op accessory that discards reads and writes.
 #[derive(Debug, Copy, Clone)]
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
@@ -388,7 +417,7 @@ impl AccessoryInterface for NopAccessory {
     }
 }
 
-use crate::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
+// Todo; make these all async.
 /// Trait for functionality the platform should provide.
 ///
 /// These methods provide things like random number generation and key value storage.
