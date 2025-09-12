@@ -52,6 +52,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Modify/add second example to show how to add a service, ensure common stuff is shared.
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 - Make the `PlatformSupport` methods async.
+- Build out `characteristic_signature_request` to support range and step, probably needed for hue.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

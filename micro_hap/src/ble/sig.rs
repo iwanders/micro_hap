@@ -36,6 +36,8 @@ pub enum Unit {
     Percentage = 0x27AD,
     Decibel = 0x27C3,
     PressureBar = 0x2780,
+    /// Plane angle.
+    ArcDegrees = 0x2763,
     // Other(u16),
 }
 

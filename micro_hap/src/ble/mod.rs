@@ -303,7 +303,7 @@ fn make_table() {
     // let server = GattServer::<C, NoopRawMutex, MAX_ATTRIBUTES, L2CAP_MTU>::new(stack, &table);
 }*/
 
-type FacadeDummyType = [u8; 0];
+pub type FacadeDummyType = [u8; 0];
 
 // 0xA2
 #[gatt_service(uuid = service::PROTOCOL_INFORMATION)]
@@ -829,6 +829,7 @@ impl HapPeripheralContext {
                 .add_characteristic_properties(chr.ble_ref().properties)
                 // .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
+                // NONCOMPLIANCE: valid range, step value, valid values.
                 .end();
 
             Ok(BufferResponse(len))

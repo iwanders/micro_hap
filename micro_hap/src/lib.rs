@@ -272,6 +272,14 @@ impl BleProperties {
             ..self
         }
     }
+    pub fn with_unit(self, unit: ble::sig::Unit) -> Self {
+        let mut ble_format = self.format;
+        ble_format.unit = unit;
+        Self {
+            format: ble_format,
+            ..self
+        }
+    }
     pub fn with_format_opaque(self) -> Self {
         let mut format = self.format;
         format.format = ble::sig::Format::Opaque;
