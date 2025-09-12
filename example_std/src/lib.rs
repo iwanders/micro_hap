@@ -1,16 +1,7 @@
-use embassy_futures::join::join;
-use embassy_futures::select::select;
-use embassy_time::Timer;
 use log::{error, info, warn};
-use static_cell::StaticCell;
-use trouble_host::prelude::*;
-use zerocopy::IntoBytes;
-
-use micro_hap::{
-    AccessoryInterface, CharId, CharacteristicResponse, PairCode, PlatformSupport,
-    ble::broadcast::BleBroadcastParameters,
-};
+use micro_hap::{PlatformSupport, ble::broadcast::BleBroadcastParameters};
 use rand::prelude::*;
+use trouble_host::prelude::*;
 
 use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
 #[derive(Debug, Clone)]
@@ -120,13 +111,10 @@ pub async fn gatt_events_task<P: PacketPool>(
                         }
                     }
                     GattEvent::Write(event) => {
-                        /*
-                        if event.handle() == level.handle {
-                            info!(
-                                "[gatt] Write Event to Level Characteristic: {:?}",
-                                event.data()
-                            );
-                        }*/
+                        info!(
+                            "[gatt] Write Event to Level Characteristic: {:?}",
+                            event.data()
+                        );
                     }
                     GattEvent::Other(t) => {
                         let peek = t.payload();
