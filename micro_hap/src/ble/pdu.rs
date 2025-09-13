@@ -700,7 +700,7 @@ impl<'a> BodyBuilder<'a> {
     pub fn add_format(mut self, format: &sig::CharacteristicRepresentation) -> Self {
         self.push_slice(
             BleTLVType::GATTPresentationFormatDescriptor as u8,
-            format.as_bytes(),
+            &format.into_bytes(),
         );
 
         self
