@@ -75,7 +75,6 @@ impl Unit {
             Unit::Percentage => 0x27ADu16.as_bytes(),
             Unit::Decibel => 0x27C3u16.as_bytes(),
             Unit::PressureBar => 0x2780u16.as_bytes(),
-            /// Plane angle.
             Unit::ArcDegrees => 0x2763u16.as_bytes(),
         }
     }

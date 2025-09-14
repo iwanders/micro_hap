@@ -254,14 +254,12 @@ impl Service {
 pub struct BleProperties {
     pub handle: u16,
     pub format: ble::sig::CharacteristicRepresentation,
-    pub properties: ble::CharacteristicProperties,
 }
 impl BleProperties {
     pub fn from_handle(handle: u16) -> Self {
         Self {
             handle,
             format: Default::default(),
-            properties: ble::CharacteristicProperties::new(),
         }
     }
     pub fn with_format(self, format: ble::sig::Format) -> Self {
@@ -285,9 +283,49 @@ impl BleProperties {
         format.format = ble::sig::Format::Opaque;
         Self { format, ..self }
     }
-    pub fn with_properties(self, properties: ble::CharacteristicProperties) -> Self {
-        let x = Self { properties, ..self };
-        x
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
+/// Properties for a characteristic
+#[bitfield(u16)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
+pub struct CharacteristicProperties {
+    #[bits(1)]
+    pub read_open: bool, // readableWithoutSecurity
+    #[bits(1)]
+    pub write_open: bool,
+    #[bits(1)]
+    pub supports_authorization: bool,
+    #[bits(1)]
+    pub requires_timed_write: bool,
+
+    #[bits(1)]
+    pub read: bool,
+
+    #[bits(1)]
+    pub write: bool,
+
+    #[bits(1)]
+    pub hidden: bool,
+
+    #[bits(1)]
+    pub supports_event_notification: bool,
+
+    #[bits(1)]
+    pub supports_disconnect_notification: bool,
+
+    #[bits(1)]
+    pub supports_broadcast_notification: bool,
+
+    #[bits(6)]
+    __: u16,
+}
+impl CharacteristicProperties {
+    pub fn with_open_rw(self, state: bool) -> Self {
+        self.with_read_open(state).with_write_open(state)
+    }
+    pub fn with_rw(self, state: bool) -> Self {
+        self.with_read(state).with_write(state)
     }
 }
 
@@ -318,6 +356,8 @@ pub struct Characteristic {
 
     /// The data source for this characteristic.
     pub data_source: DataSource,
+
+    pub properties: CharacteristicProperties,
 }
 impl Characteristic {
     pub fn new(uuid: uuid::Uuid, iid: CharId) -> Self {
@@ -326,6 +366,7 @@ impl Characteristic {
             iid,
             ble: None,
             data_source: DataSource::Nop,
+            properties: CharacteristicProperties::new(),
         }
     }
     pub fn with_ble_properties(self, prop: BleProperties) -> Self {
@@ -349,6 +390,10 @@ impl Characteristic {
     }
     pub fn ble_mut(&mut self) -> &mut BleProperties {
         self.ble.as_mut().unwrap()
+    }
+    pub fn with_properties(self, properties: CharacteristicProperties) -> Self {
+        let x = Self { properties, ..self };
+        x
     }
 }
 

@@ -5,9 +5,7 @@ use trouble_host::prelude::*;
 
 pub mod broadcast;
 mod pdu;
-use crate::{BleProperties, CharacteristicResponse, DataSource};
-
-use bitfield_struct::bitfield;
+use crate::{BleProperties, CharacteristicProperties, CharacteristicResponse, DataSource};
 
 use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
@@ -181,9 +179,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::IDENTIFY.into(), CharId(2))
+                    .with_properties(CharacteristicProperties::new().with_write(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.identify.handle)
-                            .with_properties(CharacteristicProperties::new().with_write(true))
                             .with_format(sig::Format::Boolean),
                     ),
             )
@@ -193,9 +191,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::MANUFACTURER.into(), CharId(3))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.manufacturer.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -205,9 +203,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::MODEL.into(), CharId(4))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.model.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -217,9 +215,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::NAME.into(), CharId(5))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.name.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -229,9 +227,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::SERIAL_NUMBER.into(), CharId(6))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.serial_number.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -241,9 +239,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::FIRMWARE_REVISION.into(), CharId(7))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.firmware_revision.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -253,9 +251,9 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::HARDWARE_REVISION.into(), CharId(8))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.hardware_revision.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -265,13 +263,13 @@ impl HapBleService for AccessoryInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::ADK_VERSION.into(), CharId(9))
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_read(true)
+                            .with_hidden(true),
+                    )
                     .with_ble_properties(
                         BleProperties::from_handle(self.adk_version.handle)
-                            .with_properties(
-                                CharacteristicProperties::new()
-                                    .with_read(true)
-                                    .with_hidden(true),
-                            )
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -352,10 +350,10 @@ impl HapBleService for ProtocolInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::SERVICE_SIGNATURE.into(), CharId(0x11))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.service_signature.handle)
-                            .with_format_opaque()
-                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                            .with_format_opaque(),
                     ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -364,10 +362,10 @@ impl HapBleService for ProtocolInformationService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::VERSION.into(), CharId(0x12))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.version.handle)
-                            .with_format(sig::Format::StringUtf8)
-                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                            .with_format(sig::Format::StringUtf8),
                     )
                     .with_data(crate::DataSource::Constant("2.2.0".as_bytes())),
             )
@@ -431,10 +429,9 @@ impl HapBleService for PairingService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_PAIR_SETUP.into(), CharId(0x22))
+                    .with_properties(CharacteristicProperties::new().with_open_rw(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.pair_setup.handle)
-                            .with_format_opaque()
-                            .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                        BleProperties::from_handle(self.pair_setup.handle).with_format_opaque(),
                     ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -445,10 +442,9 @@ impl HapBleService for PairingService {
                     characteristic::PAIRING_PAIR_VERIFY.into(),
                     CharId(0x23),
                 )
+                .with_properties(CharacteristicProperties::new().with_open_rw(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.pair_verify.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_open_rw(true)),
+                    BleProperties::from_handle(self.pair_verify.handle).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -457,10 +453,10 @@ impl HapBleService for PairingService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_FEATURES.into(), CharId(0x24))
+                    .with_properties(CharacteristicProperties::new().with_read_open(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.features.handle)
-                            .with_format(crate::ble::sig::Format::U8)
-                            .with_properties(CharacteristicProperties::new().with_read_open(true)),
+                            .with_format(crate::ble::sig::Format::U8),
                     )
                     .with_data(crate::DataSource::Constant(&[0])),
             )
@@ -469,10 +465,9 @@ impl HapBleService for PairingService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::PAIRING_PAIRINGS.into(), CharId(0x25))
+                    .with_properties(CharacteristicProperties::new().with_rw(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.pairings.handle)
-                            .with_format_opaque()
-                            .with_properties(CharacteristicProperties::new().with_rw(true)),
+                        BleProperties::from_handle(self.pairings.handle).with_format_opaque(),
                     ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -534,10 +529,9 @@ impl HapBleService for LightbulbService {
                     characteristic::SERVICE_SIGNATURE.into(),
                     CharId(0x31u16),
                 )
+                .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.service_signature.handle)
-                        .with_format_opaque()
-                        .with_properties(CharacteristicProperties::new().with_read(true)),
+                    BleProperties::from_handle(self.service_signature.handle).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -546,9 +540,9 @@ impl HapBleService for LightbulbService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::NAME.into(), CharId(0x32u16))
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.name.handle)
-                            .with_properties(CharacteristicProperties::new().with_read(true))
                             .with_format(sig::Format::StringUtf8),
                     )
                     .with_data(DataSource::AccessoryInterface),
@@ -559,15 +553,15 @@ impl HapBleService for LightbulbService {
             .characteristics
             .push(
                 crate::Characteristic::new(characteristic::ON.into(), CharId(0x33u16))
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_rw(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
                     .with_ble_properties(
                         BleProperties::from_handle(self.on.handle)
-                            .with_properties(
-                                CharacteristicProperties::new()
-                                    .with_rw(true)
-                                    .with_supports_event_notification(true)
-                                    .with_supports_disconnect_notification(true)
-                                    .with_supports_broadcast_notification(true),
-                            )
                             .with_format(sig::Format::Boolean),
                     )
                     .with_data(DataSource::AccessoryInterface),
@@ -575,50 +569,6 @@ impl HapBleService for LightbulbService {
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
         Ok(service)
-    }
-}
-
-// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
-/// Properties for a characteristic
-#[bitfield(u16)]
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
-pub struct CharacteristicProperties {
-    #[bits(1)]
-    pub read_open: bool, // readableWithoutSecurity
-    #[bits(1)]
-    pub write_open: bool,
-    #[bits(1)]
-    pub supports_authorization: bool,
-    #[bits(1)]
-    pub requires_timed_write: bool,
-
-    #[bits(1)]
-    pub read: bool,
-
-    #[bits(1)]
-    pub write: bool,
-
-    #[bits(1)]
-    pub hidden: bool,
-
-    #[bits(1)]
-    pub supports_event_notification: bool,
-
-    #[bits(1)]
-    pub supports_disconnect_notification: bool,
-
-    #[bits(1)]
-    pub supports_broadcast_notification: bool,
-
-    #[bits(6)]
-    __: u16,
-}
-impl CharacteristicProperties {
-    pub fn with_open_rw(self, state: bool) -> Self {
-        self.with_read_open(state).with_write_open(state)
-    }
-    pub fn with_rw(self, state: bool) -> Self {
-        self.with_read(state).with_write(state)
     }
 }
 
@@ -826,7 +776,7 @@ impl HapPeripheralContext {
                 // .add_service(SvcId(0x10)) // what is this set to?
                 .add_service(srv.iid) // what is this set to?
                 .add_service_uuid(&srv.uuid)
-                .add_characteristic_properties(chr.ble_ref().properties)
+                .add_characteristic_properties(chr.properties)
                 // .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
                 // NONCOMPLIANCE: valid range, step value, valid values.
@@ -1333,7 +1283,7 @@ impl HapPeripheralContext {
                         let chr = self
                             .get_attribute_by_char(req.char_id)
                             .ok_or(HapBleError::InvalidValue)?;
-                        if !chr.ble_ref().properties.supports_broadcast_notification() {
+                        if !chr.properties.supports_broadcast_notification() {
                             error!(
                                 "setting broadcast for something that doesn't support broadcast notify"
                             );

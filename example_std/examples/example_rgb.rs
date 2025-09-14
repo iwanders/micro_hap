@@ -7,8 +7,9 @@ use bt_hci_linux::Transport;
 
 mod hap_rgb_bulb {
     use micro_hap::{
-        BleProperties, CharId, Characteristic, DataSource, Service, ServiceProperties, SvcId,
-        ble::{CharacteristicProperties, FacadeDummyType, HapBleError, HapBleService, sig},
+        BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
+        ServiceProperties, SvcId,
+        ble::{FacadeDummyType, HapBleError, HapBleService, sig},
         characteristic, descriptor, service,
         uuid::HomekitUuid16,
     };
@@ -61,10 +62,10 @@ mod hap_rgb_bulb {
                         characteristic::SERVICE_SIGNATURE.into(),
                         CHAR_ID_RGB_BULB_SIGNATURE,
                     )
+                    .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
                         BleProperties::from_handle(self.service_signature.handle)
-                            .with_format_opaque()
-                            .with_properties(CharacteristicProperties::new().with_read(true)),
+                            .with_format_opaque(),
                     ),
                 )
                 .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -73,9 +74,9 @@ mod hap_rgb_bulb {
                 .characteristics
                 .push(
                     Characteristic::new(characteristic::NAME.into(), CHAR_ID_RGB_BULB_NAME)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
                         .with_ble_properties(
                             BleProperties::from_handle(self.name.handle)
-                                .with_properties(CharacteristicProperties::new().with_read(true))
                                 .with_format(sig::Format::StringUtf8),
                         )
                         .with_data(DataSource::AccessoryInterface),
@@ -86,15 +87,15 @@ mod hap_rgb_bulb {
                 .characteristics
                 .push(
                     Characteristic::new(characteristic::ON.into(), CHAR_ID_RGB_BULB_ON)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
                         .with_ble_properties(
                             BleProperties::from_handle(self.on.handle)
-                                .with_properties(
-                                    CharacteristicProperties::new()
-                                        .with_rw(true)
-                                        .with_supports_event_notification(true)
-                                        .with_supports_disconnect_notification(true)
-                                        .with_supports_broadcast_notification(true),
-                                )
                                 .with_format(sig::Format::Boolean),
                         )
                         .with_data(DataSource::AccessoryInterface),
@@ -105,15 +106,15 @@ mod hap_rgb_bulb {
                 .characteristics
                 .push(
                     Characteristic::new(CHARACTERISTIC_HUE.into(), CHAR_ID_RGB_BULB_HUE)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
                         .with_ble_properties(
                             BleProperties::from_handle(self.hue.handle)
-                                .with_properties(
-                                    CharacteristicProperties::new()
-                                        .with_rw(true)
-                                        .with_supports_event_notification(true)
-                                        .with_supports_disconnect_notification(true)
-                                        .with_supports_broadcast_notification(true),
-                                )
                                 .with_format(sig::Format::F32)
                                 .with_unit(sig::Unit::ArcDegrees), // in arcdegrees...
                         )
