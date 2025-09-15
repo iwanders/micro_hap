@@ -329,6 +329,42 @@ impl CharacteristicProperties {
     }
 }
 
+/// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEPDU%2BTLV.c#L156-L158
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
+pub enum VariableUnion {
+    Bool(bool),
+    // kHAPCharacteristicFormat_UInt8
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I32(i32),
+    F32(f32),
+    // String...
+}
+impl VariableUnion {
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            VariableUnion::Bool(v) => v.as_bytes(),
+            VariableUnion::U8(v) => v.as_bytes(),
+            VariableUnion::U16(v) => v.as_bytes(),
+            VariableUnion::U32(v) => v.as_bytes(),
+            VariableUnion::U64(v) => v.as_bytes(),
+            VariableUnion::I32(v) => v.as_bytes(),
+            VariableUnion::F32(v) => v.as_bytes(),
+        }
+    }
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
+pub struct VariableRange {
+    pub start: VariableUnion,
+    pub end: VariableUnion,
+    pub inclusive: bool,
+}
+
 /// The datasource for a characteristic, this specifies how its data is written / read.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Default)]
@@ -357,7 +393,14 @@ pub struct Characteristic {
     /// The data source for this characteristic.
     pub data_source: DataSource,
 
+    /// The permission properties for this characteristic.
     pub properties: CharacteristicProperties,
+
+    /// The range this characteristic can hold.
+    pub range: Option<VariableRange>,
+
+    /// The step the ui should use when changing the value.
+    pub step: Option<VariableUnion>,
 }
 impl Characteristic {
     pub fn new(uuid: uuid::Uuid, iid: CharId) -> Self {
@@ -367,6 +410,8 @@ impl Characteristic {
             ble: None,
             data_source: DataSource::Nop,
             properties: CharacteristicProperties::new(),
+            range: None,
+            step: None,
         }
     }
     pub fn with_ble_properties(self, prop: BleProperties) -> Self {
@@ -393,6 +438,20 @@ impl Characteristic {
     }
     pub fn with_properties(self, properties: CharacteristicProperties) -> Self {
         let x = Self { properties, ..self };
+        x
+    }
+    pub fn with_range(self, range: VariableRange) -> Self {
+        let x = Self {
+            range: Some(range),
+            ..self
+        };
+        x
+    }
+    pub fn with_step(self, step: VariableUnion) -> Self {
+        let x = Self {
+            step: Some(step),
+            ..self
+        };
         x
     }
 }

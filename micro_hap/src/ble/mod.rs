@@ -779,7 +779,9 @@ impl HapPeripheralContext {
                 .add_characteristic_properties(chr.properties)
                 // .add_optional_user_description(&chr.user_description)
                 .add_format(&chr.ble_ref().format)
-                // NONCOMPLIANCE: valid range, step value, valid values.
+                .add_range(&chr.range)
+                .add_step(&chr.step)
+                // NONCOMPLIANCE: valid values.
                 .end();
 
             Ok(BufferResponse(len))

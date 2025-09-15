@@ -21,7 +21,11 @@ mod hap_rgb_bulb {
     pub const CHAR_ID_RGB_BULB_ON: CharId = CharId(0x43);
     pub const CHAR_ID_RGB_BULB_HUE: CharId = CharId(0x44);
 
+    // Maybe hue needs to be paired with saturation & brightness??
+    // Perhaps color temperature is more standalone
+
     pub const CHARACTERISTIC_HUE: HomekitUuid16 = HomekitUuid16::new(0x0013);
+    pub const CHARACTERISTIC_COLOR_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x00CE);
     #[gatt_service(uuid = service::LIGHTBULB)]
     pub struct RgbBulbService {
         #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = SERVICE_ID_RGB_BULB.0)]
@@ -50,7 +54,7 @@ mod hap_rgb_bulb {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: service::LIGHTBULB.into(),
-                iid: SvcId(0x40),
+                iid: SERVICE_ID_RGB_BULB,
                 characteristics: Default::default(),
                 properties: ServiceProperties::new().with_primary(false),
             };
@@ -113,10 +117,17 @@ mod hap_rgb_bulb {
                                 .with_supports_disconnect_notification(true)
                                 .with_supports_broadcast_notification(true),
                         )
+                        .with_range(micro_hap::VariableRange {
+                            start: micro_hap::VariableUnion::F32(0.0),
+                            end: micro_hap::VariableUnion::F32(360.0),
+                            inclusive: true,
+                        })
+                        .with_step(micro_hap::VariableUnion::F32(1.0))
                         .with_ble_properties(
                             BleProperties::from_handle(self.hue.handle)
                                 .with_format(sig::Format::F32)
-                                .with_unit(sig::Unit::ArcDegrees), // in arcdegrees...
+                                .with_unit(sig::Unit::Other(0x2763)), // in arcdegrees...
+                                                                      //.with_unit(sig::Unit::ArcDegrees),
                         )
                         .with_data(DataSource::AccessoryInterface),
                 )
@@ -223,7 +234,7 @@ mod hap_rgb {
         accessory_information: micro_hap::ble::AccessoryInformationService,
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
-        lightbulb: micro_hap::ble::LightbulbService,
+        //lightbulb: micro_hap::ble::LightbulbService,
         rgb_bulb: hap_rgb_bulb::RgbBulbService,
     }
     impl Server<'_> {
@@ -317,7 +328,7 @@ mod hap_rgb {
             &server.pairing,
         )
         .unwrap();
-        hap_context.add_service(&server.lightbulb).unwrap();
+        // hap_context.add_service(&server.lightbulb).unwrap();
         hap_context.add_service(&server.rgb_bulb).unwrap();
 
         hap_context.assign_static_data(&static_information);

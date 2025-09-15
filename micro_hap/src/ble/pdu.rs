@@ -728,6 +728,27 @@ impl<'a> BodyBuilder<'a> {
         }
         self
     }
+
+    pub fn add_range(mut self, range: &Option<crate::VariableRange>) -> Self {
+        if let Some(range) = range {
+            let mut tmp_buffer = [0u8; 8];
+            let start_as_bytes = range.start.as_bytes();
+            let len = start_as_bytes.len();
+            tmp_buffer[0..len].copy_from_slice(start_as_bytes);
+            tmp_buffer[len..2 * len].copy_from_slice(range.end.as_bytes());
+            let tmp_buffer = &tmp_buffer[0..2 * len];
+            self.push_slice(BleTLVType::GATTValidRange as u8, tmp_buffer);
+        }
+        self
+    }
+
+    pub fn add_step(mut self, step: &Option<crate::VariableUnion>) -> Self {
+        if let Some(step) = step {
+            self.push_slice(BleTLVType::HAPStepValueDescriptor as u8, step.as_bytes());
+        }
+        self
+    }
+
     pub fn add_value(mut self, value: &[u8]) -> Self {
         self.push_slice(BleTLVType::Value as u8, value);
         self
