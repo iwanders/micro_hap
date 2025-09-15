@@ -20,6 +20,7 @@ mod hap_rgb_bulb {
     pub const CHAR_ID_RGB_BULB_NAME: CharId = CharId(0x42);
     pub const CHAR_ID_RGB_BULB_ON: CharId = CharId(0x43);
     pub const CHAR_ID_RGB_BULB_HUE: CharId = CharId(0x44);
+    pub const CHAR_ID_RGB_BULB_COLOR_TEMP: CharId = CharId(0x44);
 
     // Maybe hue needs to be paired with saturation & brightness??
     // Perhaps color temperature is more standalone
@@ -45,8 +46,8 @@ mod hap_rgb_bulb {
         #[characteristic(uuid=characteristic::ON, read, write )]
         pub on: FacadeDummyType,
 
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_HUE.0.to_le_bytes())]
-        #[characteristic(uuid=CHARACTERISTIC_HUE, read, write )]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_COLOR_TEMP.0.to_le_bytes())]
+        #[characteristic(uuid=CHARACTERISTIC_COLOR_TEMPERATURE, read, write )]
         pub hue: FacadeDummyType,
     }
     impl HapBleService for RgbBulbService {
@@ -106,30 +107,36 @@ mod hap_rgb_bulb {
                 )
                 .map_err(|_| HapBleError::AllocationOverrun)?;
 
+            // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_COLOR_TEMP.0.to_le_bytes())]
+            // #[characteristic(uuid=CHARACTERISTIC_COLOR_TEMPERATURE, read, write )]
             service
                 .characteristics
                 .push(
-                    Characteristic::new(CHARACTERISTIC_HUE.into(), CHAR_ID_RGB_BULB_HUE)
-                        .with_properties(
-                            CharacteristicProperties::new()
-                                .with_rw(true)
-                                .with_supports_event_notification(true)
-                                .with_supports_disconnect_notification(true)
-                                .with_supports_broadcast_notification(true),
-                        )
-                        .with_range(micro_hap::VariableRange {
-                            start: micro_hap::VariableUnion::F32(0.0),
-                            end: micro_hap::VariableUnion::F32(360.0),
-                            inclusive: true,
-                        })
-                        .with_step(micro_hap::VariableUnion::F32(1.0))
-                        .with_ble_properties(
-                            BleProperties::from_handle(self.hue.handle)
-                                .with_format(sig::Format::F32)
-                                .with_unit(sig::Unit::Other(0x2763)), // in arcdegrees...
-                                                                      //.with_unit(sig::Unit::ArcDegrees),
-                        )
-                        .with_data(DataSource::AccessoryInterface),
+                    Characteristic::new(
+                        CHARACTERISTIC_COLOR_TEMPERATURE.into(),
+                        CHAR_ID_RGB_BULB_COLOR_TEMP,
+                    )
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_rw(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
+                    .with_range(micro_hap::VariableRange {
+                        start: micro_hap::VariableUnion::U32(50),
+                        end: micro_hap::VariableUnion::U32(400),
+                        inclusive: true,
+                    })
+                    .with_step(micro_hap::VariableUnion::U32(1))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.hue.handle)
+                            .with_format(sig::Format::U32)
+                            //.with_unit(sig::Unit::Other(0x2763)), // in arcdegrees...
+                            .with_unit(sig::Unit::Other(0x2705)), // in thermodynamic temperature, Kelvin
+                                                                  //.with_unit(sig::Unit::ArcDegrees),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
                 )
                 .map_err(|_| HapBleError::AllocationOverrun)?;
             Ok(service)
@@ -154,7 +161,7 @@ mod hap_rgb {
         name: HeaplessString<32>,
         bulb_on_state: bool,
         rgb_on_state: bool,
-        rgb_hue_state: f32,
+        rgb_temperature_state: u32,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -168,8 +175,8 @@ mod hap_rgb {
                 Some("rgb_uberbulb".as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_ON {
                 Some(self.rgb_on_state.as_bytes())
-            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_HUE {
-                Some(self.rgb_hue_state.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_COLOR_TEMP {
+                Some(self.rgb_temperature_state.as_bytes())
             } else {
                 todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
@@ -205,14 +212,14 @@ mod hap_rgb {
                 info!("\nSet value to: {:?}\n", *togle_bool);
                 Ok(response)
             } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_HUE {
-                let value_as_f32 = f32::from_le_bytes(data.try_into().unwrap());
+                let value_as_f32 = u32::from_le_bytes(data.try_into().unwrap());
 
-                let response = if self.rgb_hue_state != value_as_f32 {
+                let response = if self.rgb_temperature_state != value_as_f32 {
                     CharacteristicResponse::Modified
                 } else {
                     CharacteristicResponse::Unmodified
                 };
-                self.rgb_hue_state = value_as_f32;
+                self.rgb_temperature_state = value_as_f32;
                 info!("\nHue value to: {:?}\n", value_as_f32);
 
                 Ok(response)
@@ -300,7 +307,7 @@ mod hap_rgb {
             name: "Light Bulb".try_into().unwrap(),
             bulb_on_state: false,
             rgb_on_state: false,
-            rgb_hue_state: 0.0,
+            rgb_temperature_state: 100,
         };
 
         // Create the pairing context.
