@@ -60,6 +60,10 @@ This is the main binary used for debugging & development of the actual interacti
 Build this with `cargo b`, it has to be ran as root to bind the linux HCI interface.
 It also requires freeing that interface, usually by disabling your bluetooth service with `service bluetooth stop`.
 
+This contains multiple examples:
+- `example_lightbulb` The default lightbulb example with just an on-off toggle.
+- `example_rgb` This contains two lightbulbs, one that allows modifying the color temperature, and one that facilitates hue, staturation and brightness configuration.
+
 ## example_pico_2w
 This example is a gutted version of the project I'm originally developing this for.
 It contains a bunch of stuff that is not really relevant for the HAP example, but the current state at least puts a working bare metal example in the repo. It toggles the default LED on the pcb through the cyw43 chip.

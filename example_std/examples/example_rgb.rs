@@ -3,7 +3,9 @@
 use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
-// This doesn't work yet, I think the Hue MUST specify the stepvalue, and valid range.
+// This contains two services that are different lightbulbs:
+// - A lightbulb with a color temperature
+// - A lightbulb with hue, saturation and brightness control.
 
 mod hap_rgb_bulb {
     use micro_hap::{
@@ -15,47 +17,43 @@ mod hap_rgb_bulb {
     };
     use trouble_host::prelude::*;
 
-    pub const SERVICE_ID_RGB_BULB: SvcId = SvcId(0x40);
-    pub const CHAR_ID_RGB_BULB_SIGNATURE: CharId = CharId(0x41);
-    pub const CHAR_ID_RGB_BULB_NAME: CharId = CharId(0x42);
-    pub const CHAR_ID_RGB_BULB_ON: CharId = CharId(0x43);
-    pub const CHAR_ID_RGB_BULB_HUE: CharId = CharId(0x44);
-    pub const CHAR_ID_RGB_BULB_COLOR_TEMP: CharId = CharId(0x44);
+    // This makes a lightbulb with a color temperature.
+    pub const SERVICE_ID_TEMP_BULB: SvcId = SvcId(0x40);
+    pub const CHAR_ID_TEMP_BULB_SIGNATURE: CharId = CharId(0x41);
+    pub const CHAR_ID_TEMP_BULB_NAME: CharId = CharId(0x42);
+    pub const CHAR_ID_TEMP_BULB_ON: CharId = CharId(0x43);
+    pub const CHAR_ID_TEMP_BULB_COLOR: CharId = CharId(0x44);
 
-    // Maybe hue needs to be paired with saturation & brightness??
-    // Perhaps color temperature is more standalone
-
-    pub const CHARACTERISTIC_HUE: HomekitUuid16 = HomekitUuid16::new(0x0013);
     pub const CHARACTERISTIC_COLOR_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x00CE);
     #[gatt_service(uuid = service::LIGHTBULB)]
-    pub struct RgbBulbService {
-        #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = SERVICE_ID_RGB_BULB.0)]
+    pub struct TemperatureBulbService {
+        #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = SERVICE_ID_TEMP_BULB.0)]
         pub service_instance: u16,
 
         /// Service signature, only two bytes.
         #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=CHAR_ID_RGB_BULB_SIGNATURE.0.to_le_bytes())]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=CHAR_ID_TEMP_BULB_SIGNATURE.0.to_le_bytes())]
         pub service_signature: FacadeDummyType,
 
         /// Name for the device.
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_NAME.0.to_le_bytes())]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_BULB_NAME.0.to_le_bytes())]
         #[characteristic(uuid=characteristic::NAME, read, write )]
         pub name: FacadeDummyType,
 
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_ON.0.to_le_bytes())]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_BULB_ON.0.to_le_bytes())]
         #[characteristic(uuid=characteristic::ON, read, write )]
         pub on: FacadeDummyType,
 
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_COLOR_TEMP.0.to_le_bytes())]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_BULB_COLOR.0.to_le_bytes())]
         #[characteristic(uuid=CHARACTERISTIC_COLOR_TEMPERATURE, read, write )]
-        pub hue: FacadeDummyType,
+        pub color_temp: FacadeDummyType,
     }
-    impl HapBleService for RgbBulbService {
+    impl HapBleService for TemperatureBulbService {
         fn populate_support(&self) -> Result<Service, HapBleError> {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: service::LIGHTBULB.into(),
-                iid: SERVICE_ID_RGB_BULB,
+                iid: SERVICE_ID_TEMP_BULB,
                 characteristics: Default::default(),
                 properties: ServiceProperties::new().with_primary(false),
             };
@@ -65,7 +63,7 @@ mod hap_rgb_bulb {
                 .push(
                     Characteristic::new(
                         characteristic::SERVICE_SIGNATURE.into(),
-                        CHAR_ID_RGB_BULB_SIGNATURE,
+                        CHAR_ID_TEMP_BULB_SIGNATURE,
                     )
                     .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
@@ -78,7 +76,7 @@ mod hap_rgb_bulb {
             service
                 .characteristics
                 .push(
-                    Characteristic::new(characteristic::NAME.into(), CHAR_ID_RGB_BULB_NAME)
+                    Characteristic::new(characteristic::NAME.into(), CHAR_ID_TEMP_BULB_NAME)
                         .with_properties(CharacteristicProperties::new().with_read(true))
                         .with_ble_properties(
                             BleProperties::from_handle(self.name.handle)
@@ -91,7 +89,7 @@ mod hap_rgb_bulb {
             service
                 .characteristics
                 .push(
-                    Characteristic::new(characteristic::ON.into(), CHAR_ID_RGB_BULB_ON)
+                    Characteristic::new(characteristic::ON.into(), CHAR_ID_TEMP_BULB_ON)
                         .with_properties(
                             CharacteristicProperties::new()
                                 .with_rw(true)
@@ -107,14 +105,12 @@ mod hap_rgb_bulb {
                 )
                 .map_err(|_| HapBleError::AllocationOverrun)?;
 
-            // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_RGB_BULB_COLOR_TEMP.0.to_le_bytes())]
-            // #[characteristic(uuid=CHARACTERISTIC_COLOR_TEMPERATURE, read, write )]
             service
                 .characteristics
                 .push(
                     Characteristic::new(
                         CHARACTERISTIC_COLOR_TEMPERATURE.into(),
-                        CHAR_ID_RGB_BULB_COLOR_TEMP,
+                        CHAR_ID_TEMP_BULB_COLOR,
                     )
                     .with_properties(
                         CharacteristicProperties::new()
@@ -130,11 +126,198 @@ mod hap_rgb_bulb {
                     })
                     .with_step(micro_hap::VariableUnion::U32(1))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.hue.handle)
+                        BleProperties::from_handle(self.color_temp.handle)
                             .with_format(sig::Format::U32)
                             //.with_unit(sig::Unit::Other(0x2763)), // in arcdegrees...
                             .with_unit(sig::Unit::Other(0x2705)), // in thermodynamic temperature, Kelvin
                                                                   //.with_unit(sig::Unit::ArcDegrees),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+            Ok(service)
+        }
+    }
+
+    // And this here makes an Hue, saturation, brightness lightbulb.
+    // Maybe hue needs to be paired with saturation & brightness??
+    // Perhaps color temperature is more standalone
+    pub const SERVICE_ID_HSB_BULB: SvcId = SvcId(0x50);
+    pub const CHAR_ID_HSB_BULB_SIGNATURE: CharId = CharId(0x51);
+    pub const CHAR_ID_HSB_BULB_NAME: CharId = CharId(0x52);
+    pub const CHAR_ID_HSB_BULB_ON: CharId = CharId(0x53);
+    pub const CHAR_ID_HSB_BULB_HUE: CharId = CharId(0x54);
+    pub const CHAR_ID_HSB_BULB_SATURATION: CharId = CharId(0x55);
+    pub const CHAR_ID_HSB_BULB_BRIGHTNESS: CharId = CharId(0x56);
+
+    pub const CHARACTERISTIC_HUE: HomekitUuid16 = HomekitUuid16::new(0x0013); // f32, 0..360, step=1, arcdegrees
+    pub const CHARACTERISTIC_SATURATION: HomekitUuid16 = HomekitUuid16::new(0x002F); // f32, 0..100, step=1, percentage
+    pub const CHARACTERISTIC_BRIGHTNESS: HomekitUuid16 = HomekitUuid16::new(0x0008); // int, 0..100, step=1, percentage
+
+    #[gatt_service(uuid = service::LIGHTBULB)]
+    pub struct RgbBulbService {
+        #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = SERVICE_ID_HSB_BULB.0)]
+        pub service_instance: u16,
+        /// Service signature, only two bytes.
+        #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=CHAR_ID_HSB_BULB_SIGNATURE.0.to_le_bytes())]
+        pub service_signature: FacadeDummyType,
+
+        /// Name for the device.
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_HSB_BULB_NAME.0.to_le_bytes())]
+        #[characteristic(uuid=characteristic::NAME, read, write )]
+        pub name: FacadeDummyType,
+
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_HSB_BULB_ON.0.to_le_bytes())]
+        #[characteristic(uuid=characteristic::ON, read, write )]
+        pub on: FacadeDummyType,
+
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_HSB_BULB_HUE.0.to_le_bytes())]
+        #[characteristic(uuid=CHARACTERISTIC_HUE, read, write )]
+        pub hue: FacadeDummyType,
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_HSB_BULB_SATURATION.0.to_le_bytes())]
+        #[characteristic(uuid=CHARACTERISTIC_SATURATION, read, write )]
+        pub saturation: FacadeDummyType,
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_HSB_BULB_BRIGHTNESS.0.to_le_bytes())]
+        #[characteristic(uuid=CHARACTERISTIC_BRIGHTNESS, read, write )]
+        pub brightness: FacadeDummyType,
+    }
+    impl HapBleService for RgbBulbService {
+        fn populate_support(&self) -> Result<Service, HapBleError> {
+            let mut service = Service {
+                ble_handle: Some(self.handle),
+                uuid: service::LIGHTBULB.into(),
+                iid: SERVICE_ID_HSB_BULB,
+                characteristics: Default::default(),
+                properties: ServiceProperties::new().with_primary(false),
+            };
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        characteristic::SERVICE_SIGNATURE.into(),
+                        CHAR_ID_HSB_BULB_SIGNATURE,
+                    )
+                    .with_properties(CharacteristicProperties::new().with_read(true))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.service_signature.handle)
+                            .with_format_opaque(),
+                    ),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(characteristic::NAME.into(), CHAR_ID_HSB_BULB_NAME)
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_ble_properties(
+                            BleProperties::from_handle(self.name.handle)
+                                .with_format(sig::Format::StringUtf8),
+                        )
+                        .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(characteristic::ON.into(), CHAR_ID_HSB_BULB_ON)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
+                        .with_ble_properties(
+                            BleProperties::from_handle(self.on.handle)
+                                .with_format(sig::Format::Boolean),
+                        )
+                        .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(CHARACTERISTIC_HUE.into(), CHAR_ID_HSB_BULB_HUE)
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
+                        .with_range(micro_hap::VariableRange {
+                            start: micro_hap::VariableUnion::F32(0.0),
+                            end: micro_hap::VariableUnion::F32(360.0),
+                            inclusive: true,
+                        })
+                        .with_step(micro_hap::VariableUnion::F32(1.0))
+                        .with_ble_properties(
+                            BleProperties::from_handle(self.hue.handle)
+                                .with_format(sig::Format::F32)
+                                .with_unit(sig::Unit::Other(0x2763)), // in arcdegrees...
+                        )
+                        .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        CHARACTERISTIC_SATURATION.into(),
+                        CHAR_ID_HSB_BULB_SATURATION,
+                    )
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_rw(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
+                    .with_range(micro_hap::VariableRange {
+                        start: micro_hap::VariableUnion::F32(0.0),
+                        end: micro_hap::VariableUnion::F32(100.0),
+                        inclusive: true,
+                    })
+                    .with_step(micro_hap::VariableUnion::F32(1.0))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.saturation.handle)
+                            .with_format(sig::Format::F32)
+                            .with_unit(sig::Unit::Percentage),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        CHARACTERISTIC_BRIGHTNESS.into(),
+                        CHAR_ID_HSB_BULB_BRIGHTNESS,
+                    )
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_rw(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
+                    .with_range(micro_hap::VariableRange {
+                        start: micro_hap::VariableUnion::U32(0),
+                        end: micro_hap::VariableUnion::U32(100),
+                        inclusive: true,
+                    })
+                    .with_step(micro_hap::VariableUnion::U32(1))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.hue.handle)
+                            .with_format(sig::Format::U32)
+                            .with_unit(sig::Unit::Percentage),
                     )
                     .with_data(DataSource::AccessoryInterface),
                 )
@@ -157,26 +340,38 @@ mod hap_rgb {
     use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, PairCode};
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
+    #[repr(C)]
     struct LightBulbAccessory {
-        name: HeaplessString<32>,
-        bulb_on_state: bool,
-        rgb_on_state: bool,
-        rgb_temperature_state: u32,
+        // Values for the color temperature bulb.
+        // temp_name: HeaplessString<32>,
+        temp_on_state: bool,
+        temp_color_temperature_state: u32,
+        // Values for the HSB bulbs.
+        hsb_on_state: bool,
+        hsb_hue: f32,
+        hsb_saturation: f32,
+        hsb_brightness: u32,
     }
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
         async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-                Some(self.name.as_bytes())
-            } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                Some(self.bulb_on_state.as_bytes())
-            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_NAME {
-                Some("rgb_uberbulb".as_bytes())
-            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_ON {
-                Some(self.rgb_on_state.as_bytes())
-            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_COLOR_TEMP {
-                Some(self.rgb_temperature_state.as_bytes())
+            if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_NAME {
+                Some("warm_temperature_bulb".as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
+                Some(self.temp_on_state.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_COLOR {
+                Some(self.temp_color_temperature_state.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_NAME {
+                Some("hsb_superbulb".as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_ON {
+                Some(self.hsb_on_state.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_HUE {
+                Some(self.hsb_hue.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_SATURATION {
+                Some(self.hsb_saturation.as_bytes())
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_BRIGHTNESS {
+                Some(self.hsb_brightness.as_bytes())
             } else {
                 todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
@@ -191,14 +386,18 @@ mod hap_rgb {
                 char_id, data
             );
 
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON
-                || char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_ON
-            {
-                let togle_bool = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                    &mut self.bulb_on_state
+            let updater = |incoming: &[u8], dest: &mut [u8]| {
+                let modified = incoming != dest;
+                dest.copy_from_slice(incoming);
+                if modified {
+                    CharacteristicResponse::Modified
                 } else {
-                    &mut self.rgb_on_state
-                };
+                    CharacteristicResponse::Unmodified
+                }
+            };
+
+            if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
+                let togle_bool = &mut self.temp_on_state;
 
                 let value = data.get(0).ok_or(())?;
                 let val_as_bool = *value != 0;
@@ -211,18 +410,43 @@ mod hap_rgb {
                 *togle_bool = val_as_bool;
                 info!("\nSet value to: {:?}\n", *togle_bool);
                 Ok(response)
-            } else if char_id == hap_rgb_bulb::CHAR_ID_RGB_BULB_HUE {
+            } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_COLOR {
                 let value_as_f32 = u32::from_le_bytes(data.try_into().unwrap());
 
-                let response = if self.rgb_temperature_state != value_as_f32 {
+                let response = if self.temp_color_temperature_state != value_as_f32 {
                     CharacteristicResponse::Modified
                 } else {
                     CharacteristicResponse::Unmodified
                 };
-                self.rgb_temperature_state = value_as_f32;
-                info!("\nHue value to: {:?}\n", value_as_f32);
+                self.temp_color_temperature_state = value_as_f32;
+                info!("\nColor temperature value to: {:?}\n", value_as_f32);
 
                 Ok(response)
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_ON {
+                info!("Set on to {:?}", data);
+
+                let togle_bool = &mut self.hsb_on_state;
+
+                let value = data.get(0).ok_or(())?;
+                let val_as_bool = *value != 0;
+
+                let response = if *togle_bool != val_as_bool {
+                    CharacteristicResponse::Modified
+                } else {
+                    CharacteristicResponse::Unmodified
+                };
+                *togle_bool = val_as_bool;
+                info!("\nSet hsb bulb to: {:?}\n", *togle_bool);
+                Ok(response)
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_HUE {
+                info!("Set hue to {:?}", data);
+                Ok(updater(data, &mut self.hsb_hue.as_mut_bytes()))
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_SATURATION {
+                info!("Set saturation to {:?}", data);
+                Ok(updater(data, &mut self.hsb_saturation.as_mut_bytes()))
+            } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_BRIGHTNESS {
+                info!("Set brightness to {:?}", data);
+                Ok(updater(data, &mut self.hsb_brightness.as_mut_bytes()))
             } else {
                 todo!("accessory interface for char id: 0x{:02?}", char_id)
             }
@@ -242,6 +466,7 @@ mod hap_rgb {
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
         //lightbulb: micro_hap::ble::LightbulbService,
+        temp_bulb: hap_rgb_bulb::TemperatureBulbService,
         rgb_bulb: hap_rgb_bulb::RgbBulbService,
     }
     impl Server<'_> {
@@ -283,7 +508,7 @@ mod hap_rgb {
         info!("Starting advertising and GATT service");
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
-            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+            appearance: &appearance::power_device::LED_DRIVER,
         }))
         .unwrap();
 
@@ -298,16 +523,20 @@ mod hap_rgb {
                 address.addr.raw()[4],
                 address.addr.raw()[5],
             ]),
+            category: 5, // 5 is lighting
             ..Default::default()
         };
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = LightBulbAccessory {
-            name: "Light Bulb".try_into().unwrap(),
-            bulb_on_state: false,
-            rgb_on_state: false,
-            rgb_temperature_state: 100,
+            // name: "Light Bulb".try_into().unwrap(),
+            temp_on_state: false,
+            temp_color_temperature_state: 100,
+            hsb_on_state: true,
+            hsb_hue: 0.0,
+            hsb_saturation: 25.0,
+            hsb_brightness: 50,
         };
 
         // Create the pairing context.
@@ -336,6 +565,7 @@ mod hap_rgb {
         )
         .unwrap();
         // hap_context.add_service(&server.lightbulb).unwrap();
+        hap_context.add_service(&server.temp_bulb).unwrap();
         hap_context.add_service(&server.rgb_bulb).unwrap();
 
         hap_context.assign_static_data(&static_information);
