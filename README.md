@@ -64,5 +64,7 @@ It also requires freeing that interface, usually by disabling your bluetooth ser
 This example is a gutted version of the project I'm originally developing this for.
 It contains a bunch of stuff that is not really relevant for the HAP example, but the current state at least puts a working bare metal example in the repo. It toggles the default LED on the pcb through the cyw43 chip.
 
+This example is independent from the workspace, such that `cargo b` at the workspace level doesn't result in both `log` and `defmt` being enabled.
+
 ## License
 License is [`LICENSE-APACHE`](./LICENSE-APACHE) since it is based on [HomeKitADK](https://github.com/apple/HomeKitADK).

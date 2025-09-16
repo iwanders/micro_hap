@@ -1,3 +1,5 @@
+[workspace]
+# This is here to detach this from the main outer workspace
 [package]
 name = "example_pico_2w"
 version = "0.1.0"
@@ -56,7 +58,7 @@ zerocopy = { version = "0.8.26", features = ["derive"] }
 
 
 [target.'cfg(target_arch = "arm")'.dependencies]
-micro_hap = { workspace=true, features=["defmt"]} #, features = ["defmt"]
+micro_hap = { path="../micro_hap/", features=["defmt"]} #, features = ["defmt"]
 #trouble-host = { version = "0.2.4", features = ["defmt"] }
 trouble-host = { features = [
     "peripheral",

@@ -5,6 +5,7 @@ As such it contains some stuff that we should remove still:
 
 - Replace defmt_serial with `embassy-usb-logger`, just to make it simpler.
 
+It toggles the on-board LED of the RPi Pico 2W.
 
 ## Usage
 Easiest is running `make deploy` from this directory.

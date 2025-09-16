@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["micro_hap", "example_std", "example_pico_2w" ]
+members = ["micro_hap", "example_std"]
 
 
 [workspace.dependencies]
