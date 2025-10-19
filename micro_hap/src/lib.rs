@@ -535,7 +535,7 @@ impl AccessoryInterface for NopAccessory {
 /// These methods provide things like random number generation and key value storage.
 pub trait PlatformSupport {
     /// Retrieve the long term secret key.
-    fn get_ltsk(&self) -> &[u8; ED25519_LTSK];
+    fn get_ltsk(&self) -> impl core::future::Future<Output = [u8; ED25519_LTSK]> + Send;
 
     /// Produce a random byte, this should be from a cryptographically secure source.
     fn get_random(&mut self) -> u8;

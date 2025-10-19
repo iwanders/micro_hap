@@ -27,8 +27,8 @@ impl Default for ActualPairSupport {
     }
 }
 impl PlatformSupport for ActualPairSupport {
-    fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
-        &self.ed_ltsk
+    async fn get_ltsk(&self) -> [u8; ED25519_LTSK] {
+        self.ed_ltsk
     }
 
     fn get_random(&mut self) -> u8 {

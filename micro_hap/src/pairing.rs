@@ -601,7 +601,7 @@ pub fn pair_setup_handle_incoming(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1406
 // HAPPairingPairSetupHandleRead
-pub fn pair_setup_handle_outgoing(
+pub async fn pair_setup_handle_outgoing(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -620,7 +620,7 @@ pub fn pair_setup_handle_outgoing(
         PairState::ReceivedM5 => {
             // Advance the state, and write M6.
             ctx.setup.state = PairState::SentM6;
-            pair_setup_process_get_m6(ctx, support, data)
+            pair_setup_process_get_m6(ctx, support, data).await
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -989,7 +989,7 @@ pub fn pair_setup_process_get_m4(
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1041
-pub fn pair_setup_process_get_m6(
+pub async fn pair_setup_process_get_m6(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -1018,7 +1018,7 @@ pub fn pair_setup_process_get_m6(
 
     // Make the public key and append that.
     let mut public_key = [0u8; ED25519_LTPK];
-    ed25519_create_public(support.get_ltsk(), &mut public_key)
+    ed25519_create_public(&support.get_ltsk().await, &mut public_key)
         .map_err(|_| PairingError::IncorrectLength)?;
 
     // Next, create the aspects to sign.
@@ -1051,9 +1051,9 @@ pub fn pair_setup_process_get_m6(
 
     // Sign it all
     {
-        let secret_key = support.get_ltsk();
+        let secret_key = support.get_ltsk().await;
         let (data, signature) = scratch.split_at_mut(sig_start);
-        ed25519_sign(secret_key, data, &mut signature[0..ED25519_BYTES])
+        ed25519_sign(&secret_key, data, &mut signature[0..ED25519_BYTES])
             .map_err(|_| PairingError::IncorrectLength)?;
     }
 
@@ -1123,8 +1123,8 @@ pub mod test {
         }
     }
     impl PlatformSupport for TestPairSupport {
-        fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
-            &self.ed_ltsk
+        async fn get_ltsk(&self) -> [u8; ED25519_LTSK] {
+            self.ed_ltsk
         }
 
         fn get_random(&mut self) -> u8 {

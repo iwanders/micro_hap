@@ -86,7 +86,7 @@ pub fn handle_incoming(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1105C10-L1105C40
 // HAPPairingPairVerifyHandleRead
-pub fn handle_outgoing(
+pub async fn handle_outgoing(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -99,7 +99,7 @@ pub fn handle_outgoing(
             if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
                 pair_verify_process_get_m2_ble(ctx, support, data)
             } else {
-                pair_verify_process_get_m2(ctx, support, data)
+                pair_verify_process_get_m2(ctx, support, data).await
             }
         }
         PairState::ReceivedM3 => {
@@ -204,7 +204,7 @@ pub fn pair_verify_process_m1(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L352
 // HAPPairingPairVerifyGetM2
-pub fn pair_verify_process_get_m2(
+pub async fn pair_verify_process_get_m2(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -273,7 +273,7 @@ pub fn pair_verify_process_get_m2(
     {
         let (to_sign, area_for_signature) = scratch.split_at_mut(ios_cvpk_idx.end);
         ed25519_sign(
-            support.get_ltsk(),
+            &support.get_ltsk().await,
             &to_sign,
             &mut area_for_signature[0..ED25519_BYTES],
         )

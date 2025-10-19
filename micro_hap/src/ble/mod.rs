@@ -875,6 +875,7 @@ impl HapPeripheralContext {
                     pair_support,
                     outgoing,
                 )
+                .await
                 .map_err(|_| HapBleError::InvalidValue)?;
 
                 info!("Populatig the body.");
@@ -895,6 +896,7 @@ impl HapPeripheralContext {
                 // Put the reply in the second half.
                 let outgoing_len =
                     crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
+                        .await
                         .map_err(|_| HapBleError::InvalidValue)?;
 
                 let reply = parsed.header.header.to_success();
