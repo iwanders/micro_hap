@@ -152,13 +152,14 @@ impl Default for ActualPairSupport {
     }
 }
 impl PlatformSupport for ActualPairSupport {
-    fn get_ltsk(&self) -> &[u8; ED25519_LTSK] {
-        &self.ed_ltsk
+    async fn get_ltsk(&self) -> [u8; ED25519_LTSK] {
+        self.ed_ltsk
     }
 
-    fn get_random(&mut self) -> u8 {
-        self.random_byte_index += 1;
-        self.random_bytes[self.random_byte_index]
+    async fn fill_random(&mut self, buffer: &mut [u8]) -> () {
+        buffer.copy_from_slice(&self.random_bytes[self.random_byte_index..buffer.len()]);
+
+        self.random_byte_index += buffer.len();
     }
 
     fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {

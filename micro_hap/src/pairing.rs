@@ -610,7 +610,7 @@ pub async fn pair_setup_handle_outgoing(
         PairState::ReceivedM1 => {
             // Advance the state, and write M2.
             ctx.setup.state = PairState::SentM2;
-            pair_setup_process_get_m2(ctx, support, data)
+            pair_setup_process_get_m2(ctx, support, data).await
         }
         PairState::ReceivedM3 => {
             // Advance the state, and write M2.
@@ -777,7 +777,7 @@ pub fn pair_setup_process_m5(
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
-pub fn pair_setup_process_get_m2(
+pub async fn pair_setup_process_get_m2(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -827,7 +827,7 @@ pub fn pair_setup_process_get_m2(
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L256
 
     // fill b with random;
-    ctx.server.pair_setup.b.fill_with(|| support.get_random());
+    support.fill_random(&mut ctx.server.pair_setup.b).await;
     info!("random b: {:?}", &ctx.server.pair_setup.b);
     // Then, we derive the public key B.
 
@@ -1127,10 +1127,12 @@ pub mod test {
             self.ed_ltsk
         }
 
-        fn get_random(&mut self) -> u8 {
-            self.random
-                .pop_front()
-                .expect("test pair support ran out of random")
+        async fn fill_random(&mut self, buffer: &mut [u8]) -> () {
+            buffer.fill_with(|| {
+                self.random
+                    .pop_front()
+                    .expect("test pair support ran out of random")
+            })
         }
 
         fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
@@ -1183,8 +1185,8 @@ pub mod test {
         assert_eq!(split, from_flag.0);
     }
 
-    #[test]
-    fn test_pairing_handle_setup() -> Result<(), PairingError> {
+    #[tokio::test]
+    async fn test_pairing_handle_setup() -> Result<(), PairingError> {
         crate::test::init();
 
         let recorded = recorded_info();
@@ -1199,7 +1201,7 @@ pub mod test {
 
         let mut buffer = [0u8; 1024];
 
-        pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer)?;
+        pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer).await?;
 
         info!("recorded.public_B: {:x?}", recorded.public_B);
         info!("srvr.pair_setup.B: {:x?}", ctx.server.pair_setup.B);
@@ -1212,7 +1214,7 @@ pub mod test {
         let mut buffer = [0u8; 1024];
 
         // This is M4: SRP verify response.
-        let l = pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer)?;
+        let l = pair_setup_handle_outgoing(&mut ctx, &mut support, &mut buffer).await?;
         let response = &buffer[0..l];
         info!("m4 response: {:02?}", &response);
         let expected_response = [

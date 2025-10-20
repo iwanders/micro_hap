@@ -31,8 +31,8 @@ impl PlatformSupport for ActualPairSupport {
         self.ed_ltsk
     }
 
-    fn get_random(&mut self) -> u8 {
-        rand::rng().random::<u8>()
+    async fn fill_random(&mut self, buffer: &mut [u8]) -> () {
+        buffer.fill_with(|| rand::rng().random::<u8>())
     }
 
     fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {

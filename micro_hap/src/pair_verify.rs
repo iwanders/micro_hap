@@ -97,7 +97,7 @@ pub async fn handle_outgoing(
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1136
             // Advance the state, and write M2.
             if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
-                pair_verify_process_get_m2_ble(ctx, support, data)
+                pair_verify_process_get_m2_ble(ctx, support, data).await
             } else {
                 pair_verify_process_get_m2(ctx, support, data).await
             }
@@ -213,10 +213,7 @@ pub async fn pair_verify_process_get_m2(
     // NONCOMPLIANCE: not checking if an error is set, or if the session is already active.
 
     // Populate cv_SK from random.
-    ctx.server
-        .pair_verify
-        .cv_sk
-        .fill_with(|| support.get_random());
+    support.fill_random(&mut ctx.server.pair_verify.cv_sk).await;
 
     // What is HAP_X25519_scalarmult_base(session->state.pairVerify.cv_PK, session->state.pairVerify.cv_SK); ? :/
     // That makes the Public key from our private secret!
@@ -312,7 +309,7 @@ pub async fn pair_verify_process_get_m2(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L553
 // HAPPairingPairVerifyGetM2ForBLEPairResume
-pub fn pair_verify_process_get_m2_ble(
+pub async fn pair_verify_process_get_m2_ble(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
@@ -331,7 +328,7 @@ pub fn pair_verify_process_get_m2_ble(
     let session_idx = salt_idx.end..salt_idx.end + SESSION_ID_LENGTH;
 
     // Generated random session id.
-    scratch[session_idx.clone()].fill_with(|| support.get_random());
+    support.fill_random(&mut scratch[session_idx.clone()]).await;
 
     // Copy the cv key
     scratch[salt_idx.clone()].copy_from_slice(&ctx.server.pair_verify.controller_cv_pk);

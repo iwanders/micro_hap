@@ -537,8 +537,8 @@ pub trait PlatformSupport {
     /// Retrieve the long term secret key.
     fn get_ltsk(&self) -> impl core::future::Future<Output = [u8; ED25519_LTSK]> + Send;
 
-    /// Produce a random byte, this should be from a cryptographically secure source.
-    fn get_random(&mut self) -> u8;
+    /// Fill the specified buffer with random bytes from a cryptographically secure source.
+    fn fill_random(&mut self, buffer: &mut [u8]) -> impl core::future::Future<Output = ()> + Send;
 
     /// Store a new pairing.
     fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
