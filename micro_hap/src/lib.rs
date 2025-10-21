@@ -25,6 +25,8 @@ pub mod crypto;
 use crate::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
 use crypto::aead::ControlChannel;
 
+use core::future::Future;
+
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //
@@ -535,15 +537,22 @@ impl AccessoryInterface for NopAccessory {
 /// These methods provide things like random number generation and key value storage.
 pub trait PlatformSupport {
     /// Retrieve the long term secret key.
-    fn get_ltsk(&self) -> impl core::future::Future<Output = [u8; ED25519_LTSK]> + Send;
+    fn get_ltsk(&self) -> impl Future<Output = [u8; ED25519_LTSK]> + Send;
 
     /// Fill the specified buffer with random bytes from a cryptographically secure source.
-    fn fill_random(&mut self, buffer: &mut [u8]) -> impl core::future::Future<Output = ()> + Send;
+    fn fill_random(&mut self, buffer: &mut [u8]) -> impl Future<Output = ()> + Send;
 
     /// Store a new pairing.
-    fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError>;
+    fn store_pairing(
+        &mut self,
+        pairing: &Pairing,
+    ) -> impl Future<Output = Result<(), PairingError>> + Send;
+
     /// Retrieve a pairing, or None if it doesn't exist.
-    fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError>;
+    fn get_pairing(
+        &mut self,
+        id: &PairingId,
+    ) -> impl Future<Output = Result<Option<Pairing>, PairingError>> + Send;
 
     /// Retrieve the global state number, this is used by the BLE transport.
     fn get_global_state_number(&self) -> Result<u16, PairingError>;

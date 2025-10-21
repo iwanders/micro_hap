@@ -557,7 +557,7 @@ impl Default for PairContext {
 }
 
 // HAPPairingPairSetupHandleWrite
-pub fn pair_setup_handle_incoming(
+pub async fn pair_setup_handle_incoming(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &[u8],
@@ -591,7 +591,7 @@ pub fn pair_setup_handle_incoming(
             let mut encrypted_data = TLVEncryptedData::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut state, &mut encrypted_data])?;
             ctx.setup.state = PairState::ReceivedM5;
-            pair_setup_process_m5(ctx, support, state, encrypted_data)
+            pair_setup_process_m5(ctx, support, state, encrypted_data).await
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -684,11 +684,11 @@ pub fn pair_setup_process_m3(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L833
 // HAPPairingPairSetupProcessM5
-pub fn pair_setup_process_m5(
+pub async fn pair_setup_process_m5(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
-    state: TLVState,
-    encrypted_data: TLVEncryptedData,
+    state: TLVState<'_>,
+    encrypted_data: TLVEncryptedData<'_>,
 ) -> Result<(), PairingError> {
     info!("Pair Setup M5: Exchange Request.");
 
@@ -771,7 +771,7 @@ pub fn pair_setup_process_m5(
         public_key,
         permissions: 1,
     };
-    support.store_pairing(&pairing)?;
+    support.store_pairing(&pairing).await?;
 
     Ok(())
 }
@@ -1135,14 +1135,14 @@ pub mod test {
             })
         }
 
-        fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+        async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
             self.pairings.insert(pairing.id, *pairing);
             error!("Writing pairing for {:?}", pairing.id);
             Ok(())
         }
 
-        fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
-            Ok(self.pairings.get(id))
+        async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, PairingError> {
+            Ok(self.pairings.get(id).copied())
         }
 
         fn get_global_state_number(&self) -> Result<u16, PairingError> {
@@ -1197,7 +1197,7 @@ pub mod test {
         let mut support = TestPairSupport::default();
         support.add_random(&recorded.random_b);
 
-        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_0)?;
+        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_0).await?;
 
         let mut buffer = [0u8; 1024];
 
@@ -1210,7 +1210,7 @@ pub mod test {
         assert_eq!(recorded.public_B, ctx.server.pair_setup.B);
 
         // This is M3: SRP Verify Request.
-        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_1)?;
+        pair_setup_handle_incoming(&mut ctx, &mut support, &recorded.incoming_1).await?;
         let mut buffer = [0u8; 1024];
 
         // This is M4: SRP verify response.

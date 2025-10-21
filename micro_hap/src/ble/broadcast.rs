@@ -11,7 +11,7 @@ pub struct BleBroadcastParameters {
 }
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L100
-pub fn broadcast_generate_key(
+pub async fn broadcast_generate_key(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     // NONCOMPLIANCE: advertising id
@@ -29,7 +29,8 @@ pub fn broadcast_generate_key(
     info!("Retrieving pairing id: {:?}", ctx.session.pairing_id);
 
     let pairing = support
-        .get_pairing(&ctx.session.pairing_id)?
+        .get_pairing(&ctx.session.pairing_id)
+        .await?
         .ok_or(PairingError::UnknownPairing)?;
     info!("pairing retrieved: {:?}", pairing);
 

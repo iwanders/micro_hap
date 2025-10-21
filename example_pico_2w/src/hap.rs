@@ -162,7 +162,7 @@ impl PlatformSupport for ActualPairSupport {
         self.random_byte_index += buffer.len();
     }
 
-    fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+    async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
         error!("Storing pairing");
         self.pairings
             .insert(pairing.id, *pairing)
@@ -170,9 +170,9 @@ impl PlatformSupport for ActualPairSupport {
         Ok(())
     }
 
-    fn get_pairing(&mut self, id: &PairingId) -> Result<Option<&Pairing>, PairingError> {
+    async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, PairingError> {
         error!("retrieving id pairing id");
-        Ok(self.pairings.get(id))
+        Ok(self.pairings.get(id).copied())
     }
 
     fn get_global_state_number(&self) -> Result<u16, PairingError> {

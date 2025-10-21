@@ -34,7 +34,7 @@ pub const CONTROL_CHANNEL_READ_KEY: &'static str = "Control-Read-Encryption-Key"
 pub const CONTROL_CHANNEL_WRITE_KEY: &'static str = "Control-Write-Encryption-Key";
 
 // HAPPairingPairVerifyHandleWrite
-pub fn handle_incoming(
+pub async fn handle_incoming(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
     data: &[u8],
@@ -76,7 +76,7 @@ pub fn handle_incoming(
             let mut state = TLVState::tied(&data);
             let mut encrypted_data = TLVEncryptedData::tied(&data);
             TLVReader::new(&data).read_into(&mut [&mut state, &mut encrypted_data])?;
-            pair_verify_process_m3(ctx, support, state, encrypted_data)
+            pair_verify_process_m3(ctx, support, state, encrypted_data).await
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -397,11 +397,11 @@ pub async fn pair_verify_process_get_m2_ble(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L708
 // HAPPairingPairVerifyProcessM3
-pub fn pair_verify_process_m3(
+pub async fn pair_verify_process_m3(
     ctx: &mut PairContext,
     support: &mut impl PlatformSupport,
-    state: TLVState,
-    encrypted_data: TLVEncryptedData,
+    state: TLVState<'_>,
+    encrypted_data: TLVEncryptedData<'_>,
 ) -> Result<(), PairingError> {
     info!("Pair Verify M3: Verify Start Request");
 
@@ -433,7 +433,7 @@ pub fn pair_verify_process_m3(
     let pairing_id = PairingId::from_tlv(&identifier)?;
     info!("pairing to retrieve: {:02?}", pairing_id);
 
-    let pairing = support.get_pairing(&pairing_id)?;
+    let pairing = support.get_pairing(&pairing_id).await?;
     info!("pairing retrieved: {:?}", pairing);
 
     let pairing = pairing.ok_or(PairingError::UnknownPairing)?;

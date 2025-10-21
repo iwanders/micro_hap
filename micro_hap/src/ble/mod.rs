@@ -866,6 +866,7 @@ impl HapPeripheralContext {
                     pair_support,
                     incoming_data,
                 )
+                .await
                 .map_err(|_| HapBleError::InvalidValue)?;
 
                 info!("pair setup at outgoing");
@@ -891,6 +892,7 @@ impl HapPeripheralContext {
                 Ok(BufferResponse(len))
             } else if is_pair_verify {
                 crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
+                    .await
                     .map_err(|_| HapBleError::InvalidValue)?;
 
                 // Put the reply in the second half.
@@ -1064,6 +1066,7 @@ impl HapPeripheralContext {
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
                 let mut ctx = self.pair_ctx.borrow_mut();
                 broadcast::broadcast_generate_key(&mut *ctx, pair_support)
+                    .await
                     .map_err(|_| HapBleError::InvalidValue)?;
             }
 
