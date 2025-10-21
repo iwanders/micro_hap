@@ -1,16 +1,21 @@
 // For interpreting the TLV wrapper itself
+use thiserror::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Error, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TLVError {
     /// Not enough data to parse.
+    #[error("not enough data to parse")]
     NotEnoughData,
     /// Missing an expected entry.
+    #[error("missing an expected entry")]
     MissingEntry(u8),
     /// Parse error (like an unexpectedly sized integer)
+    #[error("parse error (like an unexpectedly sized integer)")]
     UnexpectedValue,
     /// Exhausted the buffer while trying to write to it.
+    #[error("exhausted the buffer while trying to write to it")]
     BufferOverrun,
 }
 

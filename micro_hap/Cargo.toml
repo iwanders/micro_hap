@@ -6,6 +6,8 @@ edition = "2024"
 
 
 [dependencies]
+
+# Core ble support
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
@@ -17,7 +19,7 @@ trouble-host = { features = [
 # ], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
 # /ble deps
 #
-embassy-sync = { version = "0.7.2" }
+embassy-sync = { version = "0.7.2" } # For a mutex in the ble module.
 
 
 # For SRP
@@ -39,6 +41,7 @@ heapless = { version = "0.9", features = ["serde", "portable-atomic"] }
 static_cell = "2.1"
 
 uuid = { version = "1.18.0", features = ["zerocopy"], default-features = false }
+thiserror = {version="2", default-features=false}
 
 # Initialisation of cryptographic helpers
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }

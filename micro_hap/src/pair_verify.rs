@@ -351,11 +351,6 @@ pub async fn pair_verify_process_get_m2_ble(
     info!("session_id: {:02?}", session_id);
 
     // with that key we encrypt some empty data.
-
-    // const PAIR_VERIFY_M2_RESUME_INFO: &'static str = "Pair-Resume-Response-Info";
-    // const PAIR_VERIFY_M2_RESUME_INFO: &'static str = "Pair-Resume-Shared-Secret-Info";
-    // const PAIR_VERIFY_M2_RESUME_NONCE: &'static str = "PR-Msg02";
-
     let encrypted_response = aead::encrypt(
         right_scratch,
         0,

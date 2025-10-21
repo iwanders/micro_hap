@@ -29,26 +29,31 @@ use crate::crypto::{
     aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
-
-#[derive(Debug, Copy, Clone)]
+use thiserror::Error;
+#[derive(Error, Debug, Copy, Clone)]
 pub enum PairingError {
-    TLVError(TLVError),
-    IncorrectCombination,
+    #[error("tlv error occured")]
+    TLVError(#[from] TLVError),
+    #[error("incorrect methods combined")]
+    IncorrectMethodCombination,
+    #[error("incorrect state for this method")]
     IncorrectState,
+    #[error("incorrect length encountered")]
     IncorrectLength,
+    #[error("bad public key detected")]
     BadPublicKey,
+    #[error("bad proof provided")]
     BadProof,
+    #[error("aed decryption failed")]
     BadDecryption,
+    #[error("bad signature encountered")]
     BadSignature,
+    #[error("failed to interpret uuid")]
     UuidError,
+    #[error("unknown pairing id")]
     UnknownPairing,
 }
 
-impl From<TLVError> for PairingError {
-    fn from(e: TLVError) -> PairingError {
-        PairingError::TLVError(e)
-    }
-}
 impl From<hkdf::InvalidLength> for PairingError {
     fn from(_e: hkdf::InvalidLength) -> PairingError {
         PairingError::IncorrectLength
@@ -795,7 +800,7 @@ pub async fn pair_setup_process_get_m2(
         } else {
             if ctx.setup.method != PairingMethod::PairSetup {
                 error!("method should be pair setup");
-                return Err(PairingError::IncorrectCombination);
+                return Err(PairingError::IncorrectMethodCombination);
             }
             is_transient = true;
         }
@@ -807,7 +812,7 @@ pub async fn pair_setup_process_get_m2(
         } else {
             if ctx.setup.method != PairingMethod::PairSetup {
                 error!("method should be pair setup");
-                return Err(PairingError::IncorrectCombination);
+                return Err(PairingError::IncorrectMethodCombination);
             }
             is_split = true;
         }

@@ -74,6 +74,8 @@ use core::future::Future;
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
+pub use pairing::PairCode;
+
 /// Helper to set all accessory information from static values in bulk.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
@@ -188,8 +190,6 @@ impl Default for SetupId {
         SetupId([b'A', b'B', b'C', b'D'])
     }
 }
-
-pub use pairing::PairCode;
 
 /// Properties for a service.
 #[bitfield(u16)]
@@ -331,7 +331,7 @@ impl CharacteristicProperties {
     }
 }
 
-/// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEPDU%2BTLV.c#L156-L158
+// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEPDU%2BTLV.c#L156-L158
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone)]
 pub enum VariableUnion {
