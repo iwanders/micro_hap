@@ -33,8 +33,8 @@ To help people understand the code and the concepts, here's an information dump:
 - The HAP protocol is merely transported over the BLE write/reads.
 - The Trouble GATT server is merely a facade to provide the correct characteristics & services.
 - The `HapPeripheralContext::process_gatt_event` is the entry point for the bluetooth transport.
-- The `PlatformSupport` is the platform interface / key-value store.
-- The `AccessoryInterface` is the interface the accessory's endpoints, so the actual lightbulb.
+- The `PlatformSupport` is the platform interface / key-value store and auxiliary function support like random bytes.
+- The `AccessoryInterface` is the interface the accessory's endpoints, so for example the actual lightbulb.
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.
 
 ## Todo
@@ -53,7 +53,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 - ~Make the `PlatformSupport` methods async.~ Async now, but `PlatformSupport: Send` because `Send` is on all futures, this likely needs
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
-- Build out `characteristic_signature_request` to support range and step, probably needed for hue.
+- ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.
