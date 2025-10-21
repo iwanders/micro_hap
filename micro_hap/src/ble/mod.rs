@@ -929,6 +929,7 @@ impl HapPeripheralContext {
                             );
                             let _ = pair_support
                                 .advance_global_state_number()
+                                .await
                                 .map_err(|_| HapBleError::InvalidValue)?;
                         }
 
@@ -1083,6 +1084,7 @@ impl HapPeripheralContext {
             //
             let global_state_number = pair_support
                 .get_global_state_number()
+                .await
                 .map_err(|_e| HapBleError::InvalidValue)?;
 
             // This is odd, they write the configuration number as a single byte!

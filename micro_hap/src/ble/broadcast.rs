@@ -18,7 +18,7 @@ pub async fn broadcast_generate_key(
 ) -> Result<(), PairingError> {
     let mut parameters = support.get_ble_broadcast_parameters()?;
 
-    let gsn = support.get_global_state_number()?;
+    let gsn = support.get_global_state_number().await?;
 
     parameters.expiration_gsn = gsn.wrapping_add(32767 - 1);
 

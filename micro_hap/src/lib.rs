@@ -531,11 +531,12 @@ impl AccessoryInterface for NopAccessory {
     }
 }
 
-// Todo; make these all async.
+// Todo; make these all async.... This now requires Send, which probably doesn't work the moment I need to actually pass
+// a peripheral to the device... maybe none of these can be send? Or we need interior mutability?
 /// Trait for functionality the platform should provide.
 ///
 /// These methods provide things like random number generation and key value storage.
-pub trait PlatformSupport {
+pub trait PlatformSupport: Send {
     /// Retrieve the long term secret key.
     fn get_ltsk(&self) -> impl Future<Output = [u8; ED25519_LTSK]> + Send;
 
@@ -555,16 +556,24 @@ pub trait PlatformSupport {
     ) -> impl Future<Output = Result<Option<Pairing>, PairingError>> + Send;
 
     /// Retrieve the global state number, this is used by the BLE transport.
-    fn get_global_state_number(&self) -> Result<u16, PairingError>;
+    fn get_global_state_number(&self) -> impl Future<Output = Result<u16, PairingError>> + Send;
     /// Set the global state number, this is used by the BLE transport.
-    fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError>;
+    fn set_global_state_number(
+        &mut self,
+        value: u16,
+    ) -> impl Future<Output = Result<(), PairingError>> + Send;
 
-    fn advance_global_state_number(&mut self) -> Result<u16, PairingError> {
-        let old = self.get_global_state_number()?;
-        let new = old.wrapping_add(1);
-        let new = new.max(1); // overflow to 1, not to zero.
-        self.set_global_state_number(new)?;
-        Ok(new)
+    /// Advance the global state number by one, write the new value and return it.
+    fn advance_global_state_number(
+        &mut self,
+    ) -> impl Future<Output = Result<u16, PairingError>> + Send {
+        async move {
+            let old = self.get_global_state_number().await?;
+            let new = old.wrapping_add(1);
+            let new = new.max(1); // overflow to 1, not to zero.
+            self.set_global_state_number(new).await?;
+            Ok(new)
+        }
     }
 
     fn get_config_number(&self) -> Result<u16, PairingError>;

@@ -1145,11 +1145,11 @@ pub mod test {
             Ok(self.pairings.get(id).copied())
         }
 
-        fn get_global_state_number(&self) -> Result<u16, PairingError> {
+        async fn get_global_state_number(&self) -> Result<u16, PairingError> {
             Ok(self.global_state_number)
         }
         /// Set the global state number, this is used by the BLE transport.
-        fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+        async fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
             self.global_state_number = value;
             Ok(())
         }
