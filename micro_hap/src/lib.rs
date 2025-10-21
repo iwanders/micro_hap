@@ -576,8 +576,11 @@ pub trait PlatformSupport: Send {
         }
     }
 
-    fn get_config_number(&self) -> Result<u16, PairingError>;
-    fn set_config_number(&mut self, value: u16) -> Result<(), PairingError>;
+    fn get_config_number(&self) -> impl Future<Output = Result<u16, PairingError>> + Send;
+    fn set_config_number(
+        &mut self,
+        value: u16,
+    ) -> impl Future<Output = Result<(), PairingError>> + Send;
 
     /// Retrieve the BLE broadcast parameters
     fn get_ble_broadcast_parameters(

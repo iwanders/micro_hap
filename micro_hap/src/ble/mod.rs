@@ -1090,6 +1090,7 @@ impl HapPeripheralContext {
             // This is odd, they write the configuration number as a single byte!
             let config_number = pair_support
                 .get_config_number()
+                .await
                 .map_err(|_e| HapBleError::InvalidValue)? as u8;
             let parameters = pair_support
                 .get_ble_broadcast_parameters()

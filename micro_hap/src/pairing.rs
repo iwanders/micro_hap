@@ -1154,10 +1154,10 @@ pub mod test {
             Ok(())
         }
 
-        fn get_config_number(&self) -> Result<u16, PairingError> {
+        async fn get_config_number(&self) -> Result<u16, PairingError> {
             Ok(self.config_number)
         }
-        fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
+        async fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
             self.config_number = value;
             Ok(())
         }
