@@ -57,7 +57,7 @@ pub enum HapBleError {
     InvalidValue,
     /// Runtime buffer overrun.
     BufferOverrun,
-    /// Overrun on allocation space
+    /// Overrun on allocation space.
     AllocationOverrun,
     /// Something went wrong with decryption or encryption.
     EncryptionError,
@@ -278,28 +278,6 @@ impl HapBleService for AccessoryInformationService {
         Ok(service)
     }
 }
-/*
-fn make_table() {
-    // from https://github.com/embassy-rs/trouble/blame/404b0f77345522764582747e0acd50a22236b59e/examples/apps/src/ble_bas_peripheral.rs
-    const MAX_ATTRIBUTES: usize = 10;
-    use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-    let mut table: AttributeTable<'_, NoopRawMutex, { MAX_ATTRIBUTES }> = AttributeTable::new();
-    let mut svc = table.add_service(Service {
-        uuid: service::ACCESSORY_INFORMATION.into(),
-    });
-    let v = svc
-        .add_characteristic::<FacadeDummyType, crate::uuid::HomekitUuid16>(
-            characteristic::HARDWARE_REVISION,
-            &[CharacteristicProp::Read, CharacteristicProp::Write],
-            FacadeDummyType::default(),
-            &mut [],
-        )
-        //.add_descriptor(uuid, props, data)
-        .build();
-    let handle = v.handle;
-
-    // let server = GattServer::<C, NoopRawMutex, MAX_ATTRIBUTES, L2CAP_MTU>::new(stack, &table);
-}*/
 
 pub type FacadeDummyType = [u8; 0];
 
@@ -331,20 +309,6 @@ impl HapBleService for ProtocolInformationService {
             characteristics: Default::default(),
             properties: crate::ServiceProperties::new().with_configurable(true),
         };
-
-        /*
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(0x14),
-
-                ble: Some(
-                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
-                ),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-            */
 
         service
             .characteristics
@@ -410,20 +374,6 @@ impl HapBleService for PairingService {
             characteristics: Default::default(),
             properties: Default::default(),
         };
-
-        /*
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(0x20),
-
-                ble: Some(
-                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
-                ),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-            */
 
         service
             .characteristics
@@ -507,20 +457,6 @@ impl HapBleService for LightbulbService {
             characteristics: Default::default(),
             properties: crate::ServiceProperties::new().with_primary(true),
         };
-
-        /*
-        service
-            .attributes
-            .push(crate::Attribute {
-                uuid: characteristic::SERVICE_INSTANCE.into(),
-                iid: CharId(0x14),
-
-                ble: Some(
-                    BleProperties::from_handle(self.service_instance.handle).with_format_opaque(),
-                ),
-            })
-            .map_err(|_| HapBleError::AllocationOverrun)?;
-            */
 
         service
             .characteristics
