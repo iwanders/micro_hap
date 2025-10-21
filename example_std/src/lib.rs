@@ -62,12 +62,12 @@ impl PlatformSupport for ActualPairSupport {
         self.config_number = value;
         Ok(())
     }
-    fn get_ble_broadcast_parameters(
+    async fn get_ble_broadcast_parameters(
         &self,
     ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, PairingError> {
         Ok(self.broadcast_parameters)
     }
-    fn set_ble_broadcast_parameters(
+    async fn set_ble_broadcast_parameters(
         &mut self,
         params: &micro_hap::ble::broadcast::BleBroadcastParameters,
     ) -> Result<(), PairingError> {

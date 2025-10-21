@@ -585,12 +585,12 @@ pub trait PlatformSupport: Send {
     /// Retrieve the BLE broadcast parameters
     fn get_ble_broadcast_parameters(
         &self,
-    ) -> Result<crate::ble::broadcast::BleBroadcastParameters, PairingError>;
+    ) -> impl Future<Output = Result<crate::ble::broadcast::BleBroadcastParameters, PairingError>> + Send;
     /// Set the BLE broadcast parameters
     fn set_ble_broadcast_parameters(
         &mut self,
         params: &crate::ble::broadcast::BleBroadcastParameters,
-    ) -> Result<(), PairingError>;
+    ) -> impl Future<Output = Result<(), PairingError>> + Send;
 }
 
 #[cfg(test)]

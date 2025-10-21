@@ -1094,6 +1094,7 @@ impl HapPeripheralContext {
                 .map_err(|_e| HapBleError::InvalidValue)? as u8;
             let parameters = pair_support
                 .get_ble_broadcast_parameters()
+                .await
                 .map_err(|_e| HapBleError::InvalidValue)?;
 
             let mut builder = BodyBuilder::new_at(*buffer, len)

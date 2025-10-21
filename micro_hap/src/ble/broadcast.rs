@@ -16,7 +16,7 @@ pub async fn broadcast_generate_key(
     support: &mut impl PlatformSupport,
     // NONCOMPLIANCE: advertising id
 ) -> Result<(), PairingError> {
-    let mut parameters = support.get_ble_broadcast_parameters()?;
+    let mut parameters = support.get_ble_broadcast_parameters().await?;
 
     let gsn = support.get_global_state_number().await?;
 
@@ -43,7 +43,7 @@ pub async fn broadcast_generate_key(
 
     // NONCOMPLIANCE if advertising id.
 
-    support.set_ble_broadcast_parameters(&parameters)?;
+    support.set_ble_broadcast_parameters(&parameters).await?;
 
     Ok(())
 }

@@ -1162,10 +1162,12 @@ pub mod test {
             Ok(())
         }
 
-        fn get_ble_broadcast_parameters(&self) -> Result<BleBroadcastParameters, PairingError> {
+        async fn get_ble_broadcast_parameters(
+            &self,
+        ) -> Result<BleBroadcastParameters, PairingError> {
             Ok(self.ble_broadcast_parameters)
         }
-        fn set_ble_broadcast_parameters(
+        async fn set_ble_broadcast_parameters(
             &mut self,
             params: &BleBroadcastParameters,
         ) -> Result<(), PairingError> {
