@@ -36,6 +36,10 @@ To help people understand the code and the concepts, here's an information dump:
 - The `PlatformSupport` is the platform interface / key-value store and auxiliary function support like random bytes.
 - The `AccessoryInterface` is the interface the accessory's endpoints, so for example the actual lightbulb.
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.
+- The 'entry point' to all the logic is the `process_gatt_event` method of the `HapPeripheralContext`.
+- On error handling. The pairing handling returns `PairingError` which provide relevant information what went wrong.
+  The `ble` layer changes this into appropriate `ble::pdu::HapBleStatusError` errors that are responded to the client,
+  only real trouble errors are bubbled up to the calling code.
 
 ## Todo
 - Clean up error handling.n (snafu / thiserror?)
@@ -54,6 +58,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Make the `PlatformSupport` methods async.~ Async now, but `PlatformSupport: Send` because `Send` is on all futures, this likely needs
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
+- Verify pair resume actually works, keep a list of sessions...
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

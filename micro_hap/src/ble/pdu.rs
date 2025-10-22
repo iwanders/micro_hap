@@ -6,6 +6,7 @@ use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
+use thiserror::Error;
 
 // PDU? Protocol Data Unit!
 
@@ -66,29 +67,44 @@ impl<T: IntoBytes + Immutable> WriteIntoLength for T {
     }
 }
 
+use super::HapBleStatusError;
+
+impl From<HapBleStatusError> for Status {
+    fn from(value: HapBleStatusError) -> Self {
+        match value {
+            HapBleStatusError::UnsupportedPDU(_) => Status::UnsupportedPDU,
+            HapBleStatusError::MaxProcedures => Status::MaxProcedures,
+            HapBleStatusError::InsufficientAuthorization => Status::InsufficientAuthorization,
+            HapBleStatusError::InvalidInstanceID(_) => Status::InvalidInstanceID,
+            HapBleStatusError::InsufficientAuthentication => Status::InsufficientAuthentication,
+            HapBleStatusError::InvalidRequest => Status::InvalidRequest,
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Status {
-    // Success.
+    /// Success.
     Success = 0x00,
 
-    // Unsupported-PDU.
+    /// Unsupported-PDU.
     UnsupportedPDU = 0x01,
 
-    // Max-Procedures.
+    /// Max-Procedures.
     MaxProcedures = 0x02,
 
-    // Insufficient Authorization.
+    /// Insufficient Authorization.
     InsufficientAuthorization = 0x03,
 
-    // Invalid instance ID.
+    /// Invalid instance ID.
     InvalidInstanceID = 0x04,
 
-    // Insufficient Authentication.
+    /// Insufficient Authentication.
     InsufficientAuthentication = 0x05,
 
-    // Invalid Request.
+    /// Invalid Request.
     InvalidRequest = 0x06,
 }
 

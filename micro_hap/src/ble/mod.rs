@@ -36,31 +36,73 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // seems to have the best overview?
 //
 
-// We currently get an InfoRequest, followed the reference implementation, but the phone still disconnects.
-// The phone never sends this request though, so we must be doing something different.
-
 pub mod sig;
+
+use thiserror::Error;
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(transparent)]
 pub struct TId(pub u8);
 
-#[derive(Debug, Copy, Clone)]
+/// Error type representing errors originating from micro_hap's ble interface, these do result in an Err type being
+/// propagated to outside of this module.
+#[derive(Error, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HapBleError {
-    UnexpectedDataLength {
-        expected: usize,
-        actual: usize,
-    },
+    /// Unexpected data length was encountered.
+    #[error("unexpected data length encountered")]
+    UnexpectedDataLength { expected: usize, actual: usize },
+    /// Unexpected request encountered.
+    #[error("unexpected request")]
     UnexpectedRequest,
+    /// Invalid value
+    #[error("invalid value encountered")]
     InvalidValue,
     /// Runtime buffer overrun.
+    #[error("runtime buffer overrun")]
     BufferOverrun,
     /// Overrun on allocation space.
+    #[error("overrun on allocation space")]
     AllocationOverrun,
     /// Something went wrong with decryption or encryption.
+    #[error("encryption or decryption error")]
     EncryptionError,
+    // This is less than ideal, we can't put the error in this without losing copy and clone.
+    ///// A trouble error occured.
+    //#[error("a trouble error occured")]
+    //TroubleError,
+}
+
+/// Error type to represent errors encountered because of the client communication. These are translated to
+/// a PDU status response and do NOT result in an Err type being propagated.
+#[derive(Error, PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[repr(u8)]
+pub enum HapBleStatusError {
+    /// Unsupported-PDU.
+    #[error("unsupported pdu 0x{0:0>2x} encountered")]
+    UnsupportedPDU(u8),
+
+    /// Max-Procedures.
+    #[error("maximum number of concurrent procedures exceeded")]
+    MaxProcedures,
+
+    /// Insufficient Authorization.
+    #[error("insufficient authorization")]
+    InsufficientAuthorization,
+
+    /// Invalid instance ID.
+    #[error("invalid instance id provided 0x{0:0>4x}")]
+    InvalidInstanceID(u16),
+
+    /// Insufficient Authentication.
+    #[error("insufficient authentication")]
+    InsufficientAuthentication,
+
+    /// Invalid Request.
+    #[error("invalid request")]
+    InvalidRequest,
 }
 
 impl From<crate::tlv::TLVError> for HapBleError {
@@ -74,20 +116,6 @@ impl From<crate::tlv::TLVError> for HapBleError {
     }
 }
 
-impl From<HapBleError> for trouble_host::Error {
-    fn from(e: HapBleError) -> trouble_host::Error {
-        match e {
-            HapBleError::UnexpectedDataLength { expected, actual } => {
-                trouble_host::Error::UnexpectedDataLength { expected, actual }
-            }
-            HapBleError::UnexpectedRequest => trouble_host::Error::Other,
-            HapBleError::InvalidValue => trouble_host::Error::InvalidValue,
-            HapBleError::BufferOverrun => trouble_host::Error::OutOfMemory,
-            HapBleError::EncryptionError => trouble_host::Error::NoPermits,
-            HapBleError::AllocationOverrun => trouble_host::Error::OutOfMemory,
-        }
-    }
-}
 impl From<chacha20poly1305::Error> for HapBleError {
     fn from(_: chacha20poly1305::Error) -> HapBleError {
         HapBleError::EncryptionError
@@ -1061,24 +1089,16 @@ impl HapPeripheralContext {
     }
 
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
-        //&self,
         data: &[u8],
         event: ReadEvent<'stack, '_, P>,
     ) -> Result<(), trouble_host::Error> {
-        // let buffer = self.buffer.borrow();
-
-        //let data = self.get_response(reply.payload);
         let reply = trouble_host::att::AttRsp::Read { data: &data };
-        warn!("Replying with: {:?}", reply);
-        // We see this print,
-        //
-        // but nothing ever ends up in the aether
+
         event.into_payload().reply(reply).await?;
         Ok(())
     }
 
     fn get_response(&self, reply: BufferResponse) -> core::cell::Ref<'_, [u8]> {
-        // self.buffer.borrow().map(|z| &z[0..reply.payload.0])
         core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
     }
 
@@ -1325,6 +1345,7 @@ impl HapPeripheralContext {
 
         match event {
             GattEvent::Read(event) => {
+                /*
                 if event.handle() == hap.information.hardware_revision.handle {
                     warn!("Reading information.hardware_revision");
                 } else if event.handle() == hap.information.serial_number.handle {
@@ -1360,16 +1381,27 @@ impl HapPeripheralContext {
                 } else if event.handle() == hap.pairing.pairings.handle {
                     warn!("Reading pairing.pairings ");
                 }
+                */
 
-                if let Some(buffer_thing) = self.handle_read_outgoing(event.handle()).await? {
-                    Self::reply_read_payload(&*buffer_thing, event).await?;
+                let outgoing = self.handle_read_outgoing(event.handle()).await;
+                match outgoing {
+                    Ok(v) => {
+                        if let Some(buffer_thing) = v {
+                            Self::reply_read_payload(&*buffer_thing, event).await?;
 
-                    return Ok(None);
+                            return Ok(None);
+                        } else {
+                            Ok(Some(GattEvent::Read(event)))
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error reading outgoing, dropping request: {:?}", e);
+                        return Ok(None);
+                    }
                 }
-
-                Ok(Some(GattEvent::Read(event)))
             }
             GattEvent::Write(event) => {
+                /*
                 warn!("Raw write data {:?}", event.data());
 
                 if event.handle() == hap.information.hardware_revision.handle {
@@ -1412,25 +1444,37 @@ impl HapPeripheralContext {
                 } else if event.handle() == hap.pairing.pairings.handle {
                     warn!("Writing pairing.pairings  {:?}", event.data());
                 }
+                */
 
-                let resp = self.handle_write_incoming(
-                    hap,
-                    pair_support,
-                    accessory,
-                    &event.data(),
-                    event.handle(),
-                );
-                if let Some(resp) = resp.await? {
-                    self.prepared_reply = Some(Reply {
-                        payload: resp,
-                        handle: event.handle(),
-                    });
+                let resp = self
+                    .handle_write_incoming(
+                        hap,
+                        pair_support,
+                        accessory,
+                        &event.data(),
+                        event.handle(),
+                    )
+                    .await;
 
-                    let reply = trouble_host::att::AttRsp::Write;
-                    event.into_payload().reply(reply).await?;
-                    return Ok(None);
-                } else {
-                    todo!("unhandled event");
+                match resp {
+                    Ok(v) => {
+                        if let Some(v) = v {
+                            self.prepared_reply = Some(Reply {
+                                payload: v,
+                                handle: event.handle(),
+                            });
+
+                            let reply = trouble_host::att::AttRsp::Write;
+                            event.into_payload().reply(reply).await?;
+                            return Ok(None);
+                        } else {
+                            todo!("unhandled event");
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error handling incoming, dropping request: {:?}", e);
+                        return Ok(None);
+                    }
                 }
             }
             remainder => Ok(Some(remainder)),

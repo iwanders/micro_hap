@@ -30,6 +30,8 @@ use crate::crypto::{
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
 use thiserror::Error;
+
+/// Errors associated to pairing, and configuration / initialisation of the pairing properties.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Error, Debug, Copy, Clone)]
 pub enum PairingError {
