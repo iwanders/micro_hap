@@ -30,6 +30,7 @@ use crate::crypto::{
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
 use thiserror::Error;
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Error, Debug, Copy, Clone)]
 pub enum PairingError {
     #[error("tlv error occured")]
@@ -172,19 +173,19 @@ impl PairCode {
             }
             i += 1;
         }
-        // digits are all 0..9.
-        let o = '0' as u8;
+        // digits are all 0..9, calculate the offset for '0' in ascii
+        let offset = '0' as u8;
         Ok(Self([
-            o + v[0],
-            o + v[1],
-            o + v[2],
+            offset + v[0],
+            offset + v[1],
+            offset + v[2],
             '-' as u8, // first three digits and hyphen
-            o + v[3],
-            o + v[4], // middle two digits.
+            offset + v[3],
+            offset + v[4], // middle two digits.
             '-' as u8,
-            o + v[5],
-            o + v[6],
-            o + v[7],
+            offset + v[5],
+            offset + v[6],
+            offset + v[7],
         ]))
     }
     /// Create a pairing code from a string, including the hyphens: `111-22-333`.
@@ -216,9 +217,8 @@ impl PairCode {
         salt: &[u8; 16],
         verifier: &mut [u8; crate::crypto::srp::SRP_VERIFIER_SIZE],
     ) {
-        let username = "Pair-Setup";
         let our_client = homekit_srp_client();
-        let username = username.as_bytes();
+        let username = SRP_USERNAME.as_bytes();
         let password = self.as_bytes();
         // unwrap is safe because all the preconditions & sizes are met.
         our_client
@@ -500,6 +500,14 @@ pub struct SetupInfo {
     /// Verifier created for the pairing code and salt. See `PairingCode` for how to create this.
     pub verifier: [u8; 384],
 }
+
+impl SetupInfo {
+    pub fn assign_from(&mut self, salt: [u8; 16], pair_code: PairCode) {
+        self.salt = salt;
+        pair_code.calculate_verifier(&self.salt, &mut self.verifier);
+    }
+}
+
 impl Default for SetupInfo {
     fn default() -> Self {
         Self {
@@ -1069,16 +1077,6 @@ pub async fn pair_setup_process_get_m6(
     subwriter = subwriter.add_slice(TLVType::PublicKey, &public_key)?;
     subwriter = subwriter.add_slice(TLVType::Signature, &pre_calc[sig_start..sig_end])?;
     let subwriter_length = subwriter.end();
-
-    // Should be:
-    // [01, 11, 35, 37, 3a, 33, 42, 3a, 32, 30, 3a, 41, 37, 3a, 45, 37, 3a, 43, 34, 03, 20, a1, 83, 6d, b8, c5, f8, b1, 27, 1c, bc, e2, df, 72, eb, 78, 9b, 55, 48, 6e, 53, 6c, 11, e1, 5b, b3, 9c, 65, c9, 26, 79, 16, 5a, 0a, 40, 56, 55, d7, 95, ca, 96, 8a, 30, 92, 64, e0, 0e, 6f, d8, 61, e4, fe, 96, d3, f5, e4, e5, 7b, e4, 22, 72, 38, f1, 36, 01, ef, 38, 04, 63, e5, db, 9b, 88, d3, af, 05, e5, d7, 52, 84, 1d, dd, ad, dd, d4, 37, d1, 92, 3e, 48, 06, 23, 5b, 97, d2, 6c, 7e, ef, 09]
-    // Currently is:
-    // [01, 11, 30, 31, 3a, 30, 32, 3a, 30, 33, 3a, 30, 34, 3a, 30, 35, 3a, 30, 36, 03, 20, a1, 83, 6d, b8, c5, f8, b1, 27, 1c, bc, e2, df, 72, eb, 78, 9b, 55, 48, 6e, 53, 6c, 11, e1, 5b, b3, 9c, 65, c9, 26, 79, 16, 5a, 0a, 40, e6, e8, 0d, 5b, 7c, 7e, 76, 05, 34, e8, 19, b8, 51, ad, 76, cf, 7a, 5a, ae, c8, ca, 48, 8e, ff, d5, 18, cc, 97, 92, 23, cd, 7d, dd, 04, 8d, 43, a8, 9a, ea, 8f, 65, f7, b2, fc, c3, 92, 66, 31, 48, 74, 2c, f7, 32, d6, 0c, da, 1c, ba, 36, c0, 74, 42, 44, 09]
-
-    // let mut copied_plaintext = [0u8; 1024];
-    // let mut plain_slice = &mut copied_plaintext[0..subwriter_length];
-    // plain_slice.copy_from_slice(&subwriter_scratch[0..subwriter_length]);
-    // info!("plain: {:02?}", plain_slice);
 
     // Now we need to encrypt the data in the subwriter.
     let key = &ctx.server.pair_setup.session_key;

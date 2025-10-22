@@ -143,9 +143,9 @@ mod hap_lightbulb {
             STATE.init_with(micro_hap::pairing::PairContext::default)
         };
         pair_ctx.accessory = static_information;
-        pair_ctx.info.salt.fill_with(rand::random);
-        let pair_code = PairCode::from_str("111-22-333").unwrap();
-        pair_code.calculate_verifier(&pair_ctx.info.salt, &mut pair_ctx.info.verifier);
+        pair_ctx
+            .info
+            .assign_from(rand::random(), PairCode::from_str("111-22-333").unwrap());
 
         // Create the buffer for hap messages in the gatt server.
         let buffer: &mut [u8] = {

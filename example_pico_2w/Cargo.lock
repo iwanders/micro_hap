@@ -1465,6 +1465,7 @@ dependencies = [
  "lazy_static",
  "sha2",
  "static_cell",
+ "thiserror",
  "trouble-host",
  "uuid",
  "x25519-dalek",
