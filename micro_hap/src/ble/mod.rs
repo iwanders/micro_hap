@@ -68,10 +68,43 @@ pub enum HapBleError {
     /// Something went wrong with decryption or encryption.
     #[error("encryption or decryption error")]
     EncryptionError,
+
     // This is less than ideal, we can't put the error in this without losing copy and clone.
-    ///// A trouble error occured.
-    //#[error("a trouble error occured")]
-    //TroubleError,
+    /// A trouble error occured.
+    #[error("a trouble error occured")]
+    TroubleError(#[from] SimpleTroubleError),
+}
+
+#[derive(Error, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum SimpleTroubleError {
+    /// Out of memory
+    #[error("out of memory")]
+    OutOfMemory,
+
+    /// Insufficient space in the buffer
+    #[error("insufficient space in the buffer")]
+    InsufficientSpace,
+
+    /// Some other trouble error that we type erased.
+    #[error("catch all for trouble errors")]
+    ErasedTroubleError,
+}
+
+impl From<trouble_host::Error> for HapBleError {
+    fn from(e: trouble_host::Error) -> HapBleError {
+        HapBleError::TroubleError(e.into())
+    }
+}
+
+impl From<trouble_host::Error> for SimpleTroubleError {
+    fn from(e: trouble_host::Error) -> SimpleTroubleError {
+        match e {
+            trouble_host::Error::OutOfMemory => SimpleTroubleError::OutOfMemory,
+            trouble_host::Error::InsufficientSpace => SimpleTroubleError::InsufficientSpace,
+            _ => SimpleTroubleError::ErasedTroubleError,
+        }
+    }
 }
 
 /// Error type to represent errors encountered because of the client communication. These are translated to
@@ -1339,8 +1372,7 @@ impl HapPeripheralContext {
         pair_support: &mut impl crate::PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
-    ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, trouble_host::Error>
-    {
+    ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, HapBleError> {
         // we seem to miss 'read by type' requests on handlex 0x0010 - 0x0012
 
         match event {
