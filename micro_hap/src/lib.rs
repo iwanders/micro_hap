@@ -17,8 +17,8 @@ pub mod ble;
 
 use bitfield_struct::bitfield;
 
-pub mod pair_verify;
-pub mod pairing;
+pub(crate) mod pair_verify;
+pub(crate) mod pairing;
 pub mod tlv;
 
 pub mod crypto;

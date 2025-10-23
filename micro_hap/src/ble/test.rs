@@ -38,7 +38,7 @@ impl Server<'_> {
 }
 
 #[tokio::test]
-async fn test_message_exchanges() -> Result<(), HapBleError> {
+async fn test_message_exchanges() -> Result<(), InternalError> {
     crate::test::init();
     let name = "Acme Light Bulb";
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {

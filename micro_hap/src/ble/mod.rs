@@ -50,7 +50,7 @@ pub struct TId(pub u8);
 
 /// Error type representing errors originating from micro_hap's ble interface, these do result in an Err type being
 /// propagated to outside of this module.
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HapBleError {
     /// Unexpected data length was encountered.
@@ -79,7 +79,7 @@ pub enum HapBleError {
 }
 
 /// Limited simplified trouble errors that are copy/clone.
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SimpleTroubleError {
     /// Out of memory
@@ -116,10 +116,10 @@ impl From<trouble_host::Error> for SimpleTroubleError {
 #[derive(Error, PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
-pub enum HapBleStatusError {
+enum HapBleStatusError {
     /// Unsupported-PDU.
-    #[error("unsupported pdu 0x{0:0>2x} encountered")]
-    UnsupportedPDU(u8),
+    #[error("unsupported pdu  encountered")]
+    UnsupportedPDU,
 
     /// Max-Procedures.
     #[error("maximum number of concurrent procedures exceeded")]
@@ -140,6 +140,26 @@ pub enum HapBleStatusError {
     /// Invalid Request.
     #[error("invalid request")]
     InvalidRequest,
+}
+
+/// A enum to capture all errors possibly encountered internally. This is used to provide high quality logging
+/// but does not actually end up in the public api of the crate.
+#[derive(Error, PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[repr(u8)]
+enum InternalError {
+    #[error("tlv error encountered")]
+    TLVError(#[from] crate::tlv::TLVError),
+    #[error("status error")]
+    StatusError(#[from] HapBleStatusError),
+    #[error("pairing error")]
+    PairError(#[from] crate::PairingError),
+    /// Unexpected data length was encountered.
+    #[error("unexpected data length encountered")]
+    UnexpectedDataLength { expected: usize, actual: usize },
+
+    #[error("a to be propagated error")]
+    HapBleError(#[from] HapBleError),
 }
 
 impl From<crate::tlv::TLVError> for HapBleError {
@@ -761,14 +781,14 @@ impl HapPeripheralContext {
         }
     }
 
-    pub async fn handle_write_incoming<'hap, 'support>(
+    async fn handle_write_incoming<'hap, 'support>(
         &mut self,
         hap: &HapServices<'hap>,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
-    ) -> Result<Option<BufferResponse>, HapBleError> {
+    ) -> Result<Option<BufferResponse>, InternalError> {
         let security_active = self.pair_ctx.borrow().session.security_active;
         self.should_encrypt_reply = security_active;
         let mut tmp_buffer = [0u8; 1024];
@@ -795,7 +815,8 @@ impl HapPeripheralContext {
                 pair_ctx
                     .session
                     .c_to_a
-                    .decrypt(&mut buffer[0..data.len()])?
+                    .decrypt(&mut buffer[0..data.len()])
+                    .map_err(|e| HapBleStatusError::InsufficientAuthentication)?
             }
         } else {
             data
@@ -846,7 +867,7 @@ impl HapPeripheralContext {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L404
                 if !security_active {
                     // Nope...
-                    return Err(HapBleError::EncryptionError);
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
                 }
                 // Well ehm, what do we do here?
                 let (req, payload) =
@@ -861,7 +882,7 @@ impl HapPeripheralContext {
                 info!("CharacteristicConfiguration req: {:?}", data);
                 if !security_active {
                     // Nope...
-                    return Err(HapBleError::EncryptionError);
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
                 }
 
                 let req = pdu::CharacteristicConfigurationRequest::parse_pdu(data)?;
@@ -872,14 +893,16 @@ impl HapPeripheralContext {
                 let broadcast_enabled = if let Some(broadcast_value) = req.broadcast_enabled {
                     // Enabled broadcasts at the provided interval.
                     {
-                        let chr = self
-                            .get_attribute_by_char(req.char_id)
-                            .ok_or(HapBleError::InvalidValue)?;
+                        let chr = self.get_attribute_by_char(req.char_id).ok_or(
+                            InternalError::StatusError(HapBleStatusError::InvalidInstanceID(
+                                req.char_id.0,
+                            )),
+                        )?;
                         if !chr.properties.supports_broadcast_notification() {
                             error!(
                                 "setting broadcast for something that doesn't support broadcast notify"
                             );
-                            return Err(HapBleError::InvalidValue);
+                            return Err(HapBleStatusError::InvalidRequest.into());
                         }
                     }
 
@@ -934,6 +957,42 @@ impl HapPeripheralContext {
         Ok(Some(resp))
     }
 
+    async fn handle_write_incoming_entry<'hap, 'support>(
+        &mut self,
+        hap: &HapServices<'hap>,
+        pair_support: &mut impl PlatformSupport,
+        accessory: &mut impl crate::AccessoryInterface,
+        data: &[u8],
+        handle: u16,
+    ) -> Result<Option<BufferResponse>, HapBleError> {
+        let r = self
+            .handle_write_incoming(hap, pair_support, accessory, data, handle)
+            .await;
+        match r {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                warn!("Processing returned exception: {:?}", e);
+                match e {
+                    InternalError::HapBleError(hap_ble_error) => Err(hap_ble_error),
+                    other => match other {
+                        InternalError::StatusError(hap_ble_status_error) => {
+                            // Write the appropriate response.
+                            let reply =
+                                pdu::ResponseHeader::from_header(data, hap_ble_status_error.into());
+                            let mut buffer = self.buffer.borrow_mut();
+                            let len = reply.write_into_length(*buffer)?;
+
+                            return Ok(Some(BufferResponse(len)));
+                        }
+                        _ => {
+                            todo!("unhandeled error, {:?}", e);
+                        }
+                    },
+                }
+            }
+        }
+    }
+
     #[cfg(test)]
     // helper function to store the reply into the prepared reply.
     async fn handle_write_incoming_test<'hap, 'support>(
@@ -943,8 +1002,8 @@ impl HapPeripheralContext {
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
-    ) -> Result<Option<BufferResponse>, HapBleError> {
-        let resp = self.handle_write_incoming(hap, pair_support, accessory, &data, handle);
+    ) -> Result<Option<BufferResponse>, InternalError> {
+        let resp = self.handle_write_incoming_entry(hap, pair_support, accessory, &data, handle);
 
         info!("pair verify handle: {:?}", hap.pairing.pair_verify.handle());
         if let Some(resp) = resp.await? {
@@ -1071,7 +1130,7 @@ impl HapPeripheralContext {
                 */
 
                 let resp = self
-                    .handle_write_incoming(
+                    .handle_write_incoming_entry(
                         hap,
                         pair_support,
                         accessory,

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::HapBleError;
+use super::{HapBleError, InternalError};
 use bitfield_struct::bitfield;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -24,17 +24,17 @@ impl<T> MemSizeOf for T {
 
 pub trait ParsePdu {
     type Output;
-    fn parse_pdu(b: &[u8]) -> Result<&Self::Output, HapBleError>;
-    fn parse_pdu_with_remainder(b: &[u8]) -> Result<(&Self::Output, &[u8]), HapBleError>;
+    fn parse_pdu(b: &[u8]) -> Result<&Self::Output, InternalError>;
+    fn parse_pdu_with_remainder(b: &[u8]) -> Result<(&Self::Output, &[u8]), InternalError>;
 }
 
 impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
     type Output = T;
 
-    fn parse_pdu_with_remainder(data: &[u8]) -> Result<(&Self::Output, &[u8]), HapBleError> {
+    fn parse_pdu_with_remainder(data: &[u8]) -> Result<(&Self::Output, &[u8]), InternalError> {
         let exp = T::mem_size();
         if data.len() < exp {
-            return Err(HapBleError::UnexpectedDataLength {
+            return Err(InternalError::UnexpectedDataLength {
                 expected: exp,
                 actual: data.len(),
             });
@@ -43,9 +43,9 @@ impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
         let remainder = &data[exp..];
         T::try_ref_from_bytes(our_data)
             .map(|d| (d, remainder))
-            .map_err(|_| HapBleError::InvalidValue)
+            .map_err(|_| HapBleStatusError::UnsupportedPDU.into())
     }
-    fn parse_pdu(data: &[u8]) -> Result<&Self::Output, HapBleError> {
+    fn parse_pdu(data: &[u8]) -> Result<&Self::Output, InternalError> {
         Self::parse_pdu_with_remainder(data).map(|(d, _rem)| d)
     }
 }
@@ -70,7 +70,7 @@ use super::HapBleStatusError;
 impl From<HapBleStatusError> for Status {
     fn from(value: HapBleStatusError) -> Self {
         match value {
-            HapBleStatusError::UnsupportedPDU(_) => Status::UnsupportedPDU,
+            HapBleStatusError::UnsupportedPDU => Status::UnsupportedPDU,
             HapBleStatusError::MaxProcedures => Status::MaxProcedures,
             HapBleStatusError::InsufficientAuthorization => Status::InsufficientAuthorization,
             HapBleStatusError::InvalidInstanceID(_) => Status::InvalidInstanceID,
@@ -190,6 +190,13 @@ impl RequestHeader {
             status: Status::Success,
         }
     }
+    pub fn to_reply_status(&self, status: Status) -> ResponseHeader {
+        ResponseHeader {
+            control: self.control.with_pdu_type(PduType::Response),
+            tid: self.tid,
+            status,
+        }
+    }
 }
 
 #[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Debug, Copy, Clone)]
@@ -198,6 +205,19 @@ pub struct ResponseHeader {
     pub control: ControlField,
     pub tid: TId,
     pub status: Status,
+}
+
+impl ResponseHeader {
+    /// Infallible attempt to create a response from a header.
+    pub fn from_header(original_header: &[u8], status: Status) -> Self {
+        let control = ControlField::response();
+        let tid = TId(*original_header.get(2).unwrap_or(&0));
+        ResponseHeader {
+            control,
+            tid,
+            status,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
@@ -320,7 +340,7 @@ pub struct CharacteristicWriteRequest<'a> {
 }
 
 impl<'a> CharacteristicWriteRequest<'a> {
-    pub fn parse_pdu(data: &'a [u8]) -> Result<CharacteristicWriteRequest<'a>, HapBleError> {
+    pub fn parse_pdu(data: &'a [u8]) -> Result<CharacteristicWriteRequest<'a>, InternalError> {
         let header = CharacteristicWriteRequestHeader::parse_pdu(data)?;
 
         let mut res = CharacteristicWriteRequest {
@@ -595,7 +615,7 @@ pub struct CharacteristicConfigurationRequest {
     pub broadcast_interval: Option<BleBroadcastInterval>,
 }
 impl CharacteristicConfigurationRequest {
-    pub fn parse_pdu(data: &[u8]) -> Result<Self, HapBleError> {
+    pub fn parse_pdu(data: &[u8]) -> Result<Self, InternalError> {
         let header = RequestHeader::parse_pdu(data)?;
         let aft = &data[RequestHeader::mem_size()..];
 
@@ -619,7 +639,7 @@ impl CharacteristicConfigurationRequest {
                 let entry_value = entry.short_data()?;
                 let enum_value: BleBroadcastInterval =
                     BleBroadcastInterval::try_read_from_bytes(entry_value)
-                        .map_err(|_| HapBleError::InvalidValue)?;
+                        .map_err(|_| HapBleStatusError::InvalidRequest)?;
                 res.broadcast_interval = Some(enum_value);
             } else if entry.type_id == BleBroadcastTLV::Properties as u8 {
                 // param properties
@@ -935,7 +955,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_pair_setup_write() -> Result<(), HapBleError> {
+    fn test_parse_pair_setup_write() -> Result<(), InternalError> {
         crate::test::init();
 
         let payload = [

@@ -33,7 +33,7 @@ use thiserror::Error;
 
 /// Errors associated to pairing, and configuration / initialisation of the pairing properties.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PairingError {
     #[error("tlv error occured")]
     TLVError(#[from] TLVError),
