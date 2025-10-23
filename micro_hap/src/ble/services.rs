@@ -1,5 +1,5 @@
 use super::{HapBleError, HapBleService, sig};
-use crate::{BleProperties, CharacteristicProperties, CharacteristicResponse, DataSource};
+use crate::{BleProperties, CharacteristicProperties, DataSource};
 use crate::{CharId, SvcId};
 use crate::{characteristic, descriptor, service};
 use trouble_host::prelude::*;
@@ -331,11 +331,12 @@ impl HapBleService for PairingService {
     }
 }
 
+// This service is merely here because it is used throughout the tests, it can be fully defined out of this crate.
+// See the example_std/examples/example_rgb.rs example.
 pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32);
 pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33);
 #[gatt_service(uuid = service::LIGHTBULB)]
 pub struct LightbulbService {
-    //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=[0x04, 0x01])]
     #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x30)]
     pub service_instance: u16,
 

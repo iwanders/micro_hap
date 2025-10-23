@@ -6,7 +6,6 @@ use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use super::{CharacteristicProperties, TId, sig};
 use crate::{CharId, SvcId};
-use thiserror::Error;
 
 // PDU? Protocol Data Unit!
 
@@ -68,7 +67,6 @@ impl<T: IntoBytes + Immutable> WriteIntoLength for T {
 }
 
 use super::HapBleStatusError;
-
 impl From<HapBleStatusError> for Status {
     fn from(value: HapBleStatusError) -> Self {
         match value {

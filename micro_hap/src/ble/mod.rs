@@ -1,11 +1,11 @@
 use crate::AccessoryInformationStatic;
 use crate::PlatformSupport;
-use crate::{characteristic, descriptor, service};
+use crate::characteristic;
 use trouble_host::prelude::*;
 
 pub mod broadcast;
 mod pdu;
-use crate::{BleProperties, CharacteristicProperties, CharacteristicResponse, DataSource};
+use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
 use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
@@ -40,6 +40,8 @@ pub mod services;
 pub mod sig;
 pub use services::*;
 use thiserror::Error;
+
+use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -167,8 +169,6 @@ pub struct HapServices<'a> {
     pub protocol: &'a ProtocolInformationService,
     pub pairing: &'a PairingService,
 }
-
-use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 
 #[derive(Debug)]
 struct Reply {
