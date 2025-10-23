@@ -162,6 +162,20 @@ enum InternalError {
     HapBleError(#[from] HapBleError),
 }
 
+impl InternalError {
+    fn to_status_error(&self) -> HapBleStatusError {
+        match self {
+            InternalError::TLVError(tlverror) => HapBleStatusError::InvalidRequest,
+            InternalError::StatusError(hap_ble_status_error) => *hap_ble_status_error,
+            InternalError::PairError(pairing_error) => HapBleStatusError::InsufficientAuthorization,
+            InternalError::UnexpectedDataLength { expected, actual } => {
+                HapBleStatusError::InvalidRequest
+            }
+            InternalError::HapBleError(hap_ble_error) => unimplemented!(),
+        }
+    }
+}
+
 impl From<crate::tlv::TLVError> for HapBleError {
     fn from(e: crate::tlv::TLVError) -> HapBleError {
         match e {
@@ -233,13 +247,16 @@ impl HapPeripheralContext {
         .chain(self.user_services.iter_mut())
     }
 
-    pub fn get_attribute_by_char(&self, chr: CharId) -> Option<&crate::Characteristic> {
+    pub fn get_attribute_by_char(
+        &self,
+        chr: CharId,
+    ) -> Result<&crate::Characteristic, HapBleStatusError> {
         for s in self.services() {
             if let Some(a) = s.get_characteristic_by_iid(chr) {
-                return Some(a);
+                return Ok(a);
             }
         }
-        None
+        Err(HapBleStatusError::InvalidInstanceID(chr.0))
     }
 
     pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
@@ -366,81 +383,75 @@ impl HapPeripheralContext {
             todo!()
         }
     }
-    pub async fn characteristic_signature_request(
+    async fn characteristic_signature_request(
         &mut self,
         req: &pdu::CharacteristicSignatureReadRequest,
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
+        let chr = self.get_attribute_by_char(req.char_id)?;
 
-        if let Some(chr) = self.get_attribute_by_char(req.char_id) {
-            let mut buffer = self.buffer.borrow_mut();
-            // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
-            let srv = self.get_service_by_char(req.char_id).unwrap();
-            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
-            let reply = req.header.to_success();
-            let len = reply.write_into_length(*buffer)?;
+        let mut buffer = self.buffer.borrow_mut();
+        // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
+        let srv = self.get_service_by_char(req.char_id).unwrap();
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
+        let reply = req.header.to_success();
+        let len = reply.write_into_length(*buffer)?;
 
-            let len = BodyBuilder::new_at(*buffer, len)
-                .add_characteristic_uuid(&chr.uuid)
-                // .add_service(SvcId(0x10)) // what is this set to?
-                .add_service(srv.iid) // what is this set to?
-                .add_service_uuid(&srv.uuid)
-                .add_characteristic_properties(chr.properties)
-                // .add_optional_user_description(&chr.user_description)
-                .add_format(&chr.ble_ref().format)
-                .add_range(&chr.range)
-                .add_step(&chr.step)
-                // NONCOMPLIANCE: valid values.
-                .end();
+        let len = BodyBuilder::new_at(*buffer, len)
+            .add_characteristic_uuid(&chr.uuid)
+            // .add_service(SvcId(0x10)) // what is this set to?
+            .add_service(srv.iid) // what is this set to?
+            .add_service_uuid(&srv.uuid)
+            .add_characteristic_properties(chr.properties)
+            // .add_optional_user_description(&chr.user_description)
+            .add_format(&chr.ble_ref().format)
+            .add_range(&chr.range)
+            .add_step(&chr.step)
+            // NONCOMPLIANCE: valid values.
+            .end();
 
-            Ok(BufferResponse(len))
-        } else {
-            todo!()
-        }
+        Ok(BufferResponse(len))
     }
 
-    pub async fn characteristic_read_request(
+    async fn characteristic_read_request(
         &mut self,
         accessory: &impl crate::AccessoryInterface,
         req: &pdu::CharacteristicReadRequest,
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         // Well ehm, what do we do here?
         let char_id = req.char_id; // its unaligned, so copy it before we use it.
         use crate::DataSource;
-        if let Some(chr) = self.get_attribute_by_char(char_id) {
-            match chr.data_source {
-                DataSource::Nop => {
-                    error!("Got NOP data on char_id: {:?}", char_id);
-                    Ok(BufferResponse(0))
-                }
-                DataSource::AccessoryInterface => {
-                    if let Some(data) = accessory.read_characteristic(char_id).await {
-                        let mut buffer = self.buffer.borrow_mut();
-                        let reply = req.header.to_success();
-                        let len = reply.write_into_length(*buffer)?;
-                        let len = BodyBuilder::new_at(*buffer, len)
-                            .add_value(data.into())
-                            .end();
-                        Ok(BufferResponse(len))
-                    } else {
-                        error!(
-                            "Characteristic is using interface data source, but it returned None; {:?}",
-                            char_id
-                        );
-                        Ok(BufferResponse(0))
-                    }
-                }
-                DataSource::Constant(data) => {
+        let chr = self.get_attribute_by_char(req.char_id)?;
+
+        match chr.data_source {
+            DataSource::Nop => {
+                error!("Got NOP data on char_id: {:?}", char_id);
+                Ok(BufferResponse(0))
+            }
+            DataSource::AccessoryInterface => {
+                if let Some(data) = accessory.read_characteristic(char_id).await {
                     let mut buffer = self.buffer.borrow_mut();
                     let reply = req.header.to_success();
                     let len = reply.write_into_length(*buffer)?;
-                    let len = BodyBuilder::new_at(*buffer, len).add_value(data).end();
+                    let len = BodyBuilder::new_at(*buffer, len)
+                        .add_value(data.into())
+                        .end();
                     Ok(BufferResponse(len))
+                } else {
+                    error!(
+                        "Characteristic is using interface data source, but it returned None; {:?}",
+                        char_id
+                    );
+                    Ok(BufferResponse(0))
                 }
             }
-        } else {
-            error!("Got read for unknown characteristic: {:?}", char_id);
-            todo!();
+            DataSource::Constant(data) => {
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+                let len = BodyBuilder::new_at(*buffer, len).add_value(data).end();
+                Ok(BufferResponse(len))
+            }
         }
     }
 
@@ -449,7 +460,7 @@ impl HapPeripheralContext {
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         req: &pdu::CharacteristicWriteRequest<'_>,
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         let parsed = req;
         // Write the body to our internal buffer here.
         let mut buffer = self.buffer.borrow_mut();
@@ -463,105 +474,99 @@ impl HapPeripheralContext {
         // So now we craft the reply, technically this could happen on the read... should it happen on the read?
         //
         let char_id = req.header.char_id;
-        if let Some(chr) = self.get_attribute_by_char(char_id) {
-            let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
-            let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
-            let incoming_data = &left_buffer[0..body_length];
-            // let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
-            if is_pair_setup {
-                info!("pair setup at incoming");
-                crate::pairing::pair_setup_handle_incoming(
-                    &mut **pair_ctx,
-                    pair_support,
-                    incoming_data,
-                )
-                .await
-                .map_err(|_| HapBleError::InvalidValue)?;
+        let chr = self.get_attribute_by_char(char_id)?;
 
-                info!("pair setup at outgoing");
-                // Put the reply in the second half.
-                let outgoing_len = crate::pairing::pair_setup_handle_outgoing(
-                    &mut **pair_ctx,
-                    pair_support,
-                    outgoing,
-                )
-                .await
-                .map_err(|_| HapBleError::InvalidValue)?;
+        let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
+        let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
+        let incoming_data = &left_buffer[0..body_length];
+        // let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
+        if is_pair_setup {
+            info!("pair setup at incoming");
+            crate::pairing::pair_setup_handle_incoming(
+                &mut **pair_ctx,
+                pair_support,
+                incoming_data,
+            )
+            .await
+            .map_err(|_| HapBleError::InvalidValue)?;
 
-                info!("Populatig the body.");
-
-                let reply = parsed.header.header.to_success();
-                let len = reply.write_into_length(left_buffer)?;
-
-                let len = BodyBuilder::new_at(left_buffer, len)
-                    .add_value(&outgoing[0..outgoing_len])
-                    .end();
-
-                info!("Done, len: {}", len);
-                Ok(BufferResponse(len))
-            } else if is_pair_verify {
-                crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
+            info!("pair setup at outgoing");
+            // Put the reply in the second half.
+            let outgoing_len =
+                crate::pairing::pair_setup_handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
                     .await
                     .map_err(|_| HapBleError::InvalidValue)?;
 
-                // Put the reply in the second half.
-                let outgoing_len =
-                    crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
+            info!("Populatig the body.");
+
+            let reply = parsed.header.header.to_success();
+            let len = reply.write_into_length(left_buffer)?;
+
+            let len = BodyBuilder::new_at(left_buffer, len)
+                .add_value(&outgoing[0..outgoing_len])
+                .end();
+
+            info!("Done, len: {}", len);
+            Ok(BufferResponse(len))
+        } else if is_pair_verify {
+            crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
+                .await
+                .map_err(|_| HapBleError::InvalidValue)?;
+
+            // Put the reply in the second half.
+            let outgoing_len =
+                crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
+                    .await
+                    .map_err(|_| HapBleError::InvalidValue)?;
+
+            let reply = parsed.header.header.to_success();
+            let len = reply.write_into_length(left_buffer)?;
+
+            let len = BodyBuilder::new_at(left_buffer, len)
+                .add_value(&outgoing[0..outgoing_len])
+                .end();
+
+            Ok(BufferResponse(len))
+        } else {
+            match chr.data_source {
+                DataSource::Nop => {
+                    let reply = parsed.header.header.to_success();
+                    let len = reply.write_into_length(left_buffer)?;
+                    Ok(BufferResponse(len))
+                }
+                DataSource::AccessoryInterface => {
+                    let r = accessory
+                        .write_characteristic(char_id, incoming_data)
                         .await
-                        .map_err(|_| HapBleError::InvalidValue)?;
+                        .map_err(|_| HapBleError::UnexpectedRequest)?;
 
-                let reply = parsed.header.header.to_success();
-                let len = reply.write_into_length(left_buffer)?;
-
-                let len = BodyBuilder::new_at(left_buffer, len)
-                    .add_value(&outgoing[0..outgoing_len])
-                    .end();
-
-                Ok(BufferResponse(len))
-            } else {
-                match chr.data_source {
-                    DataSource::Nop => {
-                        let reply = parsed.header.header.to_success();
-                        let len = reply.write_into_length(left_buffer)?;
-                        Ok(BufferResponse(len))
-                    }
-                    DataSource::AccessoryInterface => {
-                        let r = accessory
-                            .write_characteristic(char_id, incoming_data)
+                    if r == CharacteristicResponse::Modified {
+                        // Do things to this characteristic to mark it dirty.
+                        error!(
+                            "Should mark the characteristic dirty and advance the global state number, and notify!"
+                        );
+                        let _ = pair_support
+                            .advance_global_state_number()
                             .await
-                            .map_err(|_| HapBleError::UnexpectedRequest)?;
-
-                        if r == CharacteristicResponse::Modified {
-                            // Do things to this characteristic to mark it dirty.
-                            error!(
-                                "Should mark the characteristic dirty and advance the global state number, and notify!"
-                            );
-                            let _ = pair_support
-                                .advance_global_state_number()
-                                .await
-                                .map_err(|_| HapBleError::InvalidValue)?;
-                        }
-
-                        let reply = parsed.header.header.to_success();
-                        let len = reply.write_into_length(left_buffer)?;
-                        Ok(BufferResponse(len))
+                            .map_err(|_| HapBleError::InvalidValue)?;
                     }
-                    DataSource::Constant(_data) => {
-                        unimplemented!("a constant data source should not be writable")
-                    }
+
+                    let reply = parsed.header.header.to_success();
+                    let len = reply.write_into_length(left_buffer)?;
+                    Ok(BufferResponse(len))
+                }
+                DataSource::Constant(_data) => {
+                    unimplemented!("a constant data source should not be writable")
                 }
             }
-        } else {
-            // Unknown characteristic, how do we handle this?
-            todo!()
         }
     }
 
     #[allow(unreachable_code)]
-    pub async fn info_request(
+    async fn info_request(
         &mut self,
         req: &pdu::InfoRequest,
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         let _ = req;
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L71
         // This is a blind attempt at implementing this request based on the reference.
@@ -569,59 +574,56 @@ impl HapPeripheralContext {
         // use that code path, so putting a todo here to ensure we fail hard.
         todo!("this needs checking against the reference");
         let char_id = req.char_id; // its unaligned, so copy it before we use it.
-        if let Some(chr) = self.get_attribute_by_char(char_id) {
-            if chr.uuid == crate::characteristic::SERVICE_SIGNATURE.into() {
-                let mut buffer = self.buffer.borrow_mut();
-                let reply = req.header.to_success();
-                let len = reply.write_into_length(*buffer)?;
+        let chr = self.get_attribute_by_char(char_id)?;
 
-                let pair_ctx = self.pair_ctx.borrow();
-                let setup_hash = crate::adv::calculate_setup_hash(
-                    &pair_ctx.accessory.device_id,
-                    &pair_ctx.accessory.setup_id,
-                );
-                let len = BodyBuilder::new_at(*buffer, len)
-                    // 1 is good enough for the ip side, probably also for bluetooth?
-                    .add_u16(pdu::InfoResponseTLVType::StateNumber, 1)
-                    // Config number, we should increment this every reconfiguration I think? Ignore for now.
-                    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L1058
-                    .add_u8(pdu::InfoResponseTLVType::ConfigNumber, 1)
-                    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L136
-                    .add_info_device_id(&pair_ctx.accessory.device_id)
-                    // Feature flags, 2 is software authentication only.
-                    .add_u8(pdu::InfoResponseTLVType::FeatureFlags, 2)
-                    // Next is param-model. is that always a string?
-                    .add_slice(
-                        pdu::InfoResponseTLVType::ModelName,
-                        pair_ctx.accessory.model.as_bytes(),
-                    )
-                    // And then protocol version.
-                    .add_slice(
-                        pdu::InfoResponseTLVType::ProtocolVersion,
-                        "2.2.0".as_bytes(),
-                    )
-                    // Status flag... https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L924
-                    // Lets just report not paired all the time: 1.
-                    // Lets try paired now, since we're in a secure session? 0
-                    .add_u8(pdu::InfoResponseTLVType::StatusFlag, 0)
-                    // Category
-                    .add_u16(
-                        pdu::InfoResponseTLVType::CategoryIdentifier,
-                        pair_ctx.accessory.category,
-                    )
-                    // Finally, the setup hash... Does this value matter?
-                    .add_slice(pdu::InfoResponseTLVType::SetupHash, &setup_hash)
-                    .end();
-                Ok(BufferResponse(len))
-            } else {
-                error!(
-                    "Got info for characteristic that is not yet handled: {:?}",
-                    char_id
-                );
-                todo!();
-            }
+        if chr.uuid == crate::characteristic::SERVICE_SIGNATURE.into() {
+            let mut buffer = self.buffer.borrow_mut();
+            let reply = req.header.to_success();
+            let len = reply.write_into_length(*buffer)?;
+
+            let pair_ctx = self.pair_ctx.borrow();
+            let setup_hash = crate::adv::calculate_setup_hash(
+                &pair_ctx.accessory.device_id,
+                &pair_ctx.accessory.setup_id,
+            );
+            let len = BodyBuilder::new_at(*buffer, len)
+                // 1 is good enough for the ip side, probably also for bluetooth?
+                .add_u16(pdu::InfoResponseTLVType::StateNumber, 1)
+                // Config number, we should increment this every reconfiguration I think? Ignore for now.
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L1058
+                .add_u8(pdu::InfoResponseTLVType::ConfigNumber, 1)
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L136
+                .add_info_device_id(&pair_ctx.accessory.device_id)
+                // Feature flags, 2 is software authentication only.
+                .add_u8(pdu::InfoResponseTLVType::FeatureFlags, 2)
+                // Next is param-model. is that always a string?
+                .add_slice(
+                    pdu::InfoResponseTLVType::ModelName,
+                    pair_ctx.accessory.model.as_bytes(),
+                )
+                // And then protocol version.
+                .add_slice(
+                    pdu::InfoResponseTLVType::ProtocolVersion,
+                    "2.2.0".as_bytes(),
+                )
+                // Status flag... https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer.c#L924
+                // Lets just report not paired all the time: 1.
+                // Lets try paired now, since we're in a secure session? 0
+                .add_u8(pdu::InfoResponseTLVType::StatusFlag, 0)
+                // Category
+                .add_u16(
+                    pdu::InfoResponseTLVType::CategoryIdentifier,
+                    pair_ctx.accessory.category,
+                )
+                // Finally, the setup hash... Does this value matter?
+                .add_slice(pdu::InfoResponseTLVType::SetupHash, &setup_hash)
+                .end();
+            Ok(BufferResponse(len))
         } else {
-            error!("Got info read for unknown characteristic: {:?}", char_id);
+            error!(
+                "Got info for characteristic that is not yet handled: {:?}",
+                char_id
+            );
             todo!();
         }
     }
@@ -893,11 +895,8 @@ impl HapPeripheralContext {
                 let broadcast_enabled = if let Some(broadcast_value) = req.broadcast_enabled {
                     // Enabled broadcasts at the provided interval.
                     {
-                        let chr = self.get_attribute_by_char(req.char_id).ok_or(
-                            InternalError::StatusError(HapBleStatusError::InvalidInstanceID(
-                                req.char_id.0,
-                            )),
-                        )?;
+                        let chr = self.get_attribute_by_char(req.char_id)?;
+
                         if !chr.properties.supports_broadcast_notification() {
                             error!(
                                 "setting broadcast for something that doesn't support broadcast notify"
@@ -924,9 +923,8 @@ impl HapPeripheralContext {
                 };
                 // HAPBLECharacteristicGetConfigurationResponse
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L172C10-L172C54
-                let _attr = self
-                    .get_attribute_by_char(req.char_id)
-                    .ok_or(HapBleError::InvalidValue)?;
+                let _attr = self.get_attribute_by_char(req.char_id)?;
+
                 // NONCOMPLIANCE; probably need to store the interval & properties into the attribute?
 
                 let mut buffer = self.buffer.borrow_mut();
@@ -972,22 +970,18 @@ impl HapPeripheralContext {
             Ok(v) => Ok(v),
             Err(e) => {
                 warn!("Processing returned exception: {:?}", e);
+
                 match e {
                     InternalError::HapBleError(hap_ble_error) => Err(hap_ble_error),
-                    other => match other {
-                        InternalError::StatusError(hap_ble_status_error) => {
-                            // Write the appropriate response.
-                            let reply =
-                                pdu::ResponseHeader::from_header(data, hap_ble_status_error.into());
-                            let mut buffer = self.buffer.borrow_mut();
-                            let len = reply.write_into_length(*buffer)?;
+                    other => {
+                        let status_error = other.to_status_error();
+                        // Write the appropriate response.
+                        let reply = pdu::ResponseHeader::from_header(data, status_error.into());
+                        let mut buffer = self.buffer.borrow_mut();
+                        let len = reply.write_into_length(*buffer)?;
 
-                            return Ok(Some(BufferResponse(len)));
-                        }
-                        _ => {
-                            todo!("unhandeled error, {:?}", e);
-                        }
-                    },
+                        return Ok(Some(BufferResponse(len)));
+                    }
                 }
             }
         }
