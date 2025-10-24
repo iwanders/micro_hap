@@ -247,7 +247,7 @@ impl HapPeripheralContext {
         .chain(self.user_services.iter_mut())
     }
 
-    pub fn get_attribute_by_char(
+    fn get_attribute_by_char(
         &self,
         chr: CharId,
     ) -> Result<&crate::Characteristic, HapBleStatusError> {
@@ -259,22 +259,22 @@ impl HapPeripheralContext {
         Err(HapBleStatusError::InvalidInstanceID(chr.0))
     }
 
-    pub fn get_service_by_char(&self, chr: CharId) -> Option<&crate::Service> {
+    fn get_service_by_char(&self, chr: CharId) -> Result<&crate::Service, HapBleStatusError> {
         for s in self.services() {
             if let Some(_attribute) = s.get_characteristic_by_iid(chr) {
-                return Some(s);
+                return Ok(s);
             }
         }
-        None
+        Err(HapBleStatusError::InvalidInstanceID(chr.0))
     }
 
-    pub fn get_service_by_svc(&self, srv: SvcId) -> Option<&crate::Service> {
+    fn get_service_by_svc(&self, srv: SvcId) -> Result<&crate::Service, HapBleStatusError> {
         for s in self.services() {
             if s.iid == srv {
-                return Some(s);
+                return Ok(s);
             }
         }
-        None
+        Err(HapBleStatusError::InvalidInstanceID(srv.0))
     }
     pub fn get_service_by_uuid_mut(
         &mut self,
@@ -353,10 +353,10 @@ impl HapPeripheralContext {
         }
     }
 
-    pub async fn service_signature_request(
+    async fn service_signature_request(
         &mut self,
         req: &pdu::ServiceSignatureReadRequest,
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
 
         info!("service signature req: {:?}", req);
@@ -368,20 +368,14 @@ impl HapPeripheralContext {
 
         let len = resp.write_into_length(*buffer)?;
 
-        let svc = self.get_service_by_svc(req_svc);
+        let svc = self.get_service_by_svc(req_svc)?;
 
-        if let Some(svc) = svc {
-            let len = BodyBuilder::new_at(*buffer, len)
-                .add_u16(BleTLVType::HAPServiceProperties, svc.properties.0)
-                .add_u16s(BleTLVType::HAPLinkedServices, &[])
-                .end();
+        let len = BodyBuilder::new_at(*buffer, len)
+            .add_u16(BleTLVType::HAPServiceProperties, svc.properties.0)
+            .add_u16s(BleTLVType::HAPLinkedServices, &[])
+            .end();
 
-            Ok(BufferResponse(len))
-        } else {
-            // What do we return if the id is not known??
-            error!("Could not find service for req.svc_id: 0x{:02?}", req_svc);
-            todo!()
-        }
+        Ok(BufferResponse(len))
     }
     async fn characteristic_signature_request(
         &mut self,
@@ -629,110 +623,104 @@ impl HapPeripheralContext {
     }
 
     // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L29
-    pub async fn protocol_configure_request(
+    async fn protocol_configure_request(
         &mut self,
         pair_support: &mut impl PlatformSupport,
         req: &pdu::ProtocolConfigurationRequestHeader,
         payload: &[u8],
-    ) -> Result<BufferResponse, HapBleError> {
+    ) -> Result<BufferResponse, InternalError> {
         let _ = req;
         let svc_id = req.svc_id; // its unaligned, so copy it before we use it.
-        if let Some(svc) = self.get_service_by_svc(svc_id) {
-            if !svc.properties.configurable() {
-                return Err(HapBleError::UnexpectedRequest);
-            }
-
-            let mut buffer = self.buffer.borrow_mut();
-            let reply = req.header.to_success();
-            let len = reply.write_into_length(*buffer)?;
-
-            let mut generate_key: bool = false;
-            let mut get_all: bool = false;
-            let mut have_advertising_id: bool = false;
-
-            // This TLV stuff has zero lengths, which the reader (AND the reference?) considers invalid.
-            let mut reader = crate::tlv::TLVReader::new(&payload);
-            while let Some(z) = reader.next_segment_allow_zero() {
-                let z = z?;
-                if z.type_id == pdu::ProtocolConfigurationRequestTLVType::GetAllParams as u8 {
-                    get_all = true;
-                } else if z.type_id
-                    == pdu::ProtocolConfigurationRequestTLVType::GenerateBroadcastEncryptionKey
-                        as u8
-                {
-                    generate_key = true;
-                } else if z.type_id
-                    == pdu::ProtocolConfigurationRequestTLVType::SetAccessoryAdvertisingIdentifier
-                        as u8
-                {
-                    have_advertising_id = true;
-                } else {
-                    todo!("unhandled protocol configuration type id: {}", z.type_id);
-                }
-            }
-
-            if have_advertising_id {
-                todo!();
-            }
-            if generate_key {
-                // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
-                let mut ctx = self.pair_ctx.borrow_mut();
-                broadcast::broadcast_generate_key(&mut *ctx, pair_support)
-                    .await
-                    .map_err(|_| HapBleError::InvalidValue)?;
-            }
-
-            if !get_all {
-                // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProcedure.c#L155
-                error!("untested, seems this just returns success?");
-                return Ok(BufferResponse(len));
-            }
-
-            // That was the request... next is creating the response.
-            // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L132
-
-            // Basically, we just write values here.
-            //
-            let global_state_number = pair_support
-                .get_global_state_number()
-                .await
-                .map_err(|_e| HapBleError::InvalidValue)?;
-
-            // This is odd, they write the configuration number as a single byte!
-            let config_number = pair_support
-                .get_config_number()
-                .await
-                .map_err(|_e| HapBleError::InvalidValue)? as u8;
-            let parameters = pair_support
-                .get_ble_broadcast_parameters()
-                .await
-                .map_err(|_e| HapBleError::InvalidValue)?;
-
-            let mut builder = BodyBuilder::new_at(*buffer, len)
-                .add_slice(
-                    pdu::ProtocolConfigurationTLVType::CurrentStateNumber,
-                    &global_state_number.to_le_bytes(),
-                )
-                .add_slice(
-                    pdu::ProtocolConfigurationTLVType::CurrentConfigNumber,
-                    &config_number.to_le_bytes(),
-                );
-            if let Some(advertising_id) = parameters.advertising_id {
-                builder = builder.add_slice(
-                    pdu::ProtocolConfigurationTLVType::AccessoryAdvertisingIdentifier,
-                    &advertising_id.0,
-                );
-            }
-            builder = builder.add_slice(
-                pdu::ProtocolConfigurationTLVType::BroadcastEncryptionKey,
-                parameters.key.as_ref().as_bytes(),
-            );
-            let len = builder.end();
-            Ok(BufferResponse(len))
-        } else {
-            error!("Got protocol configure on unknown service: {:?}", svc_id);
-            return Err(HapBleError::UnexpectedRequest);
+        let svc = self.get_service_by_svc(svc_id)?;
+        if !svc.properties.configurable() {
+            return Err(HapBleError::UnexpectedRequest.into());
         }
+
+        let mut buffer = self.buffer.borrow_mut();
+        let reply = req.header.to_success();
+        let len = reply.write_into_length(*buffer)?;
+
+        let mut generate_key: bool = false;
+        let mut get_all: bool = false;
+        let mut have_advertising_id: bool = false;
+
+        // This TLV stuff has zero lengths, which the reader (AND the reference?) considers invalid.
+        let mut reader = crate::tlv::TLVReader::new(&payload);
+        while let Some(z) = reader.next_segment_allow_zero() {
+            let z = z?;
+            if z.type_id == pdu::ProtocolConfigurationRequestTLVType::GetAllParams as u8 {
+                get_all = true;
+            } else if z.type_id
+                == pdu::ProtocolConfigurationRequestTLVType::GenerateBroadcastEncryptionKey as u8
+            {
+                generate_key = true;
+            } else if z.type_id
+                == pdu::ProtocolConfigurationRequestTLVType::SetAccessoryAdvertisingIdentifier as u8
+            {
+                have_advertising_id = true;
+            } else {
+                todo!("unhandled protocol configuration type id: {}", z.type_id);
+            }
+        }
+
+        if have_advertising_id {
+            todo!();
+        }
+        if generate_key {
+            // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
+            let mut ctx = self.pair_ctx.borrow_mut();
+            broadcast::broadcast_generate_key(&mut *ctx, pair_support)
+                .await
+                .map_err(|_| HapBleError::InvalidValue)?;
+        }
+
+        if !get_all {
+            // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProcedure.c#L155
+            error!("untested, seems this just returns success?");
+            return Ok(BufferResponse(len));
+        }
+
+        // That was the request... next is creating the response.
+        // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L132
+
+        // Basically, we just write values here.
+        //
+        let global_state_number = pair_support
+            .get_global_state_number()
+            .await
+            .map_err(|_e| HapBleError::InvalidValue)?;
+
+        // This is odd, they write the configuration number as a single byte!
+        let config_number = pair_support
+            .get_config_number()
+            .await
+            .map_err(|_e| HapBleError::InvalidValue)? as u8;
+        let parameters = pair_support
+            .get_ble_broadcast_parameters()
+            .await
+            .map_err(|_e| HapBleError::InvalidValue)?;
+
+        let mut builder = BodyBuilder::new_at(*buffer, len)
+            .add_slice(
+                pdu::ProtocolConfigurationTLVType::CurrentStateNumber,
+                &global_state_number.to_le_bytes(),
+            )
+            .add_slice(
+                pdu::ProtocolConfigurationTLVType::CurrentConfigNumber,
+                &config_number.to_le_bytes(),
+            );
+        if let Some(advertising_id) = parameters.advertising_id {
+            builder = builder.add_slice(
+                pdu::ProtocolConfigurationTLVType::AccessoryAdvertisingIdentifier,
+                &advertising_id.0,
+            );
+        }
+        builder = builder.add_slice(
+            pdu::ProtocolConfigurationTLVType::BroadcastEncryptionKey,
+            parameters.key.as_ref().as_bytes(),
+        );
+        let len = builder.end();
+        Ok(BufferResponse(len))
     }
 
     async fn reply_read_payload<'stack, P: trouble_host::PacketPool>(
