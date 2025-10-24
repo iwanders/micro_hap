@@ -455,7 +455,7 @@ impl HapPeripheralContext {
         }
     }
 
-    pub async fn characteristic_write_request(
+    async fn characteristic_write_request(
         &mut self,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,

@@ -253,36 +253,6 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing_data);
     }
 
-    // Test bad service signature response, data created from mocking this request on the cpp side.
-    {
-        let incoming_data: &[u8] = &[0x00, 0xf6, 0x0d, 0x10, 0x00]; // invalid opcode 0xf6
-        let handle = 0x11;
-
-        let outgoing_data: &[u8] = &[0x02, 0x0d, 0x01];
-        ctx.handle_write_incoming_test(&hap, &mut support, &mut accessory, incoming_data, handle)
-            .await?;
-
-        let resp = ctx.handle_read_outgoing(handle).await?;
-        let resp_buffer = resp.expect("expecting a outgoing response");
-
-        assert_eq!(&*resp_buffer, outgoing_data);
-    }
-
-    // Bad instance id
-    {
-        let incoming_data: &[u8] = &[0x00, 0x01, 0x9c, 0xf1, 0x00];
-        let handle = 0x11;
-
-        let outgoing_data: &[u8] = &[0x02, 0x9c, 0x04];
-        ctx.handle_write_incoming_test(&hap, &mut support, &mut accessory, incoming_data, handle)
-            .await?;
-
-        let resp = ctx.handle_read_outgoing(handle).await?;
-        let resp_buffer = resp.expect("expecting a outgoing response");
-
-        assert_eq!(&*resp_buffer, outgoing_data);
-    }
-
     {
         let incoming_data: &[u8] = &[0x00, 0x01, 0x9c, 0x11, 0x00];
         let handle = 0x11;
@@ -303,6 +273,81 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing_data);
     }
     //   ----------------------------------
+
+    // Test bad service signature response, data created from mocking this request on the cpp side.
+    {
+        let incoming_data: &[u8] = &[0x00, 0xf6, 0x0d, 0x10, 0x00]; // invalid opcode 0xf6
+        let handle = 0x11;
+
+        let outgoing_data: &[u8] = &[0x02, 0x0d, 0x01];
+        ctx.handle_write_incoming_test(&hap, &mut support, &mut accessory, incoming_data, handle)
+            .await?;
+
+        let resp = ctx.handle_read_outgoing(handle).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+
+        assert_eq!(&*resp_buffer, outgoing_data);
+    }
+
+    // Bad characteristic instance id
+    {
+        let incoming_data: &[u8] = &[0x00, 0x01, 0x9c, 0xf1, 0x00];
+        let handle = 0x11;
+
+        let outgoing_data: &[u8] = &[0x02, 0x9c, 0x04];
+        ctx.handle_write_incoming_test(&hap, &mut support, &mut accessory, incoming_data, handle)
+            .await?;
+
+        let resp = ctx.handle_read_outgoing(handle).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+
+        assert_eq!(&*resp_buffer, outgoing_data);
+    }
+
+    // Bad pair setup messages;
+    {
+        // Incorrect instance id:
+        let incoming_data: &[u8] = &[
+            0x00, 0x02, 0xf3, 0x22, 0xff, 0x0b, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06, 0x01,
+            0x01, 0x09, 0x01, 0x01,
+        ];
+        let outgoing: &[u8] = &[0x02, 0xf3, 0x04];
+        ctx.handle_write_incoming_test(
+            &hap,
+            &mut support,
+            &mut accessory,
+            incoming_data,
+            handle_pair_setup,
+        )
+        .await?;
+
+        let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+        info!("outgoing: {:02x?}", &*resp_buffer);
+        assert_eq!(&*resp_buffer, outgoing);
+    }
+    // Bad pair setup messages;
+    {
+        // Invalid method, 0x06 -> 0xf6, results invalid request.
+        let incoming_data: &[u8] = &[
+            0x00, 0x02, 0xf3, 0x22, 0x00, 0x0b, 0x00, 0x01, 0xf6, 0x00, 0x01, 0x00, 0x06, 0x01,
+            0x01, 0x09, 0x01, 0x01,
+        ];
+        let outgoing: &[u8] = &[0x02, 0xf3, 0x06];
+        ctx.handle_write_incoming_test(
+            &hap,
+            &mut support,
+            &mut accessory,
+            incoming_data,
+            handle_pair_setup,
+        )
+        .await?;
+
+        let resp = ctx.handle_read_outgoing(handle_pair_setup).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+        info!("outgoing: {:02x?}", &*resp_buffer);
+        assert_eq!(&*resp_buffer, outgoing);
+    }
 
     // Check pairing features  ------------
     {
