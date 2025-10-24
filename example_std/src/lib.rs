@@ -141,15 +141,22 @@ pub async fn gatt_events_task<P: PacketPool>(
 
                 let fallthrough_event = hap_context
                     .process_gatt_event(hap_services, support, accessory, event)
-                    .await?;
+                    .await;
 
-                if let Some(event) = fallthrough_event {
-                    match event.accept() {
-                        Ok(reply) => reply.send().await,
-                        Err(e) => warn!("[gatt] error sending response: {:?}", e),
-                    };
-                } else {
-                    warn!("Omitted processing for event because it was handled");
+                match fallthrough_event {
+                    Ok(fallthrough_event) => {
+                        if let Some(event) = fallthrough_event {
+                            match event.accept() {
+                                Ok(reply) => reply.send().await,
+                                Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                            };
+                        } else {
+                            warn!("Omitted processing for event because it was handled");
+                        }
+                    }
+                    Err(e) => {
+                        error!("unhandled error: {e:?}");
+                    }
                 }
             }
             _ => {} // ignore other Gatt Connection Events
