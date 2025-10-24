@@ -866,25 +866,25 @@ mod test {
         // Write to protocol version;
         let payload = [0, 1, 140, 18, 0];
         let header = RequestHeader::parse_pdu(&payload);
-        info!("header: {payload:0>2x?} {header:?}");
+        info!("header: {:0>2x?} {:?}", payload, header);
 
         // On pair setup; [0, 1, 62, 0, 34]
         let payload = [0, 1, 62, 0, 34];
         let header = RequestHeader::parse_pdu(&payload);
-        info!("header: {payload:0>2x?} {header:?}");
+        info!("header: {:0>2x?} {:?}", payload, header);
 
         let payload = [0, 1, 248, 35, 0];
         let header = RequestHeader::parse_pdu(&payload);
-        info!("header: {payload:0>2x?} {header:?}");
+        info!("header: {:0>2x?} {:?}", payload, header);
 
         let parsed = CharacteristicSignatureReadRequest::parse_pdu(&payload);
-        info!("parsed: {parsed:?}");
+        info!("parsed: {:?}", parsed);
 
         let payload = [0, 3, 62, 36, 0];
         let header = RequestHeader::parse_pdu(&payload);
-        info!("header: {payload:0>2x?} {header:?}");
+        info!("header: {:0>2x?} {:?}", payload, header);
         let parsed = CharacteristicReadRequest::parse_pdu(&payload);
-        info!("parsed: {parsed:?}");
+        info!("parsed: {:?}", parsed);
 
         // A payload we need to defragment.
         let payload = vec![
@@ -924,9 +924,9 @@ mod test {
             0x3e, 0x4d, 0x03, 0x5c, 0xa8, 0xae, 0x09, 0x01, 0x01,
         ];
         let header = RequestHeader::parse_pdu(&payload);
-        info!(" z header: {payload:0>2x?} {header:?}");
+        info!(" z header: {:0>2x?} {:?}", payload, header);
         let parsed = CharacteristicWriteRequest::parse_pdu(&payload);
-        info!("parsed: {parsed:?}");
+        info!("parsed: {:?}", parsed);
         let parsed = parsed.unwrap();
         assert!(parsed.return_response);
 
@@ -968,9 +968,9 @@ mod test {
         // Reference:
         // 0x00, 0x02, 0x3D, 0x22, 0x00, 0x11, 0x00, 0x01, 0x0C, 0x00, 0x01, 0x00, 0x06, 0x01, 0x01, 0x13, 0x04, 0x10, 0x80, 0x00, 0x01, 0x09, 0x01, 0x01,
         let header = RequestHeader::parse_pdu(&payload);
-        info!("header: {payload:0>2x?} {header:?}");
+        info!("header: {:0>2x?} {:?}", payload, header);
         let parsed = CharacteristicWriteRequest::parse_pdu(&payload)?;
-        info!("parsed: {parsed:?}  ");
+        info!("parsed: {:?}  ", parsed);
         // What's the 09 01 01 at the end!?
         // Oh... maybe ReturnResponse??
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristicParseAndWriteValue.c#L67-L70

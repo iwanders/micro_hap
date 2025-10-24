@@ -121,6 +121,9 @@ enum HapBleStatusError {
     #[error("unsupported pdu  encountered")]
     UnsupportedPDU,
 
+    #[allow(dead_code)]
+    // This one is currently unused... how do we get this? Is it when we do two requests without a read?
+    // NONCOMPLIANCE
     /// Max-Procedures.
     #[error("maximum number of concurrent procedures exceeded")]
     MaxProcedures,
@@ -165,13 +168,16 @@ enum InternalError {
 impl InternalError {
     fn to_status_error(&self) -> HapBleStatusError {
         match self {
-            InternalError::TLVError(tlverror) => HapBleStatusError::InvalidRequest,
+            InternalError::TLVError(_tlverror) => HapBleStatusError::InvalidRequest,
             InternalError::StatusError(hap_ble_status_error) => *hap_ble_status_error,
-            InternalError::PairError(pairing_error) => HapBleStatusError::InsufficientAuthorization,
-            InternalError::UnexpectedDataLength { expected, actual } => {
-                HapBleStatusError::InvalidRequest
+            InternalError::PairError(_pairing_error) => {
+                HapBleStatusError::InsufficientAuthorization
             }
-            InternalError::HapBleError(hap_ble_error) => unimplemented!(),
+            InternalError::UnexpectedDataLength {
+                expected: _,
+                actual: _,
+            } => HapBleStatusError::InvalidRequest,
+            InternalError::HapBleError(_hap_ble_error) => unimplemented!(),
         }
     }
 }
@@ -806,7 +812,7 @@ impl HapPeripheralContext {
                     .session
                     .c_to_a
                     .decrypt(&mut buffer[0..data.len()])
-                    .map_err(|e| HapBleStatusError::InsufficientAuthentication)?
+                    .map_err(|_e| HapBleStatusError::InsufficientAuthentication)?
             }
         } else {
             data

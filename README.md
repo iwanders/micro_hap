@@ -45,6 +45,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Clean up error handling.n (snafu / thiserror?)
 - Correctly return HAP errors, instead of failing the BLE request.
 - Any errors currently drop the request instead of returning the correct HAP error code.
+- Figure out when `MaxProcedures` should be returned..
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
 - The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
@@ -59,6 +60,7 @@ To help people understand the code and the concepts, here's an information dump:
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 - Verify pair resume actually works, keep a list of sessions...
+- Make `pairing` and `pair_verify` modules crate-private?
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

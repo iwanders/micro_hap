@@ -551,7 +551,7 @@ mod test {
         let before = std::time::Instant::now();
         our_server.compute_public_ephemeral(&SRP_b, &SRP_V, &mut our_b_pub);
         let after = (std::time::Instant::now() - before).as_micros();
-        info!("our_b_pub: {our_b_pub:x?}, in {after} us");
+        info!("our_b_pub: {:x?}, in {} us", our_b_pub, after);
         assert_eq!(U3072::load_from_be(&our_b_pub), U3072::load_from_be(&SRP_B));
 
         // next up is calculating the shared secret.
@@ -567,7 +567,7 @@ mod test {
         assert!(r.is_ok());
         assert_eq!(our_shared_secret, SRP_S);
         let after = (std::time::Instant::now() - before).as_micros();
-        info!("our_shared_secret, in {after} us");
+        info!("our_shared_secret, in {} us", after);
 
         let mut our_session_key = [0u8; 64];
         info!("our_shared_secret: {:02?}", &our_shared_secret);

@@ -532,7 +532,7 @@ mod test {
         let mut identifier = TLVIdentifier::tied(&decrypted);
         let mut signature = TLVSignature::tied(&decrypted);
         TLVReader::new(&decrypted).require_into(&mut [&mut identifier, &mut signature])?;
-        let pairing_id = PairingId::from_tlv(&identifier)?;
+        let _pairing_id = PairingId::from_tlv(&identifier)?;
         Ok(())
     }
 }
