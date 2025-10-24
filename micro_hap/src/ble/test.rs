@@ -273,6 +273,8 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing_data);
     }
     //   ----------------------------------
+    //  "Bad" tests... as in we test a bad / incorrect payload / request and confirm the response is correct.
+    //   ----------------------------------
 
     // Test bad service signature response, data created from mocking this request on the cpp side.
     {
@@ -349,6 +351,51 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing);
     }
 
+    // Try to write to the lightbulb on endpoint.
+    {
+        // Input data doesn't matter really, lets just do a write.
+        let incoming_data: &[u8] = &[
+            0x00, 0x02, 0xf3, 0x33, 0x00, 0x0b, 0x00, 0x01, 0xf6, 0x00, 0x01, 0x00, 0x06, 0x01,
+            0x01, 0x09, 0x01, 0x01,
+        ];
+        let outgoing: &[u8] = &[0x02, 0xf3, 0x05];
+        ctx.handle_write_incoming_test(
+            &hap,
+            &mut support,
+            &mut accessory,
+            incoming_data,
+            handle_lightbulb_on,
+        )
+        .await?;
+
+        let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+        info!("outgoing: {:02x?}", &*resp_buffer);
+        assert_eq!(&*resp_buffer, outgoing);
+    }
+
+    // Try to read to the lightbulb on endpoint.
+    {
+        // Input data doesn't matter really, lets just do a write.
+        let incoming_data: &[u8] = &[
+            0x00, 0x03, 0xf3, 0x33, 0x00, 0x0b, 0x00, 0x01, 0xf6, 0x00, 0x01, 0x00, 0x06, 0x01,
+            0x01, 0x09, 0x01, 0x01,
+        ];
+        let outgoing: &[u8] = &[0x02, 0xf3, 0x05];
+        ctx.handle_write_incoming_test(
+            &hap,
+            &mut support,
+            &mut accessory,
+            incoming_data,
+            handle_lightbulb_on,
+        )
+        .await?;
+
+        let resp = ctx.handle_read_outgoing(handle_lightbulb_on).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+        info!("outgoing: {:02x?}", &*resp_buffer);
+        assert_eq!(&*resp_buffer, outgoing);
+    }
     // Check pairing features  ------------
     {
         let incoming_data: &[u8] = &[0x00, 0x01, 0x56, 0x24, 0x00];

@@ -497,7 +497,7 @@ impl HapPeripheralContext {
                     .await
                     .map_err(|_| HapBleError::InvalidValue)?;
 
-            info!("Populatig the body.");
+            info!("Populating the body.");
 
             let reply = parsed.header.header.to_success();
             let len = reply.write_into_length(left_buffer)?;
@@ -841,13 +841,28 @@ impl HapPeripheralContext {
                 self.characteristic_signature_request(&req).await?
             }
             pdu::OpCode::CharacteristicRead => {
+                // Check if this characteristic requires security.
                 let req = pdu::CharacteristicReadRequest::parse_pdu(data)?;
+
+                let chr = self.get_attribute_by_char(req.char_id)?;
+                if !chr.properties.read_open() && !security_active {
+                    // Nope...
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
+                }
+
                 warn!("Got req: {:?}", req);
                 self.characteristic_read_request(accessory, &req).await?
             }
             pdu::OpCode::CharacteristicWrite => {
+                // Check if this characteristic requires security.
+                let parsed_header = pdu::CharacteristicWriteRequestHeader::parse_pdu(data)?;
+                let chr = self.get_attribute_by_char(parsed_header.char_id)?;
+                if !chr.properties.write_open() && !security_active {
+                    // Nope...
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
+                }
+
                 info!("handle is: {}", handle);
-                info!("pair setup handle is {}", hap.pairing.pair_setup.handle);
                 info!("write raw req event data: {:?}", data);
                 let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
                 info!("got write on pair setup with: {:?}", parsed);
