@@ -52,7 +52,7 @@ pub fn encrypt<'a>(
 
 //  HAPSessionChannelState
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ControlChannel {
     pub key: [u8; CHACHA20_POLY1305_KEY_BYTES],
     pub nonce: u64,

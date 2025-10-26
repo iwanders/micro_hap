@@ -12,6 +12,7 @@ pub mod characteristic;
 pub mod descriptor;
 pub mod service;
 pub mod uuid;
+use thiserror::Error;
 
 pub mod ble;
 
@@ -461,7 +462,7 @@ impl Characteristic {
 /// Session state container.
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L73
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Session {
     // The following 5 are in the hap substruct.
     /// Accessory to Controller control channel.
@@ -489,6 +490,17 @@ pub struct Session {
 
 // Something to retrieve the accessory callbacks.
 
+/// Error used by the accessory interface
+#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum AccessoryInterfaceError {
+    /// An unexpected characteristic was queried.
+    #[error("unexpected characteristic")]
+    UnknownCharacteristic(CharId),
+    /// A custom error was encountered
+    #[error("error: {msg:?}, ({user_data:?})")]
+    CustomError { msg: &'static str, user_data: usize },
+}
 /// Interface through which the characteristics interact with the accessory.
 pub trait AccessoryInterface {
     /// Read the characteristic value.
@@ -496,13 +508,16 @@ pub trait AccessoryInterface {
     /// Note I got <https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait> on this method.
     /// can we just ignore that for now? Does this need to be send?
     #[allow(async_fn_in_trait)]
-    async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>>;
+    async fn read_characteristic(
+        &self,
+        char_id: CharId,
+    ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError>;
     #[allow(async_fn_in_trait)]
     async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
-    ) -> Result<CharacteristicResponse, ()>;
+    ) -> Result<CharacteristicResponse, AccessoryInterfaceError>;
 }
 
 /// Enum that specifies whether a characteristic was changed.
@@ -516,15 +531,19 @@ pub enum CharacteristicResponse {
 #[derive(Debug, Copy, Clone)]
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
-    async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+    async fn read_characteristic(
+        &self,
+        char_id: CharId,
+    ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
         let _ = char_id;
-        None::<&[u8]>
+        const DUMMY: &[u8] = &[];
+        Ok(DUMMY)
     }
     async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
-    ) -> Result<CharacteristicResponse, ()> {
+    ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
         let _ = (char_id, data);
         // todo!("write characteristic on 0x{:02?}, handle this?", char_id);
         Ok(CharacteristicResponse::Unmodified)

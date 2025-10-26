@@ -1,4 +1,5 @@
 use crate::AccessoryInformationStatic;
+use crate::AccessoryInterfaceError;
 use crate::PlatformSupport;
 use crate::characteristic;
 use trouble_host::prelude::*;
@@ -53,9 +54,6 @@ pub struct TId(pub u8);
 #[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HapBleError {
-    /// Unexpected data length was encountered.
-    #[error("unexpected data length encountered")]
-    UnexpectedDataLength { expected: usize, actual: usize },
     /// Unexpected request encountered.
     #[error("unexpected request")]
     UnexpectedRequest,
@@ -71,6 +69,10 @@ pub enum HapBleError {
     /// Something went wrong with decryption or encryption.
     #[error("encryption or decryption error")]
     EncryptionError,
+
+    /// The accessory interface created an error that should be propagated.
+    #[error("an error from the accessory interface")]
+    InterfaceError(#[from] AccessoryInterfaceError),
 
     // This is less than ideal, we can't put the error in this without losing copy and clone.
     /// A trouble error occured.
@@ -161,6 +163,7 @@ enum InternalError {
     #[error("unexpected data length encountered")]
     UnexpectedDataLength { expected: usize, actual: usize },
 
+    /// An error occured that should be propagated through to the callsite.
     #[error("a to be propagated error")]
     HapBleError(#[from] HapBleError),
 }
@@ -182,6 +185,11 @@ impl InternalError {
     }
 }
 
+impl From<AccessoryInterfaceError> for InternalError {
+    fn from(e: AccessoryInterfaceError) -> InternalError {
+        InternalError::HapBleError(e.into())
+    }
+}
 impl From<crate::tlv::TLVError> for HapBleError {
     fn from(e: crate::tlv::TLVError) -> HapBleError {
         match e {
@@ -429,21 +437,14 @@ impl HapPeripheralContext {
                 Ok(BufferResponse(0))
             }
             DataSource::AccessoryInterface => {
-                if let Some(data) = accessory.read_characteristic(char_id).await {
-                    let mut buffer = self.buffer.borrow_mut();
-                    let reply = req.header.to_success();
-                    let len = reply.write_into_length(*buffer)?;
-                    let len = BodyBuilder::new_at(*buffer, len)
-                        .add_value(data.into())
-                        .end();
-                    Ok(BufferResponse(len))
-                } else {
-                    error!(
-                        "Characteristic is using interface data source, but it returned None; {:?}",
-                        char_id
-                    );
-                    Ok(BufferResponse(0))
-                }
+                let data = accessory.read_characteristic(char_id).await?;
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = req.header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+                let len = BodyBuilder::new_at(*buffer, len)
+                    .add_value(data.into())
+                    .end();
+                Ok(BufferResponse(len))
             }
             DataSource::Constant(data) => {
                 let mut buffer = self.buffer.borrow_mut();
@@ -472,14 +473,12 @@ impl HapPeripheralContext {
         let mut pair_ctx = self.pair_ctx.borrow_mut();
 
         // So now we craft the reply, technically this could happen on the read... should it happen on the read?
-        //
         let char_id = req.header.char_id;
         let chr = self.get_attribute_by_char(char_id)?;
 
         let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
         let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
         let incoming_data = &left_buffer[0..body_length];
-        // let (first_half, mut second_half) = buffer.split_at_mut(full_len / 2);
         if is_pair_setup {
             info!("pair setup at incoming");
             crate::pairing::pair_setup_handle_incoming(
@@ -831,7 +830,7 @@ impl HapPeripheralContext {
             pdu::OpCode::CharacteristicSignatureRead => {
                 // second one is on [0, 1, 44, 2, 2]
                 let req = pdu::CharacteristicSignatureReadRequest::parse_pdu(data)?;
-                warn!("Got req: {:?}", req);
+                info!("CharacteristicSignatureRead: {:?}", req);
                 self.characteristic_signature_request(&req).await?
             }
             pdu::OpCode::CharacteristicRead => {
@@ -844,7 +843,7 @@ impl HapPeripheralContext {
                     return Err(HapBleStatusError::InsufficientAuthentication.into());
                 }
 
-                warn!("Got req: {:?}", req);
+                info!("CharacteristicRead: {:?}", req);
                 self.characteristic_read_request(accessory, &req).await?
             }
             pdu::OpCode::CharacteristicWrite => {
