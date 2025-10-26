@@ -12,7 +12,9 @@ mod hap_lightbulb {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, PairCode};
+    use micro_hap::{
+        AccessoryInterface, AccessoryInterfaceError, CharId, CharacteristicResponse, PairCode,
+    };
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
@@ -22,27 +24,30 @@ mod hap_lightbulb {
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        async fn read_characteristic(
+            &self,
+            char_id: CharId,
+        ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-                Some(self.name.as_bytes())
+                Ok(self.name.as_bytes())
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                Some(self.bulb_on_state.as_bytes())
+                Ok(self.bulb_on_state.as_bytes())
             } else {
-                todo!("accessory interface for char id: 0x{:02?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
         async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],
-        ) -> Result<CharacteristicResponse, ()> {
+        ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
             info!(
                 "AccessoryInterface to characterstic: 0x{:02?} data: {:02?}",
                 char_id, data
             );
 
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                let value = data.get(0).ok_or(())?;
+                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
                 let val_as_bool = *value != 0;
 
                 let response = if self.bulb_on_state != val_as_bool {
@@ -54,7 +59,7 @@ mod hap_lightbulb {
                 info!("\nSet bulb to: {:?}\n", self.bulb_on_state);
                 Ok(response)
             } else {
-                todo!("accessory interface for char id: 0x{:02?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
     }

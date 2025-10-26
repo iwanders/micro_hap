@@ -497,10 +497,16 @@ pub enum AccessoryInterfaceError {
     /// An unexpected characteristic was queried.
     #[error("unexpected characteristic")]
     UnknownCharacteristic(CharId),
+
+    /// Incorrect write payload
+    #[error("incorrect write payload")]
+    IncorrectWrite,
+
     /// A custom error was encountered
-    #[error("error: {msg:?}, ({user_data:?})")]
-    CustomError { msg: &'static str, user_data: usize },
+    #[error("error: {0:?}")]
+    Custom(&'static str),
 }
+
 /// Interface through which the characteristics interact with the accessory.
 pub trait AccessoryInterface {
     /// Read the characteristic value.

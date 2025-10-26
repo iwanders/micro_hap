@@ -337,7 +337,9 @@ mod hap_rgb {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, PairCode};
+    use micro_hap::{
+        AccessoryInterface, AccessoryInterfaceError, CharId, CharacteristicResponse, PairCode,
+    };
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     #[repr(C)]
@@ -355,32 +357,35 @@ mod hap_rgb {
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        async fn read_characteristic(
+            &self,
+            char_id: CharId,
+        ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
             if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_NAME {
-                Some("warm_temperature_bulb".as_bytes())
+                Ok("warm_temperature_bulb".as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
-                Some(self.temp_on_state.as_bytes())
+                Ok(self.temp_on_state.as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_COLOR {
-                Some(self.temp_color_temperature_state.as_bytes())
+                Ok(self.temp_color_temperature_state.as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_NAME {
-                Some("hsb_superbulb".as_bytes())
+                Ok("hsb_superbulb".as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_ON {
-                Some(self.hsb_on_state.as_bytes())
+                Ok(self.hsb_on_state.as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_HUE {
-                Some(self.hsb_hue.as_bytes())
+                Ok(self.hsb_hue.as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_SATURATION {
-                Some(self.hsb_saturation.as_bytes())
+                Ok(self.hsb_saturation.as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_BRIGHTNESS {
-                Some(self.hsb_brightness.as_bytes())
+                Ok(self.hsb_brightness.as_bytes())
             } else {
-                todo!("accessory interface for char id: 0x{:02?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
         async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],
-        ) -> Result<CharacteristicResponse, ()> {
+        ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
             info!(
                 "AccessoryInterface to characterstic: 0x{:02?} data: {:02?}",
                 char_id, data
@@ -399,7 +404,7 @@ mod hap_rgb {
             if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
                 let togle_bool = &mut self.temp_on_state;
 
-                let value = data.get(0).ok_or(())?;
+                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
                 let val_as_bool = *value != 0;
 
                 let response = if *togle_bool != val_as_bool {
@@ -427,7 +432,7 @@ mod hap_rgb {
 
                 let togle_bool = &mut self.hsb_on_state;
 
-                let value = data.get(0).ok_or(())?;
+                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
                 let val_as_bool = *value != 0;
 
                 let response = if *togle_bool != val_as_bool {
@@ -448,7 +453,7 @@ mod hap_rgb {
                 info!("Set brightness to {:?}", data);
                 Ok(updater(data, &mut self.hsb_brightness.as_mut_bytes()))
             } else {
-                todo!("accessory interface for char id: 0x{:02?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
     }

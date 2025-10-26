@@ -42,7 +42,7 @@ To help people understand the code and the concepts, here's an information dump:
   only real trouble errors are bubbled up to the calling code.
 
 ## Todo
-- Clean up error handling.n (snafu / thiserror?)
+- ~Clean up error handling.n (snafu / thiserror?)~
 - Correctly return HAP errors, instead of failing the BLE request.
 - Any errors currently drop the request instead of returning the correct HAP error code.
 - Figure out when `MaxProcedures` should be returned..
