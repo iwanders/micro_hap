@@ -337,9 +337,7 @@ mod hap_rgb {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{
-        AccessoryInterface, AccessoryInterfaceError, CharId, CharacteristicResponse, PairCode,
-    };
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     #[repr(C)]
@@ -360,7 +358,7 @@ mod hap_rgb {
         async fn read_characteristic(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
+        ) -> Result<impl Into<&[u8]>, InterfaceError> {
             if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_NAME {
                 Ok("warm_temperature_bulb".as_bytes())
             } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
@@ -378,14 +376,14 @@ mod hap_rgb {
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_BRIGHTNESS {
                 Ok(self.hsb_brightness.as_bytes())
             } else {
-                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+                Err(InterfaceError::CharacteristicUnknown(char_id))
             }
         }
         async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],
-        ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
+        ) -> Result<CharacteristicResponse, InterfaceError> {
             info!(
                 "AccessoryInterface to characterstic: 0x{:02?} data: {:02?}",
                 char_id, data
@@ -404,7 +402,9 @@ mod hap_rgb {
             if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
                 let togle_bool = &mut self.temp_on_state;
 
-                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
+                let value = data
+                    .get(0)
+                    .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
                 let val_as_bool = *value != 0;
 
                 let response = if *togle_bool != val_as_bool {
@@ -432,7 +432,9 @@ mod hap_rgb {
 
                 let togle_bool = &mut self.hsb_on_state;
 
-                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
+                let value = data
+                    .get(0)
+                    .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
                 let val_as_bool = *value != 0;
 
                 let response = if *togle_bool != val_as_bool {
@@ -453,7 +455,7 @@ mod hap_rgb {
                 info!("Set brightness to {:?}", data);
                 Ok(updater(data, &mut self.hsb_brightness.as_mut_bytes()))
             } else {
-                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+                Err(InterfaceError::CharacteristicUnknown(char_id))
             }
         }
     }

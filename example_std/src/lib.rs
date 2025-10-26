@@ -1,9 +1,9 @@
 use log::{error, info, warn};
-use micro_hap::{PlatformSupport, ble::broadcast::BleBroadcastParameters};
+use micro_hap::{InterfaceError, PlatformSupport, ble::broadcast::BleBroadcastParameters};
 use rand::prelude::*;
 use trouble_host::prelude::*;
 
-use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
+use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingId};
 #[derive(Debug, Clone)]
 pub struct ActualPairSupport {
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
@@ -35,42 +35,42 @@ impl PlatformSupport for ActualPairSupport {
         buffer.fill_with(|| rand::rng().random::<u8>())
     }
 
-    async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+    async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
         error!("Storing {:?}", pairing);
         self.pairings.insert(pairing.id, *pairing);
         Ok(())
     }
 
-    async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, PairingError> {
+    async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
         error!("retrieving id {:?}", id);
         Ok(self.pairings.get(id).copied())
     }
 
-    async fn get_global_state_number(&self) -> Result<u16, PairingError> {
+    async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.global_state_number)
     }
     /// Set the global state number, this is used by the BLE transport.
-    async fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+    async fn set_global_state_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.global_state_number = value;
         Ok(())
     }
 
-    async fn get_config_number(&self) -> Result<u16, PairingError> {
+    async fn get_config_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.config_number)
     }
-    async fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
+    async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.config_number = value;
         Ok(())
     }
     async fn get_ble_broadcast_parameters(
         &self,
-    ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, PairingError> {
+    ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, InterfaceError> {
         Ok(self.broadcast_parameters)
     }
     async fn set_ble_broadcast_parameters(
         &mut self,
         params: &micro_hap::ble::broadcast::BleBroadcastParameters,
-    ) -> Result<(), PairingError> {
+    ) -> Result<(), InterfaceError> {
         self.broadcast_parameters = *params;
         Ok(())
     }

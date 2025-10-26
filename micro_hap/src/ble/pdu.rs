@@ -34,10 +34,12 @@ impl<T: TryFromBytes + KnownLayout + MemSizeOf + Immutable> ParsePdu for T {
     fn parse_pdu_with_remainder(data: &[u8]) -> Result<(&Self::Output, &[u8]), InternalError> {
         let exp = T::mem_size();
         if data.len() < exp {
-            return Err(InternalError::UnexpectedDataLength {
-                expected: exp,
-                actual: data.len(),
-            });
+            return Err(HapBleStatusError::InvalidRequest.into());
+
+            // return Err(InternalError::UnexpectedDataLength {
+            //     expected: exp,
+            //     actual: data.len(),
+            // });
         }
         let our_data = &data[0..exp];
         let remainder = &data[exp..];

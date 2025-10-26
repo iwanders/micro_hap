@@ -19,17 +19,6 @@ pub enum TLVError {
     BufferOverrun,
 }
 
-impl From<TLVError> for trouble_host::Error {
-    fn from(e: TLVError) -> trouble_host::Error {
-        match e {
-            TLVError::NotEnoughData => trouble_host::Error::OutOfMemory,
-            TLVError::BufferOverrun => trouble_host::Error::OutOfMemory,
-            TLVError::MissingEntry(_) => trouble_host::Error::InvalidValue,
-            TLVError::UnexpectedValue => trouble_host::Error::InvalidValue,
-        }
-    }
-}
-
 /// Reader iterator for TLV sequences;
 /// Yielding entries that hold:
 ///   type_id: u8,

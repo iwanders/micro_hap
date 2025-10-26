@@ -77,27 +77,29 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         async fn read_characteristic(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
+        ) -> Result<impl Into<&[u8]>, InterfaceError> {
             if char_id == CHAR_ID_LIGHTBULB_NAME {
                 Ok(self.name.as_bytes())
             } else if char_id == CHAR_ID_LIGHTBULB_ON {
                 Ok(self.bulb_on_state.as_bytes())
             } else {
-                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+                Err(InterfaceError::CharacteristicUnknown(char_id))
             }
         }
         async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],
-        ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
+        ) -> Result<CharacteristicResponse, InterfaceError> {
             info!(
                 "AccessoryInterface to characterstic: 0x{:02x?} data: {:02x?}",
                 char_id, data
             );
 
             if char_id == CHAR_ID_LIGHTBULB_ON {
-                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
+                let value = data
+                    .get(0)
+                    .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
                 let val_as_bool = *value != 0;
 
                 let response = if self.bulb_on_state != val_as_bool {
@@ -109,7 +111,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
                 info!("Set bulb to: {:?}", self.bulb_on_state);
                 Ok(response)
             } else {
-                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+                Err(InterfaceError::CharacteristicUnknown(char_id))
             }
         }
     }

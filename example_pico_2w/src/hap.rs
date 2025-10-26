@@ -15,7 +15,7 @@ use trouble_host::prelude::*;
 use zerocopy::IntoBytes;
 
 use micro_hap::{
-    ble::broadcast::BleBroadcastParameters, AccessoryInterface, AccessoryInterfaceError, CharId, CharacteristicResponse,
+    ble::broadcast::BleBroadcastParameters, AccessoryInterface, InterfaceError, CharId, CharacteristicResponse,
     PlatformSupport,
 };
 
@@ -25,27 +25,27 @@ struct LightBulbAccessory<'a> {
     bulb_control: cyw43::Control<'a>,
 }
 impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
-    async fn read_characteristic(&self, char_id: CharId) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
+    async fn read_characteristic(&self, char_id: CharId) -> Result<impl Into<&[u8]>, InterfaceError> {
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
             Ok(self.name.as_bytes())
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
             Ok(self.bulb_on_state.as_bytes())
         } else {
-            Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+            Err(InterfaceError::CharacteristicUnknown(char_id))
         }
     }
     async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
-    ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
+    ) -> Result<CharacteristicResponse, InterfaceError> {
         info!(
             "AccessoryInterface to characterstic: 0x{:?} data: {:?}",
             char_id.0, data
         );
 
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-            let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
+            let value = data.get(0).ok_or(InterfaceError::CharacteristicWriteInvalid)?;
             let val_as_bool = *value != 0;
 
             let response = if self.bulb_on_state != val_as_bool {
@@ -58,7 +58,7 @@ impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
             self.bulb_control.gpio_set(0, self.bulb_on_state).await;
             Ok(response)
         } else {
-            Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
+            Err(InterfaceError::CharacteristicUnknown(char_id))
         }
     }
 }
@@ -89,7 +89,7 @@ impl Server<'_> {
     }
 }
 
-use micro_hap::pairing::{Pairing, PairingError, PairingId, ED25519_LTSK};
+use micro_hap::pairing::{Pairing, PairingId, ED25519_LTSK};
 #[derive(Debug, Clone)]
 pub struct ActualPairSupport {
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
@@ -162,43 +162,42 @@ impl PlatformSupport for ActualPairSupport {
         self.random_byte_index += buffer.len();
     }
 
-    async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+    async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
         error!("Storing pairing");
         self.pairings
-            .insert(pairing.id, *pairing)
-            .map_err(|_| PairingError::IncorrectLength)?;
+            .insert(pairing.id, *pairing).expect("assuming we have anough space for now");
         Ok(())
     }
 
-    async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, PairingError> {
+    async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
         error!("retrieving id pairing id");
         Ok(self.pairings.get(id).copied())
     }
 
-    async fn get_global_state_number(&self) -> Result<u16, PairingError> {
+    async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.global_state_number)
     }
     /// Set the global state number, this is used by the BLE transport.
-    async fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+    async fn set_global_state_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.global_state_number = value;
         Ok(())
     }
-    async fn get_config_number(&self) -> Result<u16, PairingError> {
+    async fn get_config_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.config_number)
     }
-    async fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
+    async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.config_number = value;
         Ok(())
     }
     async fn get_ble_broadcast_parameters(
         &self,
-    ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, PairingError> {
+    ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, InterfaceError> {
         Ok(self.broadcast_parameters)
     }
     async fn set_ble_broadcast_parameters(
         &mut self,
         params: &micro_hap::ble::broadcast::BleBroadcastParameters,
-    ) -> Result<(), PairingError> {
+    ) -> Result<(), InterfaceError> {
         self.broadcast_parameters = *params;
         Ok(())
     }

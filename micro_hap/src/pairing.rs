@@ -24,11 +24,11 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 use crate::tlv::{TLVError, TLVReader, TLVWriter};
 use uuid;
 
-use crate::PlatformSupport;
 use crate::crypto::{
     aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
+use crate::{InterfaceError, PlatformSupport};
 use thiserror::Error;
 
 /// Errors associated to pairing, and configuration / initialisation of the pairing properties.
@@ -55,6 +55,8 @@ pub enum PairingError {
     UuidError,
     #[error("unknown pairing id")]
     UnknownPairing,
+    #[error("an error happend on the platform interface")]
+    InterfaceError(#[from] InterfaceError),
 }
 
 impl From<hkdf::InvalidLength> for PairingError {
@@ -1140,42 +1142,42 @@ pub mod test {
             })
         }
 
-        async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), PairingError> {
+        async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
             self.pairings.insert(pairing.id, *pairing);
             error!("Writing pairing for {:?}", pairing.id);
             Ok(())
         }
 
-        async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, PairingError> {
+        async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
             Ok(self.pairings.get(id).copied())
         }
 
-        async fn get_global_state_number(&self) -> Result<u16, PairingError> {
+        async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
             Ok(self.global_state_number)
         }
         /// Set the global state number, this is used by the BLE transport.
-        async fn set_global_state_number(&mut self, value: u16) -> Result<(), PairingError> {
+        async fn set_global_state_number(&mut self, value: u16) -> Result<(), InterfaceError> {
             self.global_state_number = value;
             Ok(())
         }
 
-        async fn get_config_number(&self) -> Result<u16, PairingError> {
+        async fn get_config_number(&self) -> Result<u16, InterfaceError> {
             Ok(self.config_number)
         }
-        async fn set_config_number(&mut self, value: u16) -> Result<(), PairingError> {
+        async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
             self.config_number = value;
             Ok(())
         }
 
         async fn get_ble_broadcast_parameters(
             &self,
-        ) -> Result<BleBroadcastParameters, PairingError> {
+        ) -> Result<BleBroadcastParameters, InterfaceError> {
             Ok(self.ble_broadcast_parameters)
         }
         async fn set_ble_broadcast_parameters(
             &mut self,
             params: &BleBroadcastParameters,
-        ) -> Result<(), PairingError> {
+        ) -> Result<(), InterfaceError> {
             self.ble_broadcast_parameters = *params;
             Ok(())
         }

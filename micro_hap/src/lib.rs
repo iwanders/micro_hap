@@ -493,14 +493,14 @@ pub struct Session {
 /// Error used by the accessory interface
 #[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum AccessoryInterfaceError {
-    /// An unexpected characteristic was queried.
-    #[error("unexpected characteristic")]
-    UnknownCharacteristic(CharId),
+pub enum InterfaceError {
+    /// An characteristic that is not provided was read or written to.
+    #[error("characteristic id is unknown")]
+    CharacteristicUnknown(CharId),
 
     /// Incorrect write payload
-    #[error("incorrect write payload")]
-    IncorrectWrite,
+    #[error("characteristic write payload is invalid")]
+    CharacteristicWriteInvalid,
 
     /// A custom error was encountered
     #[error("error: {0:?}")]
@@ -517,13 +517,13 @@ pub trait AccessoryInterface {
     async fn read_characteristic(
         &self,
         char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError>;
+    ) -> Result<impl Into<&[u8]>, InterfaceError>;
     #[allow(async_fn_in_trait)]
     async fn write_characteristic(
         &mut self,
         char_id: CharId,
         data: &[u8],
-    ) -> Result<CharacteristicResponse, AccessoryInterfaceError>;
+    ) -> Result<CharacteristicResponse, InterfaceError>;
 }
 
 /// Enum that specifies whether a characteristic was changed.
@@ -540,7 +540,7 @@ impl AccessoryInterface for NopAccessory {
     async fn read_characteristic(
         &self,
         char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
+    ) -> Result<impl Into<&[u8]>, InterfaceError> {
         let _ = char_id;
         const DUMMY: &[u8] = &[];
         Ok(DUMMY)
@@ -549,7 +549,7 @@ impl AccessoryInterface for NopAccessory {
         &mut self,
         char_id: CharId,
         data: &[u8],
-    ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
+    ) -> Result<CharacteristicResponse, InterfaceError> {
         let _ = (char_id, data);
         // todo!("write characteristic on 0x{:02?}, handle this?", char_id);
         Ok(CharacteristicResponse::Unmodified)
@@ -572,26 +572,26 @@ pub trait PlatformSupport: Send {
     fn store_pairing(
         &mut self,
         pairing: &Pairing,
-    ) -> impl Future<Output = Result<(), PairingError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 
     /// Retrieve a pairing, or None if it doesn't exist.
     fn get_pairing(
         &mut self,
         id: &PairingId,
-    ) -> impl Future<Output = Result<Option<Pairing>, PairingError>> + Send;
+    ) -> impl Future<Output = Result<Option<Pairing>, InterfaceError>> + Send;
 
     /// Retrieve the global state number, this is used by the BLE transport.
-    fn get_global_state_number(&self) -> impl Future<Output = Result<u16, PairingError>> + Send;
+    fn get_global_state_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
     /// Set the global state number, this is used by the BLE transport.
     fn set_global_state_number(
         &mut self,
         value: u16,
-    ) -> impl Future<Output = Result<(), PairingError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 
     /// Advance the global state number by one, write the new value and return it.
     fn advance_global_state_number(
         &mut self,
-    ) -> impl Future<Output = Result<u16, PairingError>> + Send {
+    ) -> impl Future<Output = Result<u16, InterfaceError>> + Send {
         async move {
             let old = self.get_global_state_number().await?;
             let new = old.wrapping_add(1);
@@ -601,21 +601,21 @@ pub trait PlatformSupport: Send {
         }
     }
 
-    fn get_config_number(&self) -> impl Future<Output = Result<u16, PairingError>> + Send;
+    fn get_config_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
     fn set_config_number(
         &mut self,
         value: u16,
-    ) -> impl Future<Output = Result<(), PairingError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 
     /// Retrieve the BLE broadcast parameters
     fn get_ble_broadcast_parameters(
         &self,
-    ) -> impl Future<Output = Result<crate::ble::broadcast::BleBroadcastParameters, PairingError>> + Send;
+    ) -> impl Future<Output = Result<crate::ble::broadcast::BleBroadcastParameters, InterfaceError>> + Send;
     /// Set the BLE broadcast parameters
     fn set_ble_broadcast_parameters(
         &mut self,
         params: &crate::ble::broadcast::BleBroadcastParameters,
-    ) -> impl Future<Output = Result<(), PairingError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 }
 
 #[cfg(test)]

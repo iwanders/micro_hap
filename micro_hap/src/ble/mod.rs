@@ -1,5 +1,5 @@
 use crate::AccessoryInformationStatic;
-use crate::AccessoryInterfaceError;
+use crate::InterfaceError;
 use crate::PlatformSupport;
 use crate::characteristic;
 use trouble_host::prelude::*;
@@ -54,24 +54,19 @@ pub struct TId(pub u8);
 #[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HapBleError {
-    /// Unexpected request encountered.
-    #[error("unexpected request")]
-    UnexpectedRequest,
-    /// Invalid value
-    #[error("invalid value encountered")]
-    InvalidValue,
-
-    /// Runtime buffer overrun.
+    /// Runtime buffer overrun, this happens if the request and reply did not fit into the internal buffer.
     #[error("runtime buffer overrun")]
     BufferOverrun,
-    /// Overrun on allocation space.
+    /// Overrun on allocation space, this happens if the fixed size arrays can't hold the information passed to it
+    /// usually a start-up situation.
     #[error("overrun on allocation space")]
     AllocationOverrun,
+
     /// The accessory interface created an error that should be propagated.
     #[error("an error from the accessory interface")]
-    InterfaceError(#[from] AccessoryInterfaceError),
+    InterfaceError(#[from] InterfaceError),
 
-    // This is less than ideal, we can't put the error in this without losing copy and clone.
+    // This is less than ideal, we can't put the error in this without losing Copy and clone.
     /// A trouble error occured.
     #[error("a trouble error occured")]
     TroubleError(#[from] SimpleTroubleError),
@@ -156,10 +151,6 @@ enum InternalError {
     StatusError(#[from] HapBleStatusError),
     #[error("pairing error")]
     PairError(#[from] crate::PairingError),
-    /// Unexpected data length was encountered.
-    #[error("unexpected data length encountered")]
-    UnexpectedDataLength { expected: usize, actual: usize },
-
     /// An error occured that should be propagated through to the callsite.
     #[error("a to be propagated error")]
     HapBleError(#[from] HapBleError),
@@ -170,34 +161,38 @@ impl InternalError {
         match self {
             InternalError::TLVError(_tlverror) => HapBleStatusError::InvalidRequest,
             InternalError::StatusError(hap_ble_status_error) => *hap_ble_status_error,
-            InternalError::PairError(_pairing_error) => {
-                HapBleStatusError::InsufficientAuthorization
-            }
-            InternalError::UnexpectedDataLength {
-                expected: _,
-                actual: _,
-            } => HapBleStatusError::InvalidRequest,
+            InternalError::PairError(pairing_error) => match pairing_error {
+                // NONCOMPLIANCE No idea if this is the correct mapping... should go through the C code.
+                crate::pairing::PairingError::TLVError(_) => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::IncorrectMethodCombination => {
+                    HapBleStatusError::InvalidRequest
+                }
+                crate::pairing::PairingError::IncorrectState => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::IncorrectLength => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::BadPublicKey => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::BadProof => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::BadDecryption => {
+                    HapBleStatusError::InsufficientAuthorization
+                }
+                crate::pairing::PairingError::BadSignature => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::UuidError => HapBleStatusError::InvalidRequest,
+                crate::pairing::PairingError::UnknownPairing => {
+                    HapBleStatusError::InsufficientAuthorization
+                }
+                crate::pairing::PairingError::InterfaceError(_) => {
+                    unimplemented!()
+                }
+            },
             InternalError::HapBleError(_hap_ble_error) => unimplemented!(),
         }
     }
 }
 
-impl From<AccessoryInterfaceError> for InternalError {
-    fn from(e: AccessoryInterfaceError) -> InternalError {
+impl From<InterfaceError> for InternalError {
+    fn from(e: InterfaceError) -> InternalError {
         InternalError::HapBleError(e.into())
     }
 }
-impl From<crate::tlv::TLVError> for HapBleError {
-    fn from(e: crate::tlv::TLVError) -> HapBleError {
-        match e {
-            crate::tlv::TLVError::NotEnoughData => HapBleError::InvalidValue,
-            crate::tlv::TLVError::MissingEntry(_) => HapBleError::InvalidValue,
-            crate::tlv::TLVError::UnexpectedValue => HapBleError::InvalidValue,
-            crate::tlv::TLVError::BufferOverrun => HapBleError::BufferOverrun,
-        }
-    }
-}
-
 pub trait HapBleService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError>;
 }
@@ -477,15 +472,13 @@ impl HapPeripheralContext {
                 pair_support,
                 incoming_data,
             )
-            .await
-            .map_err(|_| HapBleError::InvalidValue)?;
+            .await?;
 
             info!("pair setup at outgoing");
             // Put the reply in the second half.
             let outgoing_len =
                 crate::pairing::pair_setup_handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
-                    .await
-                    .map_err(|_| HapBleError::InvalidValue)?;
+                    .await?;
 
             info!("Populating the body.");
 
@@ -500,14 +493,12 @@ impl HapPeripheralContext {
             Ok(BufferResponse(len))
         } else if is_pair_verify {
             crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
-                .await
-                .map_err(|_| HapBleError::InvalidValue)?;
+                .await?;
 
             // Put the reply in the second half.
             let outgoing_len =
                 crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
-                    .await
-                    .map_err(|_| HapBleError::InvalidValue)?;
+                    .await?;
 
             let reply = parsed.header.header.to_success();
             let len = reply.write_into_length(left_buffer)?;
@@ -527,18 +518,14 @@ impl HapPeripheralContext {
                 DataSource::AccessoryInterface => {
                     let r = accessory
                         .write_characteristic(char_id, incoming_data)
-                        .await
-                        .map_err(|_| HapBleError::UnexpectedRequest)?;
+                        .await?;
 
                     if r == CharacteristicResponse::Modified {
                         // Do things to this characteristic to mark it dirty.
                         error!(
                             "Should mark the characteristic dirty and advance the global state number, and notify!"
                         );
-                        let _ = pair_support
-                            .advance_global_state_number()
-                            .await
-                            .map_err(|_| HapBleError::InvalidValue)?;
+                        let _ = pair_support.advance_global_state_number().await?;
                     }
 
                     let reply = parsed.header.header.to_success();
@@ -629,7 +616,8 @@ impl HapPeripheralContext {
         let svc_id = req.svc_id; // its unaligned, so copy it before we use it.
         let svc = self.get_service_by_svc(svc_id)?;
         if !svc.properties.configurable() {
-            return Err(HapBleError::UnexpectedRequest.into());
+            return Err(HapBleStatusError::InvalidRequest.into());
+            //return Err(HapBleError::UnexpectedRequest.into());
         }
 
         let mut buffer = self.buffer.borrow_mut();
@@ -665,9 +653,7 @@ impl HapPeripheralContext {
         if generate_key {
             // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L98-L100
             let mut ctx = self.pair_ctx.borrow_mut();
-            broadcast::broadcast_generate_key(&mut *ctx, pair_support)
-                .await
-                .map_err(|_| HapBleError::InvalidValue)?;
+            broadcast::broadcast_generate_key(&mut *ctx, pair_support).await?;
         }
 
         if !get_all {
@@ -681,20 +667,11 @@ impl HapPeripheralContext {
 
         // Basically, we just write values here.
         //
-        let global_state_number = pair_support
-            .get_global_state_number()
-            .await
-            .map_err(|_e| HapBleError::InvalidValue)?;
+        let global_state_number = pair_support.get_global_state_number().await?;
 
         // This is odd, they write the configuration number as a single byte!
-        let config_number = pair_support
-            .get_config_number()
-            .await
-            .map_err(|_e| HapBleError::InvalidValue)? as u8;
-        let parameters = pair_support
-            .get_ble_broadcast_parameters()
-            .await
-            .map_err(|_e| HapBleError::InvalidValue)?;
+        let config_number = pair_support.get_config_number().await? as u8;
+        let parameters = pair_support.get_ble_broadcast_parameters().await?;
 
         let mut builder = BodyBuilder::new_at(*buffer, len)
             .add_slice(
@@ -956,7 +933,6 @@ impl HapPeripheralContext {
                 return {
                     error!("Failed to handle: {:?}", header);
                     todo!("need to implement this request type")
-                    //Err(HapBleError::UnexpectedRequest.into())
                 };
             }
         };
@@ -981,6 +957,9 @@ impl HapPeripheralContext {
 
                 match e {
                     InternalError::HapBleError(hap_ble_error) => Err(hap_ble_error),
+                    InternalError::PairError(crate::pairing::PairingError::InterfaceError(e)) => {
+                        Err(HapBleError::InterfaceError(e))
+                    }
                     other => {
                         let status_error = other.to_status_error();
                         // Write the appropriate response.
