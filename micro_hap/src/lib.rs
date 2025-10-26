@@ -562,6 +562,9 @@ impl AccessoryInterface for NopAccessory {
 ///
 /// These methods provide things like random number generation and key value storage.
 pub trait PlatformSupport: Send {
+    /// Return the time of this platform
+    fn get_time(&self) -> embassy_time::Instant;
+
     /// Retrieve the long term secret key.
     fn get_ltsk(&self) -> impl Future<Output = [u8; ED25519_LTSK]> + Send;
 

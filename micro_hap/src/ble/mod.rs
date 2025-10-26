@@ -50,6 +50,16 @@ use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 #[repr(transparent)]
 pub struct TId(pub u8);
 
+/// Time To Live, expressed in multiples of 100ms.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Ttl(u8);
+impl Ttl {
+    pub fn to_millis(&self) -> u16 {
+        self.0 as u16 * 100
+    }
+}
+
 /// Error type representing errors originating from micro_hap's ble interface, these do result in an Err type being
 /// propagated to outside of this module.
 #[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
@@ -213,12 +223,30 @@ struct Reply {
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct BufferResponse(pub usize);
 
+#[derive(Debug, Copy, Clone)]
+pub struct TimedWrite {
+    pub char_id: CharId,
+    pub time_start: embassy_time::Instant,
+    pub ttl: Ttl,
+    pub data_length: usize,
+    // Not putting data here because that makes the initialisation of an array of this type very hard.
+    // pub data: &'static mut [u8],
+}
+
+#[derive(Debug, Copy, Clone)]
+struct TimedWriteSlot(usize);
+
 #[derive(Debug)]
 pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,
     pair_ctx: core::cell::RefCell<&'static mut crate::pairing::PairContext>,
 
+    timed_write_slot_buffer: usize,
+    timed_write_data: core::cell::RefCell<&'static mut [u8]>,
+    timed_write: core::cell::RefCell<&'static mut [Option<TimedWrite>]>,
+
+    // NONCOMPLIANCE? Do we need to split this out per characteristic? Can we ever
     prepared_reply: Option<Reply>,
     should_encrypt_reply: bool,
 
@@ -289,17 +317,58 @@ impl HapPeripheralContext {
         None
     }
 
+    fn get_timed_write_slot_index(&self, key: Option<CharId>) -> Option<TimedWriteSlot> {
+        let v = self.timed_write.borrow();
+        v.iter()
+            .position(|s| {
+                if let Some(search_char) = &key {
+                    if let Some(s) = s {
+                        s.char_id == *search_char
+                    } else {
+                        false
+                    }
+                } else {
+                    // Searching for an empty slot
+                    s.is_none()
+                }
+            })
+            .map(|v| TimedWriteSlot(v))
+    }
+    fn get_timed_write_slot(
+        &self,
+        slot: TimedWriteSlot,
+    ) -> core::cell::RefMut<'_, Option<TimedWrite>> {
+        core::cell::RefMut::<'_, &'static mut [Option<TimedWrite>]>::map(
+            self.timed_write.borrow_mut(),
+            |z| z.get_mut(slot.0).unwrap(),
+        )
+    }
+
+    fn get_timed_write_data(&self, slot: TimedWriteSlot) -> core::cell::RefMut<'_, [u8]> {
+        let start = self.timed_write_slot_buffer * slot.0;
+        let end = self.timed_write_slot_buffer * (slot.0 + 1);
+        core::cell::RefMut::<'_, &'static mut [u8]>::map(self.timed_write_data.borrow_mut(), |z| {
+            &mut z[start..end]
+        })
+    }
+
     pub fn new(
         buffer: &'static mut [u8],
         pair_ctx: &'static mut crate::pairing::PairContext,
+        timed_write_data: &'static mut [u8],
+        timed_write: &'static mut [Option<TimedWrite>],
         information_service: &AccessoryInformationService,
         protocol_service: &ProtocolInformationService,
         pairing_service: &PairingService,
     ) -> Result<Self, HapBleError> {
+        let timed_write_slot_buffer = timed_write_data.len() / timed_write.len();
         Ok(Self {
             //protocol_service_properties: Default::default(),
             buffer: buffer.into(),
             pair_ctx: pair_ctx.into(),
+            timed_write_slot_buffer,
+            timed_write_data: timed_write_data.into(),
+            timed_write: timed_write.into(),
             prepared_reply: None,
             should_encrypt_reply: false,
             information_service: information_service.populate_support()?,
@@ -941,9 +1010,33 @@ impl HapPeripheralContext {
                     return Err(HapBleStatusError::InsufficientAuthentication.into());
                 }
 
+                // We can piggyback off the CharacteristicWriteRequestHeader struct here.
+                let parsed = pdu::CharacteristicWriteRequest::parse_pdu(data)?;
+                info!("got a timed write with: {:?}", parsed);
+
                 info!("handle is: {}", handle);
                 info!("write raw req event data: {:?}", data);
-                todo!()
+                // Get a free slot for the timed writes.
+                let index = self
+                    .get_timed_write_slot_index(None)
+                    .ok_or(HapBleStatusError::MaxProcedures)?;
+
+                // Store the data.
+                let mut slot = self.get_timed_write_slot(index);
+                let mut slot_data = self.get_timed_write_data(index);
+                *slot = Some(TimedWrite {
+                    char_id: parsed.header.char_id,
+                    time_start: pair_support.get_time(),
+                    ttl: parsed.ttl.expect("timed write must have a ttl"),
+                    data_length: parsed.len(),
+                });
+                parsed.copy_body(&mut *slot_data)?;
+
+                // Write the success statement.
+                let mut buffer = self.buffer.borrow_mut();
+                let reply = header.to_success();
+                let len = reply.write_into_length(*buffer)?;
+                BufferResponse(len)
             }
             _ => {
                 return {

@@ -1130,6 +1130,15 @@ pub mod test {
         }
     }
     impl PlatformSupport for TestPairSupport {
+        /// Return the time of this platform
+        fn get_time(&self) -> embassy_time::Instant {
+            let dt = std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap();
+            let micros = dt.as_micros();
+            embassy_time::Instant::from_micros(micros as u64)
+        }
+
         async fn get_ltsk(&self) -> [u8; ED25519_LTSK] {
             self.ed_ltsk
         }

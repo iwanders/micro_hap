@@ -4,7 +4,7 @@ use super::{HapBleError, InternalError};
 use bitfield_struct::bitfield;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-use super::{CharacteristicProperties, TId, sig};
+use super::{CharacteristicProperties, TId, Ttl, sig};
 use crate::{CharId, SvcId};
 
 // PDU? Protocol Data Unit!
@@ -339,6 +339,8 @@ pub struct CharacteristicWriteRequest<'a> {
     body: heapless::Vec<&'a [u8], 8>,
     /// The return response flag.
     pub return_response: bool,
+    /// For timed write, this is populated with the ttl value.
+    pub ttl: Option<Ttl>,
 }
 
 impl<'a> CharacteristicWriteRequest<'a> {
@@ -350,6 +352,7 @@ impl<'a> CharacteristicWriteRequest<'a> {
             body: heapless::Vec::new(),
             // Probably defaults to false?
             return_response: false,
+            ttl: None,
         };
         let aft = &data[CharacteristicWriteRequestHeader::mem_size()..];
 
@@ -365,6 +368,11 @@ impl<'a> CharacteristicWriteRequest<'a> {
             } else if entry.type_id == BleTLVType::ReturnResponse as u8 {
                 let data = entry.short_data()?;
                 res.return_response = data.len() == 1 && data[0] == 1;
+            } else if entry.type_id == BleTLVType::Ttl as u8 {
+                let data = entry.short_data()?;
+                res.ttl = Some(Ttl(*data.get(0).ok_or(InternalError::StatusError(
+                    HapBleStatusError::InvalidRequest,
+                ))?));
             } else {
                 todo!("unhandled entry type: 0x{:02}", entry.type_id);
             }

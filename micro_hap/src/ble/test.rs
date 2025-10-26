@@ -170,9 +170,25 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         0xfa, 0xa9,
     ];
 
+    const TIMED_WRITE_SLOTS: usize = 8;
+    const TIMED_WRITE_SLOTS_DATA: usize = 128;
+
+    let timed_write_data = {
+        static DATA_STATE: StaticCell<[u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA]> =
+            StaticCell::new();
+        DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
+    };
+
+    let timed_writes = {
+        static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> = StaticCell::new();
+        SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
+    };
+
     let mut ctx = HapPeripheralContext::new(
         buffer,
         pair_ctx,
+        timed_write_data,
+        timed_writes,
         &server.accessory_information,
         &server.protocol,
         &server.pairing,
@@ -1572,6 +1588,10 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
             let v = ctx.pair_ctx.borrow();
             (*v).session.c_to_a
         };
+        let mut copied_a_to_c = {
+            let v = ctx.pair_ctx.borrow();
+            (*v).session.a_to_c
+        };
         let timed_write_plain = [
             0x00, 0x04, 0x26, 0x25, 0x00, 0x34, 0x00, 0x01, 0x2c, 0x00, 0x01, 0x04, 0x06, 0x01,
             0x01, 0x01, 0x24, 0x37, 0x37, 0x37, 0x35, 0x35, 0x44, 0x44, 0x35, 0x2d, 0x37, 0x32,
@@ -1597,7 +1617,17 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         )
         .await?;
 
-        let outgoing = &[];
+        let outgoing_plain: &[u8] = &[0x02u8, 0x26, 0x00];
+
+        info!("timed_write_plain len: {}", outgoing_plain.len());
+        let mut outgoing_encr =
+            vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+        outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
+        let outgoing = copied_a_to_c
+            .encrypt(&mut outgoing_encr, outgoing_plain.len())
+            .unwrap();
+        info!("outgoing_encr: {:?} len {}", payload, payload.len());
+
         let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
         let resp_buffer = resp.expect("expecting a outgoing response");
         info!("outgoing: {:02x?}", &*resp_buffer);
