@@ -17,6 +17,7 @@ use zerocopy::IntoBytes;
 use micro_hap::{
     ble::broadcast::BleBroadcastParameters, AccessoryInterface, InterfaceError, CharId, CharacteristicResponse,
     PlatformSupport,
+    ble::TimedWrite,
 };
 
 struct LightBulbAccessory<'a> {
@@ -152,6 +153,11 @@ impl Default for ActualPairSupport {
     }
 }
 impl PlatformSupport for ActualPairSupport {
+
+    fn get_time(&self) -> embassy_time::Instant{
+        embassy_time::Instant::now()
+    }
+
     async fn get_ltsk(&self) -> [u8; ED25519_LTSK] {
         self.ed_ltsk
     }
@@ -306,10 +312,29 @@ where
         STATE.init([0u8; 2048])
     };
 
+
+    const TIMED_WRITE_SLOTS: usize = 8;
+    const TIMED_WRITE_SLOTS_DATA: usize = 128;
+
+    let timed_write_data = {
+        static DATA_STATE: StaticCell<[u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA]> =
+            StaticCell::new();
+        DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
+    };
+
+    let timed_write = {
+        static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> =
+            StaticCell::new();
+        SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
+    };
+
+
     // This is also pretty big on the stack :/
     let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
         buffer,
         pair_ctx,
+        timed_write_data,
+        timed_write,
         &server.accessory_information,
         &server.protocol,
         &server.pairing,

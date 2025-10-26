@@ -1634,5 +1634,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing);
     }
 
+    // Next up is CharacteristicExecuteWrite
+
     Ok(())
 }

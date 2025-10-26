@@ -1460,6 +1460,7 @@ dependencies = [
  "defmt 1.0.1",
  "ed25519-dalek",
  "embassy-sync",
+ "embassy-time",
  "heapless 0.9.1",
  "hkdf",
  "lazy_static",

@@ -49,7 +49,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
 - The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
-- Add periodic 'service' method to handle global state and advertisement.
+- Add periodic 'service' method to handle global state counter, advertisement and expiring timed writes to free slots.
 - Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
@@ -61,7 +61,8 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 - Verify pair resume actually works, keep a list of sessions...
 - Make `pairing` and `pair_verify` modules crate-private?
-- Implement TimedWrite request.
+- ~Implement TimedWrite request.~
+- Implement `CharacteristicExecuteWrite`.
 - Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2.
 
 ## example_std

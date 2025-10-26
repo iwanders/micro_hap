@@ -12,7 +12,10 @@ mod hap_lightbulb {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
+    use micro_hap::{
+        AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
+        ble::TimedWrite,
+    };
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
@@ -158,10 +161,27 @@ mod hap_lightbulb {
             STATE.init([0u8; 2048])
         };
 
+        const TIMED_WRITE_SLOTS: usize = 8;
+        const TIMED_WRITE_SLOTS_DATA: usize = 128;
+
+        let timed_write_data = {
+            static DATA_STATE: StaticCell<[u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA]> =
+                StaticCell::new();
+            DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
+        };
+
+        let timed_write = {
+            static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> =
+                StaticCell::new();
+            SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
+        };
+
         // Then finally we can create the hap peripheral context.
         let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
             buffer,
             pair_ctx,
+            timed_write_data,
+            timed_write,
             &server.accessory_information,
             &server.protocol,
             &server.pairing,
