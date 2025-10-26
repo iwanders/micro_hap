@@ -61,6 +61,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 - Verify pair resume actually works, keep a list of sessions...
 - Make `pairing` and `pair_verify` modules crate-private?
+- Implement TimedWrite request.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

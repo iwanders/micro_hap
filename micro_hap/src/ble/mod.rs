@@ -60,16 +60,13 @@ pub enum HapBleError {
     /// Invalid value
     #[error("invalid value encountered")]
     InvalidValue,
+
     /// Runtime buffer overrun.
     #[error("runtime buffer overrun")]
     BufferOverrun,
     /// Overrun on allocation space.
     #[error("overrun on allocation space")]
     AllocationOverrun,
-    /// Something went wrong with decryption or encryption.
-    #[error("encryption or decryption error")]
-    EncryptionError,
-
     /// The accessory interface created an error that should be propagated.
     #[error("an error from the accessory interface")]
     InterfaceError(#[from] AccessoryInterfaceError),
@@ -198,12 +195,6 @@ impl From<crate::tlv::TLVError> for HapBleError {
             crate::tlv::TLVError::UnexpectedValue => HapBleError::InvalidValue,
             crate::tlv::TLVError::BufferOverrun => HapBleError::BufferOverrun,
         }
-    }
-}
-
-impl From<chacha20poly1305::Error> for HapBleError {
-    fn from(_: chacha20poly1305::Error) -> HapBleError {
-        HapBleError::EncryptionError
     }
 }
 
@@ -753,10 +744,19 @@ impl HapPeripheralContext {
             let mut buff = self.buffer.borrow_mut();
             info!("Encrypting reply: {:?}", &buff[0..value.0]);
 
-            let res = ctx.session.a_to_c.encrypt(&mut **buff, value.0)?;
-            info!("Encrypted reply: {:?}", &res);
-
-            Ok(BufferResponse(res.len()))
+            // This encrypt can ONLY fail if there's a buffer overrun.
+            let res = ctx.session.a_to_c.encrypt(&mut **buff, value.0);
+            match res {
+                Ok(res) => Ok(BufferResponse(res.len())),
+                Err(_) => {
+                    error!(
+                        "Error encrypting buffer, payload length {:?}, buffer len: {:?}",
+                        value.0,
+                        buff.len()
+                    );
+                    Err(HapBleError::BufferOverrun)
+                }
+            }
         } else {
             Ok(value)
         }

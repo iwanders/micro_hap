@@ -74,27 +74,30 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         bulb_on_state: bool,
     }
     impl crate::AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(&self, char_id: CharId) -> Option<impl Into<&[u8]>> {
+        async fn read_characteristic(
+            &self,
+            char_id: CharId,
+        ) -> Result<impl Into<&[u8]>, AccessoryInterfaceError> {
             if char_id == CHAR_ID_LIGHTBULB_NAME {
-                Some(self.name.as_bytes())
+                Ok(self.name.as_bytes())
             } else if char_id == CHAR_ID_LIGHTBULB_ON {
-                Some(self.bulb_on_state.as_bytes())
+                Ok(self.bulb_on_state.as_bytes())
             } else {
-                todo!("accessory interface for char id: 0x{:02x?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
         async fn write_characteristic(
             &mut self,
             char_id: CharId,
             data: &[u8],
-        ) -> Result<CharacteristicResponse, ()> {
+        ) -> Result<CharacteristicResponse, AccessoryInterfaceError> {
             info!(
                 "AccessoryInterface to characterstic: 0x{:02x?} data: {:02x?}",
                 char_id, data
             );
 
             if char_id == CHAR_ID_LIGHTBULB_ON {
-                let value = data.get(0).ok_or(())?;
+                let value = data.get(0).ok_or(AccessoryInterfaceError::IncorrectWrite)?;
                 let val_as_bool = *value != 0;
 
                 let response = if self.bulb_on_state != val_as_bool {
@@ -106,7 +109,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
                 info!("Set bulb to: {:?}", self.bulb_on_state);
                 Ok(response)
             } else {
-                todo!("accessory interface for char id: 0x{:02x?}", char_id)
+                Err(AccessoryInterfaceError::UnknownCharacteristic(char_id))
             }
         }
     }
