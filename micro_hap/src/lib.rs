@@ -622,7 +622,7 @@ pub trait PlatformSupport: Send {
 mod test {
     pub fn init() {
         let _ = env_logger::builder()
-            .is_test(true)
+            .is_test(false)
             .filter_level(log::LevelFilter::max())
             .try_init();
     }

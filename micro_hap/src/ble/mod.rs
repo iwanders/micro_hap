@@ -930,6 +930,21 @@ impl HapPeripheralContext {
 
                 BufferResponse(len)
             }
+            pdu::OpCode::CharacteristicTimedWrite => {
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L683
+                // Check if this characteristic requires security.
+                let parsed_header = pdu::CharacteristicWriteRequestHeader::parse_pdu(data)?;
+                warn!("timed write, h; {:?}", parsed_header);
+                let chr = self.get_attribute_by_char(parsed_header.char_id)?;
+                if !chr.properties.write_open() && !security_active {
+                    // Nope...
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
+                }
+
+                info!("handle is: {}", handle);
+                info!("write raw req event data: {:?}", data);
+                todo!()
+            }
             _ => {
                 return {
                     error!("Failed to handle: {:?}", header);
