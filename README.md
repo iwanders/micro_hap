@@ -43,8 +43,8 @@ To help people understand the code and the concepts, here's an information dump:
 
 ## Todo
 - ~Clean up error handling.n (snafu / thiserror?)~
-- Correctly return HAP errors, instead of failing the BLE request.
-- Any errors currently drop the request instead of returning the correct HAP error code.
+- ~Correctly return HAP errors, instead of failing the BLE request.~
+- ~Any errors currently drop the request instead of returning the correct HAP error code.~
 - Figure out when `MaxProcedures` should be returned..
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.

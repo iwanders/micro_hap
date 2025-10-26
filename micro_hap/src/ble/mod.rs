@@ -8,6 +8,7 @@ pub mod broadcast;
 mod pdu;
 use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
+use crate::pairing::PairingError;
 use crate::{CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -150,7 +151,7 @@ enum InternalError {
     #[error("status error")]
     StatusError(#[from] HapBleStatusError),
     #[error("pairing error")]
-    PairError(#[from] crate::PairingError),
+    PairError(#[from] PairingError),
     /// An error occured that should be propagated through to the callsite.
     #[error("a to be propagated error")]
     HapBleError(#[from] HapBleError),

@@ -23,7 +23,7 @@ pub mod pairing;
 pub mod tlv;
 
 pub mod crypto;
-use crate::pairing::{ED25519_LTSK, Pairing, PairingError, PairingId};
+use crate::pairing::{ED25519_LTSK, Pairing, PairingId};
 use crypto::aead::ControlChannel;
 
 use core::future::Future;
