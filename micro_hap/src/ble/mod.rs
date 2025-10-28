@@ -1063,8 +1063,12 @@ impl HapPeripheralContext {
                 {
                     let req_data = self.get_timed_write_data(index);
                     let req_data = &*req_data;
+                    let orig_header = parsed.header.as_bytes();
+                    let orig_header = [orig_header[0], orig_header[1], orig_header[2]];
 
                     tmp_buffer[0..data_length].copy_from_slice(&req_data[0..data_length]);
+                    // Replace the request header...
+                    tmp_buffer[0..orig_header.len()].copy_from_slice(&orig_header);
                 }
 
                 // Now, wipe the slot.
