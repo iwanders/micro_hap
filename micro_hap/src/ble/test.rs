@@ -1635,6 +1635,51 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     }
 
     // Next up is CharacteristicExecuteWrite
+    // This CharacteristicExecuteWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
+    {
+        let mut copied_c_to_a = {
+            let v = ctx.pair_ctx.borrow();
+            (*v).session.c_to_a
+        };
+        let mut copied_a_to_c = {
+            let v = ctx.pair_ctx.borrow();
+            (*v).session.a_to_c
+        };
+        let execute_write_plain = [0x00, 0x05, 0xcc, 0x25, 0x00];
+        info!("timed_write_plain len: {}", execute_write_plain.len());
+        let mut execute_write_encr =
+            vec![0; execute_write_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+        execute_write_encr[0..execute_write_plain.len()].copy_from_slice(&execute_write_plain);
+        let payload = copied_c_to_a
+            .encrypt(&mut execute_write_encr, execute_write_plain.len())
+            .unwrap();
+        info!("encrypted exec write: {:?} len {}", payload, payload.len());
 
+        ctx.handle_write_incoming_test(
+            &hap,
+            &mut support,
+            &mut accessory,
+            payload,
+            handle_pair_pairings,
+        )
+        .await?;
+
+        // let outgoing_plain: &[u8] = &[0x01, 0x03, 0x06, 0x01, 0x02];
+        let outgoing_plain: &[u8] = &[0x02, 0xcc, 0x00, 0x05, 0x00, 0x01, 0x03, 0x06, 0x01, 0x02];
+
+        info!("outgoing len: {}", outgoing_plain.len());
+        let mut outgoing_encr =
+            vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+        outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
+        let outgoing = copied_a_to_c
+            .encrypt(&mut outgoing_encr, outgoing_plain.len())
+            .unwrap();
+        info!("outgoing_encr: {:?} len {}", payload, payload.len());
+
+        let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+        let resp_buffer = resp.expect("expecting a outgoing response");
+        info!("outgoing: {:02x?}", &*resp_buffer);
+        assert_eq!(&*resp_buffer, outgoing);
+    }
     Ok(())
 }

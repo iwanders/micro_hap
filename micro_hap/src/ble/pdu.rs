@@ -402,6 +402,13 @@ impl<'a> CharacteristicWriteRequest<'a> {
     }
 }
 
+#[derive(Debug, Copy, Clone, Immutable, IntoBytes, TryFromBytes, KnownLayout)]
+#[repr(C, packed)]
+pub struct CharacteristicExecuteWrite {
+    pub header: RequestHeader,
+    pub char_id: CharId,
+}
+
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
 #[repr(u8)]

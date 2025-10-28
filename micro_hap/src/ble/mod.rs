@@ -1002,6 +1002,7 @@ impl HapPeripheralContext {
             pdu::OpCode::CharacteristicTimedWrite => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L683
                 // Check if this characteristic requires security.
+                // NONCOMPLIANCE checks if the bleProcedure is None.
                 let parsed_header = pdu::CharacteristicWriteRequestHeader::parse_pdu(data)?;
                 warn!("timed write, h; {:?}", parsed_header);
                 let chr = self.get_attribute_by_char(parsed_header.char_id)?;
@@ -1030,13 +1031,54 @@ impl HapPeripheralContext {
                     ttl: parsed.ttl.expect("timed write must have a ttl"),
                     data_length: parsed.len(),
                 });
-                parsed.copy_body(&mut *slot_data)?;
+
+                // Copy the entire reques,t not just the payload.
+                slot_data[0..data.len()].copy_from_slice(data);
 
                 // Write the success statement.
                 let mut buffer = self.buffer.borrow_mut();
                 let reply = header.to_success();
                 let len = reply.write_into_length(*buffer)?;
                 BufferResponse(len)
+            }
+            pdu::OpCode::CharacteristicExecuteWrite => {
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L725
+                // CharacteristicExecuteWrite
+                let parsed = pdu::CharacteristicExecuteWrite::parse_pdu(data)?;
+                let char_id = parsed.char_id;
+                // Check if this characteristic requires security.
+                let chr = self.get_attribute_by_char(char_id)?;
+                if !chr.properties.write_open() && !security_active {
+                    // Nope...
+                    return Err(HapBleStatusError::InsufficientAuthentication.into());
+                }
+
+                let index = self
+                    .get_timed_write_slot_index(Some(parsed.char_id))
+                    .ok_or(HapBleStatusError::InvalidRequest)?;
+                let data_length = self
+                    .get_timed_write_slot(index)
+                    .map(|z| z.data_length)
+                    .unwrap();
+                {
+                    let req_data = self.get_timed_write_data(index);
+                    let req_data = &*req_data;
+
+                    tmp_buffer[0..data_length].copy_from_slice(&req_data[0..data_length]);
+                }
+
+                // Now, wipe the slot.
+                *self.get_timed_write_slot(index) = None;
+
+                // In the C code this is a fallthrough.
+
+                info!("handle is: {}", handle);
+                info!("write raw req event data: {:?}", &tmp_buffer);
+                let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&tmp_buffer)?;
+                info!("got write on pair setup with: {:?}", parsed);
+
+                self.characteristic_write_request(pair_support, accessory, &parsed)
+                    .await?
             }
             _ => {
                 return {
