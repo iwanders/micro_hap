@@ -28,6 +28,7 @@ use crate::crypto::{
     aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
+use crate::pair_pairing::Pairings;
 use crate::{InterfaceError, PlatformSupport};
 use thiserror::Error;
 
@@ -320,6 +321,7 @@ pub struct PairServer {
     pub flags: PairingFlags,
     pub pair_setup: ServerPairSetup,
     pub pair_verify: PairVerify,
+    pub pairings: Pairings,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
@@ -526,14 +528,15 @@ pub mod tlv {
     use crate::typed_tlv;
     // And then make the concrete TLV types.
     typed_tlv!(TLVMethod, TLVType::Method);
+    typed_tlv!(TLVIdentifier, TLVType::Identifier);
+    typed_tlv!(TLVPublicKey, TLVType::PublicKey);
+    typed_tlv!(TLVProof, TLVType::Proof);
     typed_tlv!(TLVState, TLVType::State);
     typed_tlv!(TLVFlags, TLVType::Flags);
-    typed_tlv!(TLVProof, TLVType::Proof);
-    typed_tlv!(TLVPublicKey, TLVType::PublicKey);
     typed_tlv!(TLVEncryptedData, TLVType::EncryptedData);
-    typed_tlv!(TLVIdentifier, TLVType::Identifier);
     typed_tlv!(TLVSignature, TLVType::Signature);
     typed_tlv!(TLVSessionId, TLVType::SessionID);
+    typed_tlv!(TLVPermissions, TLVType::Permissions);
 }
 use tlv::*;
 

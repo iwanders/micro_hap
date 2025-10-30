@@ -534,6 +534,7 @@ impl HapPeripheralContext {
 
         let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
         let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
+        let is_pair_pairings = chr.uuid == characteristic::PAIRING_PAIRINGS.into();
         let incoming_data = &left_buffer[0..body_length];
         if is_pair_setup {
             info!("pair setup at incoming");
@@ -578,6 +579,17 @@ impl HapPeripheralContext {
                 .end();
 
             Ok(BufferResponse(len))
+        } else if is_pair_pairings {
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
+            info!("pairing_pairing incoming");
+            crate::pair_pairing::pairing_pairing_handle_incoming(
+                &mut **pair_ctx,
+                pair_support,
+                incoming_data,
+            )
+            .await?;
+
+            todo!()
         } else {
             match chr.data_source {
                 DataSource::Nop => {

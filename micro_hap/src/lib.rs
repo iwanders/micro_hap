@@ -18,6 +18,7 @@ pub mod ble;
 
 use bitfield_struct::bitfield;
 
+pub mod pair_pairing;
 pub mod pair_verify;
 pub mod pairing;
 pub mod tlv;
