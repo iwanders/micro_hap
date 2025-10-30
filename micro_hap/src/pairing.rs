@@ -58,6 +58,10 @@ pub enum PairingError {
     UnknownPairing,
     #[error("an error happend on the platform interface")]
     InterfaceError(#[from] InterfaceError),
+    #[error("invalid data was provided")]
+    InvalidData,
+    #[error("not enough authentication was provided")]
+    AuthenticationError,
 }
 
 impl From<hkdf::InvalidLength> for PairingError {

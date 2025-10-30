@@ -57,7 +57,56 @@ pub async fn pairing_pairing_handle_incoming(
 
             TLVReader::new(&data).read_into(&mut [&mut public_key, &mut permissions])?;
 
-            info!("pair_verify_process_m1 next");
+            let method = *(method.try_from::<PairingMethod>()?);
+            if method != PairingMethod::AddPairing
+                && method != PairingMethod::RemovePairing
+                && method != PairingMethod::ListPairings
+            {
+                return Err(PairingError::InvalidData);
+            }
+            info!("hit setup process m1");
+            // info!("method: {:?}", method);
+            // info!("state: {:?}", state);
+            // info!("flags: {:?}", flags);
+
+            ctx.server.pairings.method = method;
+            ctx.server.pairings.state = PairState::ReceivedM1;
+
+            if !ctx.session.security_active {
+                // Deny on authentication,   not enough authentication.
+                return Err(PairingError::AuthenticationError);
+            }
+
+            let id = PairingId::from_tlv(&identifier)?;
+            /*
+            let pairing = support
+                .get_pairing(&id)
+                .await?
+                .ok_or(PairingError::UnknownPairing)?;
+            */
+            // Nope, we retrieve the CURRENTLY active pairing for this session and verify we have permissions.
+            let current_session_id = ctx.session.pairing_id;
+            let session_pairing = support
+                .get_pairing(&current_session_id)
+                .await?
+                .ok_or(PairingError::UnknownPairing)?;
+            if (session_pairing.permissions & 0x01) == 0 {
+                // Would be nice to make this into a nice enum...
+                return Err(PairingError::AuthenticationError);
+            }
+
+            match ctx.server.pairings.method {
+                PairingMethod::AddPairing => todo!("implement remove pairing"),
+                PairingMethod::RemovePairing => {
+                    let r = pair_pairings_remove_process_m1(ctx, method, state, identifier);
+                    if r.is_err() {
+                        ctx.server.pairings = Pairings::default();
+                    }
+                    r?
+                }
+                PairingMethod::ListPairings => todo!("implement list pairing"),
+                _ => return Err(PairingError::InvalidData), // also shielded above.
+            }
             todo!()
         }
 
@@ -65,6 +114,8 @@ pub async fn pairing_pairing_handle_incoming(
             todo!("Unhandled state: {:?}", catch_all);
         }
     }
+    // NONCOMPLIANCE well, we need to clear the pairingpairing state;
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L908
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L962C10-L962C38
@@ -82,4 +133,15 @@ pub async fn handle_outgoing(
             todo!("Unhandled state: {:?}", catch_all);
         }
     }
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
+//HAPPairingPairingsRemovePairingProcessM1
+pub fn pair_pairings_remove_process_m1(
+    ctx: &mut PairContext,
+    method: PairingMethod,
+    state: TLVState,
+    identifier: TLVIdentifier,
+) -> Result<(), PairingError> {
+    todo!()
 }

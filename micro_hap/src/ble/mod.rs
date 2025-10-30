@@ -193,6 +193,11 @@ impl InternalError {
                 crate::pairing::PairingError::InterfaceError(_) => {
                     unimplemented!()
                 }
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/Darwin/HAPPlatformBLEPeripheralManager.m#L446
+                crate::pairing::PairingError::InvalidData => HapBleStatusError::UnsupportedPDU,
+                crate::pairing::PairingError::AuthenticationError => {
+                    HapBleStatusError::InsufficientAuthentication
+                }
             },
             InternalError::HapBleError(_hap_ble_error) => unimplemented!(),
         }
