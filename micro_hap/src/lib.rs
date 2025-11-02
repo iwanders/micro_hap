@@ -584,6 +584,12 @@ pub trait PlatformSupport: Send {
         id: &PairingId,
     ) -> impl Future<Output = Result<Option<Pairing>, InterfaceError>> + Send;
 
+    /// Remove a pairing id.
+    fn remove_pairing(
+        &mut self,
+        id: &PairingId,
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+
     /// Retrieve the global state number, this is used by the BLE transport.
     fn get_global_state_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
     /// Set the global state number, this is used by the BLE transport.

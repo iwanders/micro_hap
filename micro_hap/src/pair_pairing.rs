@@ -21,7 +21,7 @@ pub struct Pairings {
     pub state: PairState,
     pub method: PairingMethod,
     pub error: u8,
-    pub removed_pairing_id: PairingId,
+    pub removed_pairing_id: Option<PairingId>,
     // Had removed pairing length
 }
 
@@ -77,8 +77,6 @@ pub async fn pairing_pairing_handle_incoming(
                 return Err(PairingError::AuthenticationError);
             }
 
-            info!("processing identifier: {:?}", identifier);
-            let id = PairingId::from_tlv(&identifier)?;
             /*
             let pairing = support
                 .get_pairing(&id)
@@ -99,16 +97,19 @@ pub async fn pairing_pairing_handle_incoming(
             match ctx.server.pairings.method {
                 PairingMethod::AddPairing => todo!("implement remove pairing"),
                 PairingMethod::RemovePairing => {
-                    let r = pair_pairings_remove_process_m1(ctx, method, state, identifier);
+                    let state = PairState::from_tlv(&state)?;
+                    let identifier = PairingId::from_tlv(&identifier)?;
+                    let r =
+                        pair_pairings_remove_process_m1(ctx, support, method, state, identifier)
+                            .await;
                     if r.is_err() {
                         ctx.server.pairings = Pairings::default();
                     }
-                    r?
+                    r
                 }
                 PairingMethod::ListPairings => todo!("implement list pairing"),
                 _ => return Err(PairingError::InvalidData), // also shielded above.
             }
-            todo!()
         }
 
         catch_all => {
@@ -128,7 +129,8 @@ pub async fn handle_outgoing(
 ) -> Result<usize, PairingError> {
     match ctx.server.pair_verify.setup.state {
         PairState::ReceivedM1 => {
-            todo!()
+            ctx.server.pairings.state = PairState::SentM2;
+            pair_setup_process_get_m2(ctx, support, data).await
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
@@ -138,11 +140,39 @@ pub async fn handle_outgoing(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
 //HAPPairingPairingsRemovePairingProcessM1
-pub fn pair_pairings_remove_process_m1(
+pub async fn pair_pairings_remove_process_m1(
     ctx: &mut PairContext,
+    support: &mut impl PlatformSupport,
     method: PairingMethod,
-    state: TLVState,
-    identifier: TLVIdentifier,
+    state: PairState,
+    identifier: PairingId,
 ) -> Result<(), PairingError> {
-    todo!()
+    if method != PairingMethod::RemovePairing {
+        return Err(PairingError::IncorrectState);
+    }
+    if state != PairState::ReceivedM1 {
+        return Err(PairingError::IncorrectState);
+    }
+
+    // Nope, we don't yet remove it... we copy it for the next stage >_<
+    //support.remove_pairing(&identifier).await?;
+
+    // NONCOMPLIANCE why do they store session->state.pairings.removedPairingIDLength ??
+    ctx.server.pairings.removed_pairing_id = Some(identifier);
+    Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L443
+pub async fn pair_setup_process_get_m2(
+    ctx: &mut PairContext,
+    support: &mut impl PlatformSupport,
+    data: &mut [u8],
+) -> Result<usize, PairingError> {
+    if (ctx.server.pairings.method != PairingMethod::RemovePairing) {
+        return Err(PairingError::IncorrectState);
+    }
+    if ctx.server.pairings.state != PairState::SentM2 {
+        return Err(PairingError::IncorrectState);
+    }
+    todo!();
 }

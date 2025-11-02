@@ -559,6 +559,16 @@ pub enum PairState {
     ReceivedM5 = 5,
     SentM6 = 6,
 }
+impl PairState {
+    pub fn from_tlv(identifier: &TLVState) -> Result<PairState, PairingError> {
+        Ok(*PairState::try_ref_from_bytes(
+            identifier
+                .short_data()
+                .map_err(|_| PairingError::InvalidData)?,
+        )
+        .map_err(|_| PairingError::InvalidData)?)
+    }
+}
 
 #[derive(Debug)]
 pub struct PairContext {
@@ -1166,6 +1176,11 @@ pub mod test {
 
         async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
             Ok(self.pairings.get(id).copied())
+        }
+
+        async fn remove_pairing(&mut self, id: &PairingId) -> Result<(), InterfaceError> {
+            let _ = self.pairings.remove(&id);
+            Ok(())
         }
 
         async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {

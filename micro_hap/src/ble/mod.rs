@@ -587,14 +587,17 @@ impl HapPeripheralContext {
         } else if is_pair_pairings {
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
             info!("pairing_pairing incoming");
-            crate::pair_pairing::pairing_pairing_handle_incoming(
+            let _ = crate::pair_pairing::pairing_pairing_handle_incoming(
                 &mut **pair_ctx,
                 pair_support,
                 incoming_data,
             )
             .await?;
 
-            todo!()
+            // Convert into success.
+            let reply = parsed.header.header.to_success();
+            let len = reply.write_into_length(left_buffer)?;
+            Ok(BufferResponse(len))
         } else {
             match chr.data_source {
                 DataSource::Nop => {
