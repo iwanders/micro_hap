@@ -1077,7 +1077,8 @@ impl HapPeripheralContext {
                     .get_timed_write_slot(index)
                     .map(|z| z.data_length)
                     .unwrap();
-                {
+
+                let payload = {
                     let req_data = self.get_timed_write_data(index);
                     let req_data = &*req_data;
                     let orig_header = parsed.header.as_bytes();
@@ -1086,7 +1087,8 @@ impl HapPeripheralContext {
                     tmp_buffer[0..data_length].copy_from_slice(&req_data[0..data_length]);
                     // Replace the request header...
                     tmp_buffer[0..orig_header.len()].copy_from_slice(&orig_header);
-                }
+                    &tmp_buffer[0..data_length]
+                };
 
                 // Now, wipe the slot.
                 *self.get_timed_write_slot(index) = None;
@@ -1094,8 +1096,8 @@ impl HapPeripheralContext {
                 // In the C code this is a fallthrough.
 
                 info!("handle is: {}", handle);
-                info!("write raw req event data: {:?}", &tmp_buffer);
-                let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&tmp_buffer)?;
+                info!("{} write raw req event data: {:?}", line!(), &payload);
+                let parsed = pdu::CharacteristicWriteRequest::parse_pdu(&payload)?;
                 info!("got write on pair setup with: {:?}", parsed);
 
                 self.characteristic_write_request(pair_support, accessory, &parsed)

@@ -36,7 +36,7 @@ pub async fn pairing_pairing_handle_incoming(
     let _ = support;
     match ctx.server.pairings.state {
         PairState::NotStarted => {
-            info!("not started, so m1");
+            info!("pairing_pairing_handle_incoming started, so m1");
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             let mut public_key = TLVPublicKey::tied(&data);
@@ -77,6 +77,7 @@ pub async fn pairing_pairing_handle_incoming(
                 return Err(PairingError::AuthenticationError);
             }
 
+            info!("processing identifier: {:?}", identifier);
             let id = PairingId::from_tlv(&identifier)?;
             /*
             let pairing = support

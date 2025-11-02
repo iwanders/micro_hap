@@ -395,8 +395,16 @@ impl<'a> CharacteristicWriteRequest<'a> {
 
     pub fn len(&self) -> usize {
         let mut total_length = 0;
+        total_length += CharacteristicWriteRequestHeader::mem_size();
         for s in self.body.iter() {
             total_length += s.len()
+        }
+        total_length += 2; // length & type for body
+        if self.return_response {
+            total_length += 3;
+        }
+        if self.ttl.is_some() {
+            total_length += 3;
         }
         total_length
     }

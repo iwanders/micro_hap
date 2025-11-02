@@ -1668,7 +1668,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         //let outgoing_plain: &[u8] = &[0x02, 0xcc, 0x00, 0x05, 0x00, 0x01, 0x03, 0x06, 0x01, 0x02];
         let outgoing_plain: &[u8] = &[0x02, 0xcc, 0x00];
 
-        info!("outgoing len: {}", outgoing_plain.len());
+        info!("{} outgoing len: {}", line!(), outgoing_plain.len());
         let mut outgoing_encr =
             vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
         outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
