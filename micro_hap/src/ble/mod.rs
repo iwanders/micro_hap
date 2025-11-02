@@ -594,9 +594,18 @@ impl HapPeripheralContext {
             )
             .await?;
 
-            // Convert into success.
+            // Put the reply in the second half.
+            let outgoing_len =
+                crate::pair_pairing::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
+                    .await?;
+
             let reply = parsed.header.header.to_success();
             let len = reply.write_into_length(left_buffer)?;
+
+            let len = BodyBuilder::new_at(left_buffer, len)
+                .add_value(&outgoing[0..outgoing_len])
+                .end();
+
             Ok(BufferResponse(len))
         } else {
             match chr.data_source {

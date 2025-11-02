@@ -127,7 +127,7 @@ pub async fn handle_outgoing(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    match ctx.server.pair_verify.setup.state {
+    match ctx.server.pairings.state {
         PairState::ReceivedM1 => {
             ctx.server.pairings.state = PairState::SentM2;
             pair_setup_process_get_m2(ctx, support, data).await
@@ -155,7 +155,6 @@ pub async fn pair_pairings_remove_process_m1(
     }
 
     // Nope, we don't yet remove it... we copy it for the next stage >_<
-    //support.remove_pairing(&identifier).await?;
 
     // NONCOMPLIANCE why do they store session->state.pairings.removedPairingIDLength ??
     ctx.server.pairings.removed_pairing_id = Some(identifier);
@@ -168,11 +167,25 @@ pub async fn pair_setup_process_get_m2(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    if (ctx.server.pairings.method != PairingMethod::RemovePairing) {
+    if ctx.server.pairings.method != PairingMethod::RemovePairing {
         return Err(PairingError::IncorrectState);
     }
     if ctx.server.pairings.state != PairState::SentM2 {
         return Err(PairingError::IncorrectState);
     }
-    todo!();
+
+    if let Some(identifier) = ctx.server.pairings.removed_pairing_id.take() {
+        support.remove_pairing(&identifier).await?;
+    }
+
+    // NONCOMPLIANCE if admin session is removed, remove all pairings.
+
+    let mut writer = TLVWriter::new(data);
+
+    info!("writing setup state: {:?}", &ctx.setup.state);
+    writer = writer.add_entry(TLVType::State, &ctx.server.pairings.state)?;
+
+    // wipe the state.
+    ctx.server.pairings = Pairings::default();
+    Ok(writer.end())
 }
