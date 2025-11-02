@@ -1,16 +1,7 @@
-// use bitfield_struct::bitfield;
-use zerocopy::{IntoBytes, TryFromBytes};
-
 use crate::PlatformSupport;
-use crate::crypto::{
-    aead::{self, CHACHA20_POLY1305_KEY_BYTES},
-    ed25519::{ed25519_sign, ed25519_verify},
-    hkdf_sha512,
-};
 
 use crate::pairing::{
-    ED25519_BYTES, PairContext, PairState, PairingError, PairingId, PairingMethod, TLVType,
-    X25519_BYTES, tlv::*,
+    PairContext, PairState, PairingError, PairingId, PairingMethod, TLVType, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
 
@@ -22,7 +13,8 @@ pub struct Pairings {
     pub method: PairingMethod,
     pub error: u8,
     pub removed_pairing_id: Option<PairingId>,
-    // Had removed pairing length
+    // Had removed pairing length, since we only really have to handle the full UUID and we can consolidate that
+    // into the optional removed_pairing_id
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L765
@@ -34,19 +26,15 @@ pub async fn pairing_pairing_handle_incoming(
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
-    match ctx.server.pairings.state {
+    let r = match ctx.server.pairings.state {
         PairState::NotStarted => {
             info!("pairing_pairing_handle_incoming started, so m1");
             let mut method = TLVMethod::tied(&data);
             let mut state = TLVState::tied(&data);
             let mut public_key = TLVPublicKey::tied(&data);
-            //let mut session_id = TLVSessionId::tied(&data);
             let mut identifier = TLVIdentifier::tied(&data);
             let mut permissions = TLVPermissions::tied(&data);
-            info!("before read into, data: {:02?}", data);
-            for v in TLVReader::new(&data) {
-                info!("v: {:?}", v);
-            }
+
             // Only got 6 & 3??? state & public key? Only those are required, the rest are optional.
             TLVReader::new(&data)
                 .require_into(&mut [&mut method, &mut state, &mut identifier])
@@ -62,27 +50,19 @@ pub async fn pairing_pairing_handle_incoming(
                 && method != PairingMethod::RemovePairing
                 && method != PairingMethod::ListPairings
             {
+                ctx.server.pairings = Pairings::default();
                 return Err(PairingError::InvalidData);
             }
-            info!("hit setup process m1");
-            // info!("method: {:?}", method);
-            // info!("state: {:?}", state);
-            // info!("flags: {:?}", flags);
 
             ctx.server.pairings.method = method;
             ctx.server.pairings.state = PairState::ReceivedM1;
 
             if !ctx.session.security_active {
+                ctx.server.pairings = Pairings::default();
                 // Deny on authentication,   not enough authentication.
                 return Err(PairingError::AuthenticationError);
             }
 
-            /*
-            let pairing = support
-                .get_pairing(&id)
-                .await?
-                .ok_or(PairingError::UnknownPairing)?;
-            */
             // Nope, we retrieve the CURRENTLY active pairing for this session and verify we have permissions.
             let current_session_id = ctx.session.pairing_id;
             let session_pairing = support
@@ -90,6 +70,7 @@ pub async fn pairing_pairing_handle_incoming(
                 .await?
                 .ok_or(PairingError::UnknownPairing)?;
             if (session_pairing.permissions & 0x01) == 0 {
+                ctx.server.pairings = Pairings::default();
                 // Would be nice to make this into a nice enum...
                 return Err(PairingError::AuthenticationError);
             }
@@ -102,9 +83,6 @@ pub async fn pairing_pairing_handle_incoming(
                     let r =
                         pair_pairings_remove_process_m1(ctx, support, method, state, identifier)
                             .await;
-                    if r.is_err() {
-                        ctx.server.pairings = Pairings::default();
-                    }
                     r
                 }
                 PairingMethod::ListPairings => todo!("implement list pairing"),
@@ -115,8 +93,12 @@ pub async fn pairing_pairing_handle_incoming(
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
-    }
+    };
     // NONCOMPLIANCE well, we need to clear the pairingpairing state;
+    if r.is_err() {
+        ctx.server.pairings = Pairings::default();
+    }
+    r
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L908
 }
 
@@ -142,7 +124,7 @@ pub async fn handle_outgoing(
 //HAPPairingPairingsRemovePairingProcessM1
 pub async fn pair_pairings_remove_process_m1(
     ctx: &mut PairContext,
-    support: &mut impl PlatformSupport,
+    _support: &mut impl PlatformSupport,
     method: PairingMethod,
     state: PairState,
     identifier: PairingId,
@@ -155,8 +137,6 @@ pub async fn pair_pairings_remove_process_m1(
     }
 
     // Nope, we don't yet remove it... we copy it for the next stage >_<
-
-    // NONCOMPLIANCE why do they store session->state.pairings.removedPairingIDLength ??
     ctx.server.pairings.removed_pairing_id = Some(identifier);
     Ok(())
 }
