@@ -179,6 +179,10 @@ impl PlatformSupport for ActualPairSupport {
         error!("retrieving id pairing id");
         Ok(self.pairings.get(id).copied())
     }
+    async fn remove_pairing(&mut self, id: &PairingId) -> Result<(), InterfaceError> {
+        let _ = self.pairings.remove(id);
+        Ok(())
+    }
 
     async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.global_state_number)

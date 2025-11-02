@@ -62,7 +62,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Verify pair resume actually works, keep a list of sessions...
 - Make `pairing` and `pair_verify` modules crate-private?
 - ~Implement TimedWrite request.~
-- Implement `CharacteristicExecuteWrite`.
+- ~Implement `CharacteristicExecuteWrite`.~
 - Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2.
 
 ## example_std
