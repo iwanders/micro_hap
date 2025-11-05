@@ -638,7 +638,10 @@ pub async fn pair_setup_handle_incoming(
             todo!("Unhandled state: {:?}", catch_all);
         }
     };
-    if r.is_err() {};
+    if r.is_err() {
+        info!("An error occured, resetting the pairing setup state.");
+        ctx.server.pair_setup = Default::default();
+    };
 
     r
 }
@@ -650,7 +653,7 @@ pub async fn pair_setup_handle_outgoing(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    match ctx.server.pair_setup.setup.state {
+    let r = match ctx.server.pair_setup.setup.state {
         PairState::ReceivedM1 => {
             // Advance the state, and write M2.
             ctx.server.pair_setup.setup.state = PairState::SentM2;
@@ -669,7 +672,13 @@ pub async fn pair_setup_handle_outgoing(
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
+    };
+
+    if r.is_err() || ctx.server.pair_setup.setup.state == PairState::SentM6 {
+        info!("Clearing pairing setup state.");
+        ctx.server.pair_setup = Default::default();
     }
+    r
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
