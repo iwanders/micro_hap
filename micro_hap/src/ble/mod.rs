@@ -9,7 +9,7 @@ mod pdu;
 use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
 use crate::pairing::PairingError;
-use crate::{CharId, SvcId};
+use crate::{AccessoryContext, CharId, SvcId};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 // Todo, we should probably detach this completely from the HapServices struct
@@ -245,7 +245,7 @@ struct TimedWriteSlot(usize);
 pub struct HapPeripheralContext {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,
-    pair_ctx: core::cell::RefCell<&'static mut crate::pairing::AccessoryContext>,
+    pair_ctx: core::cell::RefCell<&'static mut AccessoryContext>,
 
     timed_write_slot_buffer: usize,
     timed_write_data: core::cell::RefCell<&'static mut [u8]>,
@@ -359,7 +359,7 @@ impl HapPeripheralContext {
 
     pub fn new(
         buffer: &'static mut [u8],
-        pair_ctx: &'static mut crate::pairing::AccessoryContext,
+        pair_ctx: &'static mut AccessoryContext,
         timed_write_data: &'static mut [u8],
         timed_write: &'static mut [Option<TimedWrite>],
         information_service: &AccessoryInformationService,

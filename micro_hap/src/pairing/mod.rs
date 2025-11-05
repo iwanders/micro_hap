@@ -30,7 +30,7 @@ use crate::crypto::{
 };
 pub mod pair_pairing;
 pub mod pair_verify;
-use crate::{InterfaceError, PlatformSupport};
+use crate::{AccessoryContext, InterfaceError, PlatformSupport};
 use pair_pairing::Pairings;
 use thiserror::Error;
 
@@ -578,24 +578,6 @@ impl PairState {
                 .map_err(|_| PairingError::InvalidData)?,
         )
         .map_err(|_| PairingError::InvalidData)?)
-    }
-}
-
-#[derive(Debug)]
-pub struct AccessoryContext {
-    pub server: PairServer,
-    pub info: SetupInfo,
-    pub session: crate::Session,
-    pub accessory: crate::AccessoryInformationStatic,
-}
-impl Default for AccessoryContext {
-    fn default() -> Self {
-        Self {
-            server: Default::default(),
-            info: Default::default(),
-            session: Default::default(),
-            accessory: Default::default(),
-        }
     }
 }
 

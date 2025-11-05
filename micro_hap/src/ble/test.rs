@@ -122,19 +122,19 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         bulb_on_state: false,
     };
 
-    let pair_ctx = {
-        static STATE: StaticCell<crate::pairing::AccessoryContext> = StaticCell::new();
-        STATE.init_with(crate::pairing::AccessoryContext::default)
+    let ctx = {
+        static STATE: StaticCell<AccessoryContext> = StaticCell::new();
+        STATE.init_with(AccessoryContext::default)
     };
-    pair_ctx.accessory = accessory_static_data;
+    ctx.accessory = accessory_static_data;
 
     // We need real commissioning for this.
     // from recording 2025_08_24_1639.
-    pair_ctx.info.salt = [
+    ctx.info.salt = [
         0x3d, 0xc2, 0x81, 0xab, 0x08, 0xed, 0x4d, 0x8c, 0x52, 0x0c, 0xb2, 0x5f, 0xc2, 0x51, 0x9c,
         0x1f,
     ];
-    pair_ctx.info.verifier = [
+    ctx.info.verifier = [
         0xe3, 0x7e, 0xa0, 0xd4, 0x45, 0xab, 0x91, 0xcc, 0xee, 0x92, 0x33, 0x20, 0x9e, 0xb3, 0x8f,
         0xfc, 0xd7, 0x04, 0x20, 0xd1, 0x95, 0x34, 0x73, 0x5a, 0x17, 0x2e, 0xca, 0xef, 0xe3, 0x8d,
         0x1a, 0x21, 0xfb, 0x5e, 0x2d, 0x18, 0x1b, 0xb0, 0x80, 0x77, 0x12, 0xf7, 0x2d, 0x2e, 0x64,
@@ -186,7 +186,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
 
     let mut ctx = HapPeripheralContext::new(
         buffer,
-        pair_ctx,
+        ctx,
         timed_write_data,
         timed_writes,
         &server.accessory_information,

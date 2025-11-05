@@ -626,6 +626,24 @@ pub trait PlatformSupport: Send {
     ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 }
 
+#[derive(Debug)]
+pub struct AccessoryContext {
+    pub server: pairing::PairServer,
+    pub info: pairing::SetupInfo,
+    pub session: crate::Session,
+    pub accessory: crate::AccessoryInformationStatic,
+}
+impl Default for AccessoryContext {
+    fn default() -> Self {
+        Self {
+            server: Default::default(),
+            info: Default::default(),
+            session: Default::default(),
+            accessory: Default::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     pub fn init() {

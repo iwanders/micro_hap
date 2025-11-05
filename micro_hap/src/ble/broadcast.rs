@@ -1,6 +1,6 @@
 use crate::crypto::hkdf_sha512;
-use crate::pairing::{AccessoryContext, PairingError};
-use crate::{CharId, PlatformSupport};
+use crate::pairing::PairingError;
+use crate::{AccessoryContext, CharId, PlatformSupport};
 // Some helpers to handle the whole broadcast key and global state number stuff.
 
 #[derive(Copy, Clone, Default, Debug)]
