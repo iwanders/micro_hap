@@ -147,8 +147,8 @@ mod hap_lightbulb {
 
         // Create the pairing context.
         let pair_ctx = {
-            static STATE: StaticCell<micro_hap::pairing::AccessoryContext> = StaticCell::new();
-            STATE.init_with(micro_hap::pairing::AccessoryContext::default)
+            static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
+            STATE.init_with(micro_hap::AccessoryContext::default)
         };
         pair_ctx.accessory = static_information;
         pair_ctx

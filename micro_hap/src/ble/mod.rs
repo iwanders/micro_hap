@@ -543,7 +543,7 @@ impl HapPeripheralContext {
         let incoming_data = &left_buffer[0..body_length];
         if is_pair_setup {
             info!("pair setup at incoming");
-            crate::pairing::pair_setup_handle_incoming(
+            crate::pairing::pair_setup::pair_setup_handle_incoming(
                 &mut **pair_ctx,
                 pair_support,
                 incoming_data,
@@ -552,9 +552,12 @@ impl HapPeripheralContext {
 
             info!("pair setup at outgoing");
             // Put the reply in the second half.
-            let outgoing_len =
-                crate::pairing::pair_setup_handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
-                    .await?;
+            let outgoing_len = crate::pairing::pair_setup::pair_setup_handle_outgoing(
+                &mut **pair_ctx,
+                pair_support,
+                outgoing,
+            )
+            .await?;
 
             info!("Populating the body.");
 

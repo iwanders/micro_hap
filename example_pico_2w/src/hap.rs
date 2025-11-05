@@ -273,8 +273,8 @@ where
     };
     // let mut accessory = micro_hap::NopAccessory;
     let pair_ctx = {
-        static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
-        STATE.init_with(micro_hap::pairing::PairContext::default)
+        static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
+        STATE.init_with(micro_hap::AccessoryContext::default)
     };
     pair_ctx.accessory = static_information;
     // We need real commissioning for this, such that the verifier matches the setup code.
