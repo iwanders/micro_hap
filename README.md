@@ -60,7 +60,7 @@ To help people understand the code and the concepts, here's an information dump:
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 - Verify pair resume actually works, keep a list of sessions...
-- Make `pairing` and `pair_verify` modules crate-private?
+- ~Make `pairing` and `pair_verify` modules crate-private?~ They are now, and refactored, error is still public.
 - ~Implement TimedWrite request.~
 - ~Implement `CharacteristicExecuteWrite`.~
 - Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).

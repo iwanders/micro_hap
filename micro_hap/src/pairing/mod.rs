@@ -25,9 +25,9 @@ use crate::tlv::TLVError;
 use uuid;
 
 use crate::crypto::{aead::CHACHA20_POLY1305_KEY_BYTES, homekit_srp_client};
-pub mod pair_pairing;
-pub mod pair_setup;
-pub mod pair_verify;
+pub(crate) mod pair_pairing;
+pub(crate) mod pair_setup;
+pub(crate) mod pair_verify;
 use crate::{AccessoryContext, InterfaceError};
 use pair_pairing::Pairings;
 use thiserror::Error;
