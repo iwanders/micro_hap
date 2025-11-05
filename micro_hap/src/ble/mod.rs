@@ -568,13 +568,20 @@ impl HapPeripheralContext {
             info!("Done, len: {}", len);
             Ok(BufferResponse(len))
         } else if is_pair_verify {
-            crate::pair_verify::handle_incoming(&mut **pair_ctx, pair_support, incoming_data)
-                .await?;
+            crate::pairing::pair_verify::handle_incoming(
+                &mut **pair_ctx,
+                pair_support,
+                incoming_data,
+            )
+            .await?;
 
             // Put the reply in the second half.
-            let outgoing_len =
-                crate::pair_verify::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
-                    .await?;
+            let outgoing_len = crate::pairing::pair_verify::handle_outgoing(
+                &mut **pair_ctx,
+                pair_support,
+                outgoing,
+            )
+            .await?;
 
             let reply = parsed.header.header.to_success();
             let len = reply.write_into_length(left_buffer)?;
@@ -587,7 +594,7 @@ impl HapPeripheralContext {
         } else if is_pair_pairings {
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
             info!("pairing_pairing incoming");
-            let _ = crate::pair_pairing::pairing_pairing_handle_incoming(
+            let _ = crate::pairing::pair_pairing::pairing_pairing_handle_incoming(
                 &mut **pair_ctx,
                 pair_support,
                 incoming_data,
@@ -595,9 +602,12 @@ impl HapPeripheralContext {
             .await?;
 
             // Put the reply in the second half.
-            let outgoing_len =
-                crate::pair_pairing::handle_outgoing(&mut **pair_ctx, pair_support, outgoing)
-                    .await?;
+            let outgoing_len = crate::pairing::pair_pairing::handle_outgoing(
+                &mut **pair_ctx,
+                pair_support,
+                outgoing,
+            )
+            .await?;
 
             let reply = parsed.header.header.to_success();
             let len = reply.write_into_length(left_buffer)?;

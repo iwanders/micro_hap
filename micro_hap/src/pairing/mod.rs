@@ -28,8 +28,10 @@ use crate::crypto::{
     aead, aead::CHACHA20_POLY1305_KEY_BYTES, ed25519::ed25519_create_public, ed25519::ed25519_sign,
     ed25519::ed25519_verify, hkdf_sha512, homekit_srp_client, homekit_srp_server,
 };
-use crate::pair_pairing::Pairings;
+pub mod pair_pairing;
+pub mod pair_verify;
 use crate::{InterfaceError, PlatformSupport};
+use pair_pairing::Pairings;
 use thiserror::Error;
 
 /// Errors associated to pairing, and configuration / initialisation of the pairing properties.
