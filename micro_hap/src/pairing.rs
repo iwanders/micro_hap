@@ -287,6 +287,12 @@ pub struct PairSetup {
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[allow(non_snake_case)]
 pub struct ServerPairSetup {
+    // In the reference, this triple of flags lives in the 'state' struct, while the rest of this struct lives in the
+    // internal struct.
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L117-L124
+    /// State, method and error for the pair setup.
+    pub setup: PairSetup,
+
     /// Ephemeral public key
     pub A: [u8; SRP_PUBLIC_KEY_BYTES],
 
@@ -304,6 +310,8 @@ pub struct ServerPairSetup {
 
     pub m1: [u8; SRP_PROOF_BYTES],
     pub m2: [u8; SRP_PROOF_BYTES],
+
+    pub flags: PairingFlags,
 }
 impl Default for ServerPairSetup {
     fn default() -> Self {
@@ -315,6 +323,8 @@ impl Default for ServerPairSetup {
             session_key: [0u8; CHACHA20_POLY1305_KEY_BYTES],
             m1: [0u8; SRP_PROOF_BYTES],
             m2: [0u8; SRP_PROOF_BYTES],
+            flags: Default::default(),
+            setup: Default::default(),
         }
     }
 }
@@ -322,7 +332,6 @@ impl Default for ServerPairSetup {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
 pub struct PairServer {
-    pub flags: PairingFlags,
     pub pair_setup: ServerPairSetup,
     pub pair_verify: PairVerify,
     pub pairings: Pairings,
@@ -573,7 +582,6 @@ impl PairState {
 #[derive(Debug)]
 pub struct PairContext {
     pub server: PairServer,
-    pub setup: PairSetup,
     pub info: SetupInfo,
     pub session: crate::Session,
     pub accessory: crate::AccessoryInformationStatic,
@@ -582,7 +590,6 @@ impl Default for PairContext {
     fn default() -> Self {
         Self {
             server: Default::default(),
-            setup: Default::default(),
             info: Default::default(),
             session: Default::default(),
             accessory: Default::default(),
@@ -597,7 +604,7 @@ pub async fn pair_setup_handle_incoming(
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
-    match ctx.setup.state {
+    let r = match ctx.server.pair_setup.setup.state {
         PairState::NotStarted => {
             info!("not started, so m1");
             let mut method = TLVMethod::tied(&data);
@@ -615,7 +622,7 @@ pub async fn pair_setup_handle_incoming(
             let mut public_key = TLVPublicKey::tied(&data);
             let mut proof = TLVProof::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut state, &mut public_key, &mut proof])?;
-            ctx.setup.state = PairState::ReceivedM3;
+            ctx.server.pair_setup.setup.state = PairState::ReceivedM3;
             pair_setup_process_m3(ctx, state, public_key, proof)
         }
         PairState::SentM4 => {
@@ -624,13 +631,16 @@ pub async fn pair_setup_handle_incoming(
 
             let mut encrypted_data = TLVEncryptedData::tied(&data);
             TLVReader::new(&data).require_into(&mut [&mut state, &mut encrypted_data])?;
-            ctx.setup.state = PairState::ReceivedM5;
+            ctx.server.pair_setup.setup.state = PairState::ReceivedM5;
             pair_setup_process_m5(ctx, support, state, encrypted_data).await
         }
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
-    }
+    };
+    if r.is_err() {};
+
+    r
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1406
@@ -640,20 +650,20 @@ pub async fn pair_setup_handle_outgoing(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    match ctx.setup.state {
+    match ctx.server.pair_setup.setup.state {
         PairState::ReceivedM1 => {
             // Advance the state, and write M2.
-            ctx.setup.state = PairState::SentM2;
+            ctx.server.pair_setup.setup.state = PairState::SentM2;
             pair_setup_process_get_m2(ctx, support, data).await
         }
         PairState::ReceivedM3 => {
             // Advance the state, and write M2.
-            ctx.setup.state = PairState::SentM4;
+            ctx.server.pair_setup.setup.state = PairState::SentM4;
             pair_setup_process_get_m4(ctx, support, data)
         }
         PairState::ReceivedM5 => {
             // Advance the state, and write M6.
-            ctx.setup.state = PairState::SentM6;
+            ctx.server.pair_setup.setup.state = PairState::SentM6;
             pair_setup_process_get_m6(ctx, support, data).await
         }
         catch_all => {
@@ -675,10 +685,10 @@ pub fn pair_setup_process_m1(
     // info!("state: {:?}", state);
     // info!("flags: {:?}", flags);
 
-    ctx.setup.method = *method;
+    ctx.server.pair_setup.setup.method = *method;
     // NONCOMPLIANCE: flags present is not set to false.
     //ctx.server.flags = PairingFlags::from_bits(flags.to_u32()?);
-    ctx.setup.state = *state.try_from::<PairState>()?;
+    ctx.server.pair_setup.setup.state = *state.try_from::<PairState>()?;
 
     Ok(())
 }
@@ -712,7 +722,7 @@ pub fn pair_setup_process_m3(
     proof.copy_body(&mut ctx.server.pair_setup.m1)?;
 
     // And update the state.
-    ctx.setup.state = state;
+    ctx.server.pair_setup.setup.state = state;
     Ok(())
 }
 
@@ -822,24 +832,24 @@ pub async fn pair_setup_process_get_m2(
     // NONCOMPLIANCE: Keep invalid authentication counter.
     let mut is_transient: bool = false;
     let mut is_split: bool = false;
-    if ctx.server.flags.transient() {
-        if ctx.setup.method == PairingMethod::PairSetupWithAuth {
+    if ctx.server.pair_setup.flags.transient() {
+        if ctx.server.pair_setup.setup.method == PairingMethod::PairSetupWithAuth {
             // What does this mean!?
             warn!("pair setup M2; ignoring because pair setup with auth was requested");
         } else {
-            if ctx.setup.method != PairingMethod::PairSetup {
+            if ctx.server.pair_setup.setup.method != PairingMethod::PairSetup {
                 error!("method should be pair setup");
                 return Err(PairingError::IncorrectMethodCombination);
             }
             is_transient = true;
         }
     }
-    if ctx.server.flags.split() {
-        if ctx.setup.method == PairingMethod::PairSetupWithAuth {
+    if ctx.server.pair_setup.flags.split() {
+        if ctx.server.pair_setup.setup.method == PairingMethod::PairSetupWithAuth {
             // What does this mean!?
             warn!("pair setup M2; ignoring because pair setup with auth was requested");
         } else {
-            if ctx.setup.method != PairingMethod::PairSetup {
+            if ctx.server.pair_setup.setup.method != PairingMethod::PairSetup {
                 error!("method should be pair setup");
                 return Err(PairingError::IncorrectMethodCombination);
             }
@@ -881,8 +891,11 @@ pub async fn pair_setup_process_get_m2(
 
     let mut writer = TLVWriter::new(data);
 
-    info!("writing setup state: {:?}", &ctx.setup.state);
-    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+    info!(
+        "writing setup state: {:?}",
+        &ctx.server.pair_setup.setup.state
+    );
+    writer = writer.add_entry(TLVType::State, &ctx.server.pair_setup.setup.state)?;
 
     // NONCOMPLIANCE: They skip leading zeros, do we need that? Sounds like a minor improvement?
     info!("writing B: ");
@@ -979,15 +992,17 @@ pub fn pair_setup_process_get_m4(
 
     let mut writer = TLVWriter::new(data);
 
-    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+    writer = writer.add_entry(TLVType::State, &ctx.server.pair_setup.setup.state)?;
 
     writer = writer.add_entry(TLVType::Proof, &ctx.server.pair_setup.m2)?;
 
-    if ctx.setup.method == PairingMethod::PairSetupWithAuth {
+    if ctx.server.pair_setup.setup.method == PairingMethod::PairSetupWithAuth {
         todo!();
     }
 
-    if ctx.setup.method == PairingMethod::PairSetup && ctx.server.flags.transient() {
+    if ctx.server.pair_setup.setup.method == PairingMethod::PairSetup
+        && ctx.server.pair_setup.flags.transient()
+    {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L740
         // Make a sesion... and a control channel, whatever that means.
         // Clear the current session.
@@ -1048,7 +1063,7 @@ pub async fn pair_setup_process_get_m6(
     let device_id_str = ctx.accessory.device_id.to_device_id_string();
 
     let mut writer = TLVWriter::new(data);
-    writer = writer.add_entry(TLVType::State, &ctx.setup.state)?;
+    writer = writer.add_entry(TLVType::State, &ctx.server.pair_setup.setup.state)?;
 
     // Make the public key and append that.
     let mut public_key = [0u8; ED25519_LTPK];

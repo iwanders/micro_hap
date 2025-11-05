@@ -162,7 +162,7 @@ pub async fn pair_setup_process_get_m2(
 
     let mut writer = TLVWriter::new(data);
 
-    info!("writing setup state: {:?}", &ctx.setup.state);
+    info!("writing setup state: {:?}", &ctx.server.pairings.state);
     writer = writer.add_entry(TLVType::State, &ctx.server.pairings.state)?;
 
     // wipe the state.
