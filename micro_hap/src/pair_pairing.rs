@@ -109,7 +109,7 @@ pub async fn handle_outgoing(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    match ctx.server.pairings.state {
+    let r = match ctx.server.pairings.state {
         PairState::ReceivedM1 => {
             ctx.server.pairings.state = PairState::SentM2;
             pair_setup_process_get_m2(ctx, support, data).await
@@ -117,7 +117,12 @@ pub async fn handle_outgoing(
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
+    };
+    if r.is_err() {
+        ctx.server.pairings = Pairings::default();
     }
+
+    r
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351

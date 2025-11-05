@@ -40,7 +40,7 @@ pub async fn handle_incoming(
     data: &[u8],
 ) -> Result<(), PairingError> {
     let _ = support;
-    match ctx.server.pair_verify.setup.state {
+    let r = match ctx.server.pair_verify.setup.state {
         PairState::NotStarted => {
             info!("not started, so m1");
             let mut method = TLVMethod::tied(&data);
@@ -81,7 +81,12 @@ pub async fn handle_incoming(
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
+    };
+
+    if r.is_err() {
+        ctx.server.pair_verify = Default::default();
     }
+    r
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1105C10-L1105C40
@@ -91,7 +96,7 @@ pub async fn handle_outgoing(
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
-    match ctx.server.pair_verify.setup.state {
+    let r = match ctx.server.pair_verify.setup.state {
         PairState::ReceivedM1 => {
             ctx.server.pair_verify.setup.state = PairState::SentM2;
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1136
@@ -110,7 +115,13 @@ pub async fn handle_outgoing(
         catch_all => {
             todo!("Unhandled state: {:?}", catch_all);
         }
+    };
+
+    if r.is_err() || ctx.server.pair_verify.setup.state == PairState::SentM4 {
+        info!("Clearing pairing setup state.");
+        ctx.server.pair_verify = Default::default();
     }
+    r
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L135
