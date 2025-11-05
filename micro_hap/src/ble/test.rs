@@ -123,8 +123,8 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     };
 
     let pair_ctx = {
-        static STATE: StaticCell<crate::pairing::PairContext> = StaticCell::new();
-        STATE.init_with(crate::pairing::PairContext::default)
+        static STATE: StaticCell<crate::pairing::AccessoryContext> = StaticCell::new();
+        STATE.init_with(crate::pairing::AccessoryContext::default)
     };
     pair_ctx.accessory = accessory_static_data;
 

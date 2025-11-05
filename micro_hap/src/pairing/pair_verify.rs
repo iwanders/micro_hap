@@ -8,7 +8,7 @@ use crate::crypto::{
     hkdf_sha512,
 };
 use crate::pairing::{
-    ED25519_BYTES, PairContext, PairState, PairingError, PairingId, PairingMethod, TLVType,
+    ED25519_BYTES, AccessoryContext, PairState, PairingError, PairingId, PairingMethod, TLVType,
     X25519_BYTES, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
@@ -35,7 +35,7 @@ pub const CONTROL_CHANNEL_WRITE_KEY: &'static str = "Control-Write-Encryption-Ke
 
 // HAPPairingPairVerifyHandleWrite
 pub async fn handle_incoming(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
@@ -92,7 +92,7 @@ pub async fn handle_incoming(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L1105C10-L1105C40
 // HAPPairingPairVerifyHandleRead
 pub async fn handle_outgoing(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -127,7 +127,7 @@ pub async fn handle_outgoing(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L135
 // HAPPairingPairVerifyProcessM1
 pub fn pair_verify_process_m1(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     method: TLVMethod,
     state: TLVState,
     public_key: TLVPublicKey,
@@ -216,7 +216,7 @@ pub fn pair_verify_process_m1(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L352
 // HAPPairingPairVerifyGetM2
 pub async fn pair_verify_process_get_m2(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -321,7 +321,7 @@ pub async fn pair_verify_process_get_m2(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L553
 // HAPPairingPairVerifyGetM2ForBLEPairResume
 pub async fn pair_verify_process_get_m2_ble(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -404,7 +404,7 @@ pub async fn pair_verify_process_get_m2_ble(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L708
 // HAPPairingPairVerifyProcessM3
 pub async fn pair_verify_process_m3(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     state: TLVState<'_>,
     encrypted_data: TLVEncryptedData<'_>,
@@ -474,7 +474,7 @@ pub async fn pair_verify_process_m3(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L899
 // HAPPairingPairVerifyGetM4
 pub fn pair_verify_process_get_m4(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -494,7 +494,7 @@ pub fn pair_verify_process_get_m4(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L25
 // HAPPairingPairVerifyStartSession
 pub fn pair_verify_start_session(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
 ) -> Result<(), PairingError> {
     let _ = support;

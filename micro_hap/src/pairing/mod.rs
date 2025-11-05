@@ -582,13 +582,13 @@ impl PairState {
 }
 
 #[derive(Debug)]
-pub struct PairContext {
+pub struct AccessoryContext {
     pub server: PairServer,
     pub info: SetupInfo,
     pub session: crate::Session,
     pub accessory: crate::AccessoryInformationStatic,
 }
-impl Default for PairContext {
+impl Default for AccessoryContext {
     fn default() -> Self {
         Self {
             server: Default::default(),
@@ -601,7 +601,7 @@ impl Default for PairContext {
 
 // HAPPairingPairSetupHandleWrite
 pub async fn pair_setup_handle_incoming(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
@@ -651,7 +651,7 @@ pub async fn pair_setup_handle_incoming(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1406
 // HAPPairingPairSetupHandleRead
 pub async fn pair_setup_handle_outgoing(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -686,7 +686,7 @@ pub async fn pair_setup_handle_outgoing(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L48
 // HAPPairingPairSetupProcessM1
 pub fn pair_setup_process_m1(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     method: TLVMethod,
     state: TLVState,
 ) -> Result<(), PairingError> {
@@ -707,7 +707,7 @@ pub fn pair_setup_process_m1(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L342
 // HAPPairingPairSetupProcessM3
 pub fn pair_setup_process_m3(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     state: TLVState,
     public_key: TLVPublicKey,
     proof: TLVProof,
@@ -740,7 +740,7 @@ pub fn pair_setup_process_m3(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L833
 // HAPPairingPairSetupProcessM5
 pub async fn pair_setup_process_m5(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     state: TLVState<'_>,
     encrypted_data: TLVEncryptedData<'_>,
@@ -833,7 +833,7 @@ pub async fn pair_setup_process_m5(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L158
 pub async fn pair_setup_process_get_m2(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -930,7 +930,7 @@ pub async fn pair_setup_process_get_m2(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L430
 pub fn pair_setup_process_get_m4(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -1050,7 +1050,7 @@ pub fn pair_setup_process_get_m4(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairSetup.c#L1041
 pub async fn pair_setup_process_get_m6(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -1257,7 +1257,7 @@ pub mod test {
 
         let recorded = recorded_info();
 
-        let mut ctx = PairContext::default();
+        let mut ctx = AccessoryContext::default();
         ctx.info = recorded.setup_info;
 
         let mut support = TestPairSupport::default();

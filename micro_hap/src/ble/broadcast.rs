@@ -1,5 +1,5 @@
 use crate::crypto::hkdf_sha512;
-use crate::pairing::{PairContext, PairingError};
+use crate::pairing::{AccessoryContext, PairingError};
 use crate::{CharId, PlatformSupport};
 // Some helpers to handle the whole broadcast key and global state number stuff.
 
@@ -12,7 +12,7 @@ pub struct BleBroadcastParameters {
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEAccessoryServer%2BBroadcast.c#L100
 pub async fn broadcast_generate_key(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     // NONCOMPLIANCE: advertising id
 ) -> Result<(), PairingError> {

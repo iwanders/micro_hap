@@ -1,7 +1,7 @@
 use crate::PlatformSupport;
 
 use crate::pairing::{
-    PairContext, PairState, PairingError, PairingId, PairingMethod, TLVType, tlv::*,
+    AccessoryContext, PairState, PairingError, PairingId, PairingMethod, TLVType, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
 
@@ -21,7 +21,7 @@ pub struct Pairings {
 
 // HAPPairingPairingsHandleWrite
 pub async fn pairing_pairing_handle_incoming(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &[u8],
 ) -> Result<(), PairingError> {
@@ -105,7 +105,7 @@ pub async fn pairing_pairing_handle_incoming(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L962C10-L962C38
 // HAPPairingPairingsHandleRead
 pub async fn handle_outgoing(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {
@@ -128,7 +128,7 @@ pub async fn handle_outgoing(
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
 //HAPPairingPairingsRemovePairingProcessM1
 pub async fn pair_pairings_remove_process_m1(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     _support: &mut impl PlatformSupport,
     method: PairingMethod,
     state: PairState,
@@ -148,7 +148,7 @@ pub async fn pair_pairings_remove_process_m1(
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L443
 pub async fn pair_setup_process_get_m2(
-    ctx: &mut PairContext,
+    ctx: &mut AccessoryContext,
     support: &mut impl PlatformSupport,
     data: &mut [u8],
 ) -> Result<usize, PairingError> {

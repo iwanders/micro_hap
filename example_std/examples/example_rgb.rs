@@ -551,8 +551,8 @@ mod hap_rgb {
 
         // Create the pairing context.
         let pair_ctx = {
-            static STATE: StaticCell<micro_hap::pairing::PairContext> = StaticCell::new();
-            STATE.init_with(micro_hap::pairing::PairContext::default)
+            static STATE: StaticCell<micro_hap::pairing::AccessoryContext> = StaticCell::new();
+            STATE.init_with(micro_hap::pairing::AccessoryContext::default)
         };
         pair_ctx.accessory = static_information;
         pair_ctx
