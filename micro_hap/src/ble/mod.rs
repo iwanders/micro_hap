@@ -1197,6 +1197,11 @@ impl HapPeripheralContext {
         }
     }
 
+    pub async fn handle_disconnect(&mut self) {
+        let mut l = self.pair_ctx.borrow_mut();
+        l.disconnect();
+    }
+
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
         &mut self,
         hap: &HapServices<'hap>,
@@ -1208,44 +1213,6 @@ impl HapPeripheralContext {
 
         match event {
             GattEvent::Read(event) => {
-                /*
-                if event.handle() == hap.information.hardware_revision.handle {
-                    warn!("Reading information.hardware_revision");
-                } else if event.handle() == hap.information.serial_number.handle {
-                    warn!("Reading information.serial_number ");
-                } else if event.handle() == hap.information.model.handle {
-                    warn!("Reading information.model ");
-                } else if event.handle() == hap.information.name.handle {
-                    warn!("Reading information.name ");
-                } else if event.handle() == hap.information.manufacturer.handle {
-                    warn!("Reading information.manufacturer ");
-                } else if event.handle() == hap.information.firmware_revision.handle {
-                    warn!("Reading information.firmware_revision ");
-                } else if event.handle() == hap.information.service_instance.handle {
-                    warn!("Reading information.service_instance ");
-                }
-
-                if event.handle() == hap.protocol.service_instance.handle {
-                    warn!("Reading protocol.service_instance");
-                } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!("Reading protocol.service_signature ");
-                } else if event.handle() == hap.protocol.version.handle {
-                    warn!("Reading protocol.version ");
-                }
-
-                if event.handle() == hap.pairing.service_instance.handle {
-                    warn!("Reading pairing.service_instance");
-                } else if event.handle() == hap.pairing.pair_setup.handle {
-                    warn!("Reading pairing.pair_setup ");
-                } else if event.handle() == hap.pairing.pair_verify.handle {
-                    warn!("Reading pairing.pair_verify ");
-                } else if event.handle() == hap.pairing.features.handle {
-                    warn!("Reading pairing.features ");
-                } else if event.handle() == hap.pairing.pairings.handle {
-                    warn!("Reading pairing.pairings ");
-                }
-                */
-
                 let outgoing = self.handle_read_outgoing(event.handle()).await;
                 match outgoing {
                     Ok(v) => {
@@ -1264,51 +1231,6 @@ impl HapPeripheralContext {
                 }
             }
             GattEvent::Write(event) => {
-                /*
-                warn!("Raw write data {:?}", event.data());
-
-                if event.handle() == hap.information.hardware_revision.handle {
-                    warn!("Writing information.hardware_revision {:?}", event.data());
-                } else if event.handle() == hap.information.serial_number.handle {
-                    warn!("Writing information.serial_number  {:?}", event.data());
-                } else if event.handle() == hap.information.model.handle {
-                    warn!("Writing information.model  {:?}", event.data());
-                } else if event.handle() == hap.information.name.handle {
-                    warn!("Writing information.name  {:?}", event.data());
-                } else if event.handle() == hap.information.manufacturer.handle {
-                    warn!("Writing information.manufacturer  {:?}", event.data());
-                } else if event.handle() == hap.information.firmware_revision.handle {
-                    warn!("Writing information.firmware_revision  {:?}", event.data());
-                } else if event.handle() == hap.information.service_instance.handle {
-                    warn!("Writing information.service_instance  {:?}", event.data());
-                }
-
-                if event.handle() == hap.protocol.service_instance.handle {
-                    warn!("Writing protocol.service_instance  {:?}", event.data());
-                } else if event.handle() == hap.protocol.service_signature.handle {
-                    warn!("Writing protocol.service_signature  {:?}", event.data());
-                    // Writing protocol.service_signature  [0, 6, 107, 2, 0]
-                    // Yes, that matches the hap service signature read
-
-                    // Maybe the write request has to go through and it is followed by a read?
-                } else if event.handle() == hap.protocol.version.handle {
-                    warn!("Writing protocol.version  {:?}", event.data());
-                }
-
-                if event.handle() == hap.pairing.service_instance.handle {
-                    warn!("Writing pairing.service_instance");
-                } else if event.handle() == hap.pairing.pair_setup.handle {
-                    warn!("Writing pairing.pair_setup  {:?}", event.data());
-                    // [0, 1, 62, 0, 34]
-                } else if event.handle() == hap.pairing.pair_verify.handle {
-                    warn!("Writing pairing.pair_verify  {:?}", event.data());
-                } else if event.handle() == hap.pairing.features.handle {
-                    warn!("Writing pairing.features  {:?}", event.data());
-                } else if event.handle() == hap.pairing.pairings.handle {
-                    warn!("Writing pairing.pairings  {:?}", event.data());
-                }
-                */
-
                 let resp = self
                     .handle_write_incoming_entry(
                         hap,
@@ -1342,6 +1264,92 @@ impl HapPeripheralContext {
             }
             remainder => Ok(Some(remainder)),
         }
+    }
+
+    /// Takes a connection when it is established and loops to handle events on the gatt server.
+    pub async fn gatt_events_task<P: PacketPool>(
+        &mut self,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+        hap_services: &HapServices<'_>,
+        conn: &GattConnection<'_, '_, P>,
+    ) -> Result<(), HapBleError> {
+        const SUPER_VERBOSE: bool = false;
+        let reason = loop {
+            match conn.next().await {
+                GattConnectionEvent::Disconnected { reason } => {
+                    info!("[gatt] disconnected: {:?}", reason);
+                    let _ = self.handle_disconnect().await;
+                    break reason;
+                }
+                GattConnectionEvent::Gatt { event } => {
+                    match &event {
+                        GattEvent::Read(event) => {
+                            if SUPER_VERBOSE {
+                                let peek = event.payload();
+                                match peek.incoming() {
+                                    trouble_host::att::AttClient::Request(att_req) => {
+                                        info!("[gatt-attclient]: {:?}", att_req);
+                                    }
+                                    trouble_host::att::AttClient::Command(att_cmd) => {
+                                        info!("[gatt-attclient]: {:?}", att_cmd);
+                                    }
+                                    trouble_host::att::AttClient::Confirmation(att_cfm) => {
+                                        info!("[gatt-attclient]: {:?}", att_cfm);
+                                    }
+                                }
+                            }
+                        }
+                        GattEvent::Write(event) => {
+                            if SUPER_VERBOSE {
+                                info!(
+                                    "[gatt] Write Event to Level Characteristic: {:?}",
+                                    event.data()
+                                );
+                            }
+                        }
+                        GattEvent::Other(t) => {
+                            if SUPER_VERBOSE {
+                                let peek = t.payload();
+                                if let Some(handle) = peek.handle() {
+                                    info!("[gatt] other event on handle: {handle}");
+                                }
+                                match peek.incoming() {
+                                    trouble_host::att::AttClient::Request(att_req) => {
+                                        info!("[gatt-attclient]: {:?}", att_req);
+                                    }
+                                    trouble_host::att::AttClient::Command(att_cmd) => {
+                                        info!("[gatt-attclient]: {:?}", att_cmd);
+                                    }
+                                    trouble_host::att::AttClient::Confirmation(att_cfm) => {
+                                        info!("[gatt-attclient]: {:?}", att_cfm);
+                                    }
+                                }
+                                info!("[gatt] other event ");
+                            }
+                        } //_ => {}
+                    };
+                    // This step is also performed at drop(), but writing it explicitly is necessary
+                    // in order to ensure reply is sent.
+
+                    let fallthrough_event = self
+                        .process_gatt_event(hap_services, support, accessory, event)
+                        .await?;
+
+                    if let Some(event) = fallthrough_event {
+                        match event.accept() {
+                            Ok(reply) => reply.send().await,
+                            Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                        };
+                    } else {
+                        warn!("Omitted processing for event because it was handled");
+                    }
+                }
+                _ => {} // ignore other Gatt Connection Events
+            }
+        };
+        info!("[gatt] disconnected: {:?}", reason);
+        Ok(())
     }
 }
 

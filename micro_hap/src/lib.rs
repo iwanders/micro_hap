@@ -643,6 +643,12 @@ impl Default for AccessoryContext {
         }
     }
 }
+impl AccessoryContext {
+    fn disconnect(&mut self) {
+        self.session = Default::default();
+        self.server = Default::default();
+    }
+}
 
 #[cfg(test)]
 mod test {

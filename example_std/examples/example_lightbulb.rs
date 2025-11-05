@@ -4,7 +4,7 @@ use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
 mod hap_lightbulb {
-    use example_std::{ActualPairSupport, AddressType, advertise, gatt_events_task, make_address};
+    use example_std::{ActualPairSupport, AddressType, advertise, make_address};
 
     use embassy_futures::join::join;
     use log::info;
@@ -207,8 +207,7 @@ mod hap_lightbulb {
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                         let hap_services = server.as_hap();
-                        let a = gatt_events_task(
-                            &mut hap_context,
+                        let a = hap_context.gatt_events_task(
                             &mut accessory,
                             &mut support,
                             &hap_services,
