@@ -3,8 +3,7 @@ name = "micro_hap"
 version = "0.1.0"
 license = "Apache-2.0"
 edition = "2024"
-
-
+resolver = "2"
 [dependencies]
 
 # Core ble support
@@ -50,6 +49,9 @@ lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4", optional = true }
 
+# To be able to serialize state.
+#
+serde = { version = "1.0", features = ["derive"], optional=true }
 
 [dev-dependencies]
 
@@ -87,7 +89,9 @@ srp = "0.6.0"
 num-bigint = "0.4"
 
 [features]
+default = ["serde"]
 
+serde = ["dep:serde", "uuid/serde"]
 defmt = ["dep:defmt",  "trouble-host/defmt", "heapless/defmt"]
 log = ["dep:log"]
-std = [ "trouble-host/log", "log"]
+std = [ "trouble-host/log", "log", "serde"]

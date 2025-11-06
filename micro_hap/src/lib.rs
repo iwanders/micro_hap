@@ -111,6 +111,7 @@ impl Default for AccessoryInformationStatic {
 }
 
 /// A characteristic id.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct CharId(pub u16);
@@ -124,6 +125,7 @@ impl defmt::Format for CharId {
 }
 
 /// A service id.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
@@ -138,6 +140,7 @@ impl defmt::Format for SvcId {
 
 /// A device id, could be the MAC address.
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -171,6 +174,7 @@ impl DeviceId {
 }
 
 /// The device id as a ':' delimited hexadecimal string.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceIdString(pub [u8; 6 * 2 + 5]);
@@ -181,6 +185,7 @@ impl DeviceIdString {
 }
 
 /// The setup id (is this always 4 letters upper case?)
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[repr(transparent)]

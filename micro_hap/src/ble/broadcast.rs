@@ -3,6 +3,7 @@ use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, PlatformSupport};
 // Some helpers to handle the whole broadcast key and global state number stuff.
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Default, Debug)]
 pub struct BleBroadcastParameters {
     pub expiration_gsn: u16,

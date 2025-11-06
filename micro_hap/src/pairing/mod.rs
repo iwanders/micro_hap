@@ -100,6 +100,7 @@ pub const SRP_USERNAME: &'static str = "Pair-Setup";
 
 const _: [(); 0] = [(); crate::crypto::srp::SRP_PRIVATE_SECRET_BYTES - SRP_SECRET_KEY_BYTES];
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
 #[repr(transparent)]
 pub struct PairingId(pub uuid::Uuid);
@@ -133,6 +134,7 @@ impl defmt::Format for PairingId {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub struct PairingPublicKey(pub [u8; 32]);
@@ -151,6 +153,7 @@ impl PairingPublicKey {
 }
 
 /// Represents the 8 digit pairing code the user is prompted for during the pairing procedure.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PairCode([u8; 8 + 2]);
 impl PairCode {
@@ -219,6 +222,7 @@ impl PairCode {
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Pairing {
     pub id: PairingId,
@@ -492,6 +496,7 @@ impl Into<u8> for TLVType {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/HAPBase.h#L178-L182
+// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// Setup information created during device commissioning.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug)]

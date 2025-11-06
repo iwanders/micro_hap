@@ -1,10 +1,11 @@
 use log::{error, info, warn};
 use micro_hap::{InterfaceError, PlatformSupport, ble::broadcast::BleBroadcastParameters};
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 use trouble_host::prelude::*;
 
 use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingId};
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ActualPairSupport {
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
     pub pairings:
