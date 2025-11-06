@@ -319,17 +319,15 @@ mod hap_temp_accessory {
 }
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), std::io::Error> {
+    use clap::Parser;
     env_logger::builder()
         .filter_level(log::LevelFilter::max())
         .init();
 
-    let dev = match std::env::args().collect::<Vec<_>>()[..] {
-        [_] => 0,
-        [_, ref s] => s.parse::<u16>().expect("Could not parse device number"),
-        _ => panic!(
-            "Provide the device number as the one and only command line argument, or no arguments to use device 0."
-        ),
-    };
+    let args = example_std::CommonArgs::parse();
+    println!("args: {args:?}");
+
+    let dev = args.device.unwrap_or(0);
     let transport = Transport::new(dev)?;
     let controller = ExternalController::<_, 8>::new(transport);
     hap_temp_accessory::run(controller).await;

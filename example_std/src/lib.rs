@@ -1,3 +1,4 @@
+use anyhow::Context;
 use log::{error, info, warn};
 use micro_hap::{InterfaceError, PlatformSupport, ble::broadcast::BleBroadcastParameters};
 use rand::prelude::*;
@@ -5,8 +6,32 @@ use serde::{Deserialize, Serialize};
 use trouble_host::prelude::*;
 
 use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingId};
+
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct CommonArgs {
+    /// File to load and store the pairing support data to.
+    #[arg(short, long)]
+    pub state: Option<String>,
+
+    /// The bluetooth device number to use
+    #[arg(short, long)]
+    pub device: Option<u16>,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct RuntimeConfig {
+    pub file_path: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ActualPairSupport {
+    #[serde(skip)]
+    pub runtime_config: RuntimeConfig,
+
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
     pub pairings:
         std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
@@ -14,11 +39,36 @@ pub struct ActualPairSupport {
     pub config_number: u16,
     pub broadcast_parameters: BleBroadcastParameters,
 }
+use std::fs;
+use std::path::{Path, PathBuf};
+
+impl ActualPairSupport {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, anyhow::Error> {
+        let p: &Path = path.as_ref();
+        let contents = fs::read_to_string(&p)
+            .with_context(|| format!("Failed to read instrs from {:?}", p))?;
+        serde_json::from_str(&contents).map_err(|e| e.into())
+    }
+    pub fn new_or_load<P: AsRef<Path>>(path: P) -> Result<Self, anyhow::Error> {
+        let p: &Path = path.as_ref();
+        if p.exists() {
+            Self::load_from_file(p)
+        } else {
+            Ok(Default::default())
+        }
+    }
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), anyhow::Error> {
+        let p: &Path = path.as_ref();
+        let contents = serde_json::to_string_pretty(self)?;
+        fs::write(&p, contents).with_context(|| format!("Failed to write to {:?}", p))
+    }
+}
 impl Default for ActualPairSupport {
     fn default() -> Self {
         let mut ed_ltsk = [0; ED25519_LTSK];
         ed_ltsk.fill_with(rand::random);
         Self {
+            runtime_config: Default::default(),
             ed_ltsk,
             pairings: Default::default(),
             global_state_number: 1,
