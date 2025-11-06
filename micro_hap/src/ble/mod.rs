@@ -1312,7 +1312,7 @@ impl HapPeripheralContext {
                             if SUPER_VERBOSE {
                                 let peek = t.payload();
                                 if let Some(handle) = peek.handle() {
-                                    info!("[gatt] other event on handle: {handle}");
+                                    info!("[gatt] other event on handle: {}", handle);
                                 }
                                 match peek.incoming() {
                                     trouble_host::att::AttClient::Request(att_req) => {

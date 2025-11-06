@@ -377,8 +377,9 @@ where
                         .with_attribute_server(&server)
                         .expect("Failed to create attribute server");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
+                    let mut hap_services = server.as_hap();
                     let a =
-                        gatt_events_task(&mut hap_context, &mut accessory, support, &server, &conn);
+                        hap_context.gatt_events_task( &mut accessory, support, &mut hap_services, &conn);
                     let b = custom_task(&server, &conn, &stack);
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
@@ -426,103 +427,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     }
 }
 
-/// Stream Events until the connection closes.
-///
-/// This function will handle the GATT events and process them.
-/// This is how we interact with read and write requests.
-async fn gatt_events_task<P: PacketPool>(
-    hap_context: &mut micro_hap::ble::HapPeripheralContext,
-    accessory: &mut impl micro_hap::AccessoryInterface,
-    support: &mut impl PlatformSupport,
-    server: &Server<'_>,
-    conn: &GattConnection<'_, '_, P>,
-) -> Result<(), Error> {
-    //let level = server.battery_service.level;
-    let reason = loop {
-        match conn.next().await {
-            GattConnectionEvent::Disconnected { reason } => break reason,
 
-            GattConnectionEvent::Gatt { event } => {
-                match &event {
-                    GattEvent::Read(event) => {
-                        /*if event.handle() == level.handle {
-                            let value = server.get(&level);
-                            info!("[gatt] Read Event to Level Characteristic: {:?}", value);
-                        }*/
-                        let peek = event.payload();
-                        match peek.incoming() {
-                            trouble_host::att::AttClient::Request(att_req) => {
-                                info!("[gatt-attclient]: {:?}", att_req);
-                            }
-                            trouble_host::att::AttClient::Command(att_cmd) => {
-                                info!("[gatt-attclient]: {:?}", att_cmd);
-                            }
-                            trouble_host::att::AttClient::Confirmation(att_cfm) => {
-                                info!("[gatt-attclient]: {:?}", att_cfm);
-                            }
-                        }
-                    }
-                    GattEvent::Write(event) => {
-                        info!(
-                            "[gatt] Write Event to Level Characteristic: {:?}",
-                            event.data()
-                        );
-                    }
-                    GattEvent::Other(t) => {
-                        let peek = t.payload();
-                        if let Some(handle) = peek.handle() {
-                            info!("[gatt] other event on handle: {}", handle);
-                        }
-                        match peek.incoming() {
-                            trouble_host::att::AttClient::Request(att_req) => {
-                                info!("[gatt-attclient]: {:?}", att_req);
-                            }
-                            trouble_host::att::AttClient::Command(att_cmd) => {
-                                info!("[gatt-attclient]: {:?}", att_cmd);
-                            }
-                            trouble_host::att::AttClient::Confirmation(att_cfm) => {
-                                info!("[gatt-attclient]: {:?}", att_cfm);
-                            }
-                        }
-                        info!("[gatt] other event ");
-                    } //_ => {}
-                };
-                // This step is also performed at drop(), but writing it explicitly is necessary
-                // in order to ensure reply is sent.
-
-                let fallthrough_event = hap_context
-                    .process_gatt_event(&server.as_hap(), support, accessory, event)
-                    .await;
-
-
-
-                match fallthrough_event {
-                    Ok(fallthrough_event) => {
-
-                        if let Some(event) = fallthrough_event {
-                            match event.accept() {
-                                Ok(reply) => reply.send().await,
-                                Err(e) => {
-                                    warn!("[gatt] error sending response: {:?}", e)
-                                }
-                            };
-                        } else {
-                            warn!("Omitted processing for event because it was handled");
-                        }
-                    }
-                    Err(e) => {
-                        error!("unhandled error: {:?}", e);
-                    }
-                }
-
-
-            }
-            _ => {} // ignore other Gatt Connection Events
-        }
-    };
-    info!("[gatt] disconnected: {:?}", reason);
-    Ok(())
-}
 
 /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
 async fn advertise<'values, 'server, C: Controller>(
