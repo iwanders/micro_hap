@@ -875,7 +875,7 @@ impl HapPeripheralContext {
     ) -> Result<Option<BufferResponse>, InternalError> {
         let security_active = self.pair_ctx.borrow().session.security_active;
         self.should_encrypt_reply = security_active;
-        let mut tmp_buffer = [0u8; 1024];
+        let mut tmp_buffer = [0u8; 1024]; // TODO, not have this on the stack.
         let data = if security_active {
             if handle == hap.pairing.pair_verify.handle {
                 // pair verify is always plaintext!
