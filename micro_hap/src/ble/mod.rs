@@ -1363,12 +1363,26 @@ impl HapPeripheralContext {
     ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
         let z = self.pair_ctx.borrow();
         let static_info = z.accessory;
+        let broadcast_params = support.get_ble_broadcast_parameters().await.unwrap();
+        let is_paired = support.is_paired().await.unwrap();
 
-        let adv_config = crate::adv::AdvertisementConfig {
-            device_id: static_info.device_id,
-            setup_id: static_info.setup_id,
-            accessory_category: static_info.category,
-            ..Default::default()
+        let adv_config = if is_paired {
+            crate::adv::AdvertisementConfig {
+                device_id: broadcast_params.advertising_id.unwrap(),
+                setup_id: static_info.setup_id,
+                accessory_category: static_info.category,
+                global_state: support.get_global_state_number().await.unwrap(),
+                config_number: support.get_config_number().await.unwrap(),
+                is_paired,
+                ..Default::default()
+            }
+        } else {
+            crate::adv::AdvertisementConfig {
+                device_id: static_info.device_id,
+                setup_id: static_info.setup_id,
+                accessory_category: static_info.category,
+                ..Default::default()
+            }
         };
         let hap_adv = adv_config.to_advertisement();
         let adv = hap_adv.as_advertisement();

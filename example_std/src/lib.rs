@@ -47,7 +47,7 @@ pub struct ActualPairSupport {
     /// The global state number, this advances on changes and is part of the broadcast.
     pub global_state_number: u16,
     /// The config number denotes the configuration, like the number of services etc.
-    pub config_number: u16,
+    pub config_number: u8,
     /// Parameters for broadcast.
     ///
     /// TODO: I forgot how these are used >_<
@@ -147,6 +147,10 @@ impl PlatformSupport for ActualPairSupport {
         Ok(())
     }
 
+    async fn is_paired(&mut self) -> Result<bool, InterfaceError> {
+        Ok(!self.pairings.is_empty())
+    }
+
     async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.global_state_number)
     }
@@ -157,10 +161,10 @@ impl PlatformSupport for ActualPairSupport {
         Ok(())
     }
 
-    async fn get_config_number(&self) -> Result<u16, InterfaceError> {
+    async fn get_config_number(&self) -> Result<u8, InterfaceError> {
         Ok(self.config_number)
     }
-    async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
+    async fn set_config_number(&mut self, value: u8) -> Result<(), InterfaceError> {
         self.config_number = value;
         self.save()?;
         Ok(())

@@ -593,6 +593,9 @@ pub trait PlatformSupport: Send {
         id: &PairingId,
     ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 
+    /// Return a boolean indicating there is at least one pairing.
+    fn is_paired(&mut self) -> impl Future<Output = Result<bool, InterfaceError>> + Send;
+
     /// Retrieve the global state number, this is used by the BLE transport.
     fn get_global_state_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
     /// Set the global state number, this is used by the BLE transport.
@@ -614,10 +617,10 @@ pub trait PlatformSupport: Send {
         }
     }
 
-    fn get_config_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
+    fn get_config_number(&self) -> impl Future<Output = Result<u8, InterfaceError>> + Send;
     fn set_config_number(
         &mut self,
-        value: u16,
+        value: u8,
     ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
 
     /// Retrieve the BLE broadcast parameters

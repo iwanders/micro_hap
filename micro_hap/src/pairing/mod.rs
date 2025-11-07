@@ -577,7 +577,7 @@ pub mod test {
         pub random: std::collections::VecDeque<u8>,
         pub pairings: std::collections::HashMap<PairingId, Pairing>,
         pub global_state_number: u16,
-        pub config_number: u16,
+        pub config_number: u8,
         pub ble_broadcast_parameters: BleBroadcastParameters,
     }
     impl Default for TestPairSupport {
@@ -635,6 +635,10 @@ pub mod test {
             Ok(())
         }
 
+        async fn is_paired(&mut self) -> Result<bool, InterfaceError> {
+            Ok(!self.pairings.is_empty())
+        }
+
         async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
             Ok(self.global_state_number)
         }
@@ -644,10 +648,10 @@ pub mod test {
             Ok(())
         }
 
-        async fn get_config_number(&self) -> Result<u16, InterfaceError> {
+        async fn get_config_number(&self) -> Result<u8, InterfaceError> {
             Ok(self.config_number)
         }
-        async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
+        async fn set_config_number(&mut self, value: u8) -> Result<(), InterfaceError> {
             self.config_number = value;
             Ok(())
         }
