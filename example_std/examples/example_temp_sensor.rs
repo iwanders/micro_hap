@@ -104,6 +104,7 @@ mod hap_temp_sensor {
 
 mod hap_temp_accessory {
     use super::hap_temp_sensor;
+    use example_std::RuntimeConfig;
     use example_std::{ActualPairSupport, AddressType, advertise, make_address};
 
     use embassy_futures::join::join;
@@ -173,7 +174,7 @@ mod hap_temp_accessory {
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
     /// Run the BLE stack.
-    pub async fn run<C>(controller: C)
+    pub async fn run<C>(controller: C, runtime_config: RuntimeConfig)
     where
         C: Controller
             + ControllerCmdSync<LeReadLocalSupportedFeatures>
@@ -220,7 +221,7 @@ mod hap_temp_accessory {
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = TemperatureAccessory {
-            temperature_value: 0.0,
+            temperature_value: 5.0,
         };
 
         // Create the pairing context.
@@ -271,7 +272,9 @@ mod hap_temp_accessory {
         hap_context.assign_static_data(&static_information);
 
         // And the platform support.
-        let mut support = ActualPairSupport::default();
+        let mut support =
+            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
+        println!("support: {support:?}");
 
         let _ = join(ble_task(runner), async {
             loop {
@@ -328,8 +331,9 @@ async fn main() -> Result<(), std::io::Error> {
     println!("args: {args:?}");
 
     let dev = args.device.unwrap_or(0);
+    let config = args.to_runtime_config();
     let transport = Transport::new(dev)?;
     let controller = ExternalController::<_, 8>::new(transport);
-    hap_temp_accessory::run(controller).await;
+    hap_temp_accessory::run(controller, config).await;
     Ok(())
 }

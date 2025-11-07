@@ -15,11 +15,18 @@ use clap::Parser;
 pub struct CommonArgs {
     /// File to load and store the pairing support data to.
     #[arg(short, long)]
-    pub state: Option<String>,
+    pub state: Option<PathBuf>,
 
     /// The bluetooth device number to use
     #[arg(short, long)]
     pub device: Option<u16>,
+}
+impl CommonArgs {
+    pub fn to_runtime_config(&self) -> RuntimeConfig {
+        RuntimeConfig {
+            file_path: self.state.clone(),
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -32,17 +39,37 @@ pub struct ActualPairSupport {
     #[serde(skip)]
     pub runtime_config: RuntimeConfig,
 
+    /// THe long term secret key
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
+    /// Storage of all available paired devices.
     pub pairings:
         std::collections::HashMap<micro_hap::pairing::PairingId, micro_hap::pairing::Pairing>,
+    /// The global state number, this advances on changes and is part of the broadcast.
     pub global_state_number: u16,
+    /// The config number denotes the configuration, like the number of services etc.
     pub config_number: u16,
+    /// Parameters for broadcast.
+    ///
+    /// TODO: I forgot how these are used >_<
     pub broadcast_parameters: BleBroadcastParameters,
 }
 use std::fs;
 use std::path::{Path, PathBuf};
 
 impl ActualPairSupport {
+    pub fn new_from_config(runtime_config: RuntimeConfig) -> Result<Self, anyhow::Error> {
+        if let Some(path) = &runtime_config.file_path {
+            let mut z = Self::new_or_load(path)?;
+            z.runtime_config = runtime_config;
+            Ok(z)
+        } else {
+            Ok(Self {
+                runtime_config,
+                ..Default::default()
+            })
+        }
+    }
+
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, anyhow::Error> {
         let p: &Path = path.as_ref();
         let contents = fs::read_to_string(&p)
@@ -61,6 +88,14 @@ impl ActualPairSupport {
         let p: &Path = path.as_ref();
         let contents = serde_json::to_string_pretty(self)?;
         fs::write(&p, contents).with_context(|| format!("Failed to write to {:?}", p))
+    }
+
+    pub fn save(&self) -> Result<(), InterfaceError> {
+        if let Some(p) = self.runtime_config.file_path.as_ref() {
+            self.save_to_file(p)
+                .map_err(|_e| InterfaceError::Custom("failing state save"))?
+        }
+        Ok(())
     }
 }
 impl Default for ActualPairSupport {
@@ -98,6 +133,7 @@ impl PlatformSupport for ActualPairSupport {
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
         error!("Storing {:?}", pairing);
         self.pairings.insert(pairing.id, *pairing);
+        self.save()?;
         Ok(())
     }
 
@@ -107,6 +143,7 @@ impl PlatformSupport for ActualPairSupport {
     }
     async fn remove_pairing(&mut self, id: &PairingId) -> Result<(), InterfaceError> {
         self.pairings.remove(id);
+        self.save()?;
         Ok(())
     }
 
@@ -116,6 +153,7 @@ impl PlatformSupport for ActualPairSupport {
     /// Set the global state number, this is used by the BLE transport.
     async fn set_global_state_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.global_state_number = value;
+        self.save()?;
         Ok(())
     }
 
@@ -124,6 +162,7 @@ impl PlatformSupport for ActualPairSupport {
     }
     async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
         self.config_number = value;
+        self.save()?;
         Ok(())
     }
     async fn get_ble_broadcast_parameters(
@@ -136,6 +175,7 @@ impl PlatformSupport for ActualPairSupport {
         params: &micro_hap::ble::broadcast::BleBroadcastParameters,
     ) -> Result<(), InterfaceError> {
         self.broadcast_parameters = *params;
+        self.save()?;
         Ok(())
     }
 }
