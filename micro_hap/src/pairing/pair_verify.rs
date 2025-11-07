@@ -8,7 +8,7 @@ use crate::crypto::{
     hkdf_sha512,
 };
 use crate::pairing::{
-    ED25519_BYTES, AccessoryContext, PairState, PairingError, PairingId, PairingMethod, TLVType,
+    AccessoryContext, ED25519_BYTES, PairState, PairingError, PairingId, PairingMethod, TLVType,
     X25519_BYTES, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
@@ -156,7 +156,12 @@ pub fn pair_verify_process_m1(
     }
 
     ctx.server.pair_verify.setup.method = use_method;
+    info!("using method: {:?}", use_method);
     public_key.copy_body(&mut ctx.server.pair_verify.controller_cv_pk)?;
+    info!(
+        "obtained public key: {:?}",
+        ctx.server.pair_verify.controller_cv_pk
+    );
 
     if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
@@ -169,6 +174,9 @@ pub fn pair_verify_process_m1(
             provided_session_id, public_key, encrypted_data
         );
 
+        todo!(
+            "Verify this pairing id here, what about if we reboot and the session is cleared, should this be empty?"
+        );
         if ctx.session.pairing_id.is_none() {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
             // NONCOMPLIANCE? do we ever use this method field?
