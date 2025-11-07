@@ -1267,6 +1267,8 @@ impl HapPeripheralContext {
     }
 
     /// Takes a connection when it is established and loops to handle events on the gatt server.
+    ///
+    /// This loops on events from the connection and hands them off to `Self::process_gatt_event` for processing.
     pub async fn gatt_events_task<P: PacketPool>(
         &mut self,
         accessory: &mut impl crate::AccessoryInterface,
@@ -1350,6 +1352,55 @@ impl HapPeripheralContext {
         };
         info!("[gatt] disconnected: {:?}", reason);
         Ok(())
+    }
+
+    /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
+    pub async fn advertise<'values, C: Controller>(
+        &mut self,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+        peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
+    ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
+        let z = self.pair_ctx.borrow();
+        let static_info = z.accessory;
+
+        let adv_config = crate::adv::AdvertisementConfig {
+            device_id: static_info.device_id,
+            setup_id: static_info.setup_id,
+            accessory_category: static_info.category,
+            ..Default::default()
+        };
+        let hap_adv = adv_config.to_advertisement();
+        let adv = hap_adv.as_advertisement();
+
+        let mut advertiser_data = [0; 31];
+        let len = AdStructure::encode_slice(
+            &[
+                AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                //AdStructure::ServiceUuids16(&[[0x0f, 0x18]]),
+                AdStructure::CompleteLocalName(&static_info.name.as_bytes()[0..1]),
+                adv,
+            ],
+            &mut advertiser_data[..],
+        )?;
+        let params = AdvertisementParameters {
+            interval_min: embassy_time::Duration::from_millis(100),
+            interval_max: embassy_time::Duration::from_millis(500),
+            ..Default::default()
+        };
+        let advertiser = peripheral
+            .advertise(
+                &params,
+                Advertisement::ConnectableScannableUndirected {
+                    adv_data: &advertiser_data[..len],
+                    scan_data: &[],
+                },
+            )
+            .await?;
+        info!("[adv] advertising");
+        let conn = advertiser.accept().await?;
+        info!("[adv] connection established");
+        Ok(conn)
     }
 }
 

@@ -32,7 +32,7 @@ To help people understand the code and the concepts, here's an information dump:
 - For example, toggling the lightbulb performs a BLE write on the `On` attribute of the `Lightbulb` Service, the response of this request is verified with a BLE Read on the same characteristic.
 - The HAP protocol is merely transported over the BLE write/reads.
 - The Trouble GATT server is merely a facade to provide the correct characteristics & services.
-- The `HapPeripheralContext::process_gatt_event` is the entry point for the bluetooth transport.
+- The `HapPeripheralContext::gatt_events_task` is the entry point for the bluetooth transport.
 - The `PlatformSupport` is the platform interface / key-value store and auxiliary function support like random bytes.
 - The `AccessoryInterface` is the interface the accessory's endpoints, so for example the actual lightbulb.
 - A pairing is effectively an exchange of public keys, after which a session is established through pair verify.

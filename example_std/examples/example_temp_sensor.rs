@@ -278,7 +278,10 @@ mod hap_temp_accessory {
 
         let _ = join(ble_task(runner), async {
             loop {
-                match advertise(name, &mut peripheral, &static_information).await {
+                match hap_context
+                    .advertise(&mut accessory, &mut support, &mut peripheral)
+                    .await
+                {
                     Ok(conn) => {
                         // Increase the data length to 251 bytes per package, default is like 27.
                         conn.update_data_length(&stack, 251, 2120)
