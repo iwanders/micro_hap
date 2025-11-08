@@ -176,6 +176,10 @@ pub fn pair_verify_process_m1(
 
         if ctx.session.pairing_id.is_none() {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
+            // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L331
+            info!(
+                "Pair Resume M1: Pair Resume Shared Secret not found. Falling back to Pair Verify"
+            );
             // NONCOMPLIANCE? do we ever use this method field?
             return Ok(());
         }
