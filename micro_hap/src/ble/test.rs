@@ -1,5 +1,4 @@
 use super::*;
-use crate::pairing::test::TestPairSupport;
 use static_cell::StaticCell;
 
 #[test]
@@ -38,183 +37,6 @@ impl Server<'_> {
     }
 }
 
-struct LightBulbAccessory {
-    name: HeaplessString<32>,
-    bulb_on_state: bool,
-}
-impl crate::AccessoryInterface for LightBulbAccessory {
-    async fn read_characteristic(
-        &self,
-        char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, InterfaceError> {
-        if char_id == CHAR_ID_LIGHTBULB_NAME {
-            Ok(self.name.as_bytes())
-        } else if char_id == CHAR_ID_LIGHTBULB_ON {
-            Ok(self.bulb_on_state.as_bytes())
-        } else {
-            Err(InterfaceError::CharacteristicUnknown(char_id))
-        }
-    }
-    async fn write_characteristic(
-        &mut self,
-        char_id: CharId,
-        data: &[u8],
-    ) -> Result<CharacteristicResponse, InterfaceError> {
-        info!(
-            "AccessoryInterface to characterstic: 0x{:02x?} data: {:02x?}",
-            char_id, data
-        );
-
-        if char_id == CHAR_ID_LIGHTBULB_ON {
-            let value = data
-                .get(0)
-                .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
-            let val_as_bool = *value != 0;
-
-            let response = if self.bulb_on_state != val_as_bool {
-                CharacteristicResponse::Modified
-            } else {
-                CharacteristicResponse::Unmodified
-            };
-            self.bulb_on_state = val_as_bool;
-            info!("Set bulb to: {:?}", self.bulb_on_state);
-            Ok(response)
-        } else {
-            Err(InterfaceError::CharacteristicUnknown(char_id))
-        }
-    }
-}
-
-struct TestContainer<'values> {
-    server: Option<Server<'values>>,
-    accessory: Option<LightBulbAccessory>,
-    context: Option<HapPeripheralContext>,
-    platform: Option<TestPairSupport>,
-}
-impl<'values> TestContainer<'values> {
-    // This function leaks, because we need 'static lifetime buffers.
-    fn new() -> Result<Self, InternalError> {
-        const NAME: &'static str = "Acme Light Bulb";
-        let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-            name: "Acme Light Bulb",
-            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
-        }))
-        .unwrap();
-
-        // Setup the accessory information.
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/App.c#L124
-        let accessory_static_data = crate::AccessoryInformationStatic {
-            name: NAME,
-            // Possibly device id 57:3B:20:A7:E7:C4 ?
-            device_id: crate::DeviceId([0x57, 0x3b, 0x20, 0xA7, 0xE7, 0xC4]),
-            firmware_revision: "1",
-            hardware_revision: "1",
-            manufacturer: "Acme",
-            model: "LightBulb1,1",
-            serial_number: "099DB48E9E28",
-            ..Default::default()
-        };
-
-        let hap = server.as_hap();
-        let _ = hap;
-
-        let buffer = {
-            let v = vec![0u8; 2048];
-            v.leak()
-        };
-
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
-        let accessory = LightBulbAccessory {
-            name: "Light Bulb".try_into().unwrap(),
-            bulb_on_state: false,
-        };
-
-        let ctx = {
-            let ctx = Box::new(AccessoryContext::default());
-            Box::leak(ctx)
-        };
-        ctx.accessory = accessory_static_data;
-
-        // We need real commissioning for this.
-        // from recording 2025_08_24_1639.
-        ctx.info.salt = [
-            0x3d, 0xc2, 0x81, 0xab, 0x08, 0xed, 0x4d, 0x8c, 0x52, 0x0c, 0xb2, 0x5f, 0xc2, 0x51,
-            0x9c, 0x1f,
-        ];
-        ctx.info.verifier = [
-            0xe3, 0x7e, 0xa0, 0xd4, 0x45, 0xab, 0x91, 0xcc, 0xee, 0x92, 0x33, 0x20, 0x9e, 0xb3,
-            0x8f, 0xfc, 0xd7, 0x04, 0x20, 0xd1, 0x95, 0x34, 0x73, 0x5a, 0x17, 0x2e, 0xca, 0xef,
-            0xe3, 0x8d, 0x1a, 0x21, 0xfb, 0x5e, 0x2d, 0x18, 0x1b, 0xb0, 0x80, 0x77, 0x12, 0xf7,
-            0x2d, 0x2e, 0x64, 0x67, 0xc7, 0xa8, 0xb5, 0xc0, 0xe3, 0xab, 0xe4, 0x60, 0x58, 0x9f,
-            0xde, 0x39, 0x62, 0xdc, 0x70, 0x01, 0x42, 0x1a, 0x07, 0x47, 0x16, 0x63, 0xf7, 0xd7,
-            0xee, 0x9b, 0xf9, 0x7b, 0x35, 0xc4, 0x3b, 0x5d, 0x0a, 0xd6, 0x07, 0xdb, 0x47, 0x84,
-            0x05, 0x22, 0x9b, 0xc8, 0x0f, 0xb3, 0xb4, 0x39, 0xc7, 0x18, 0xc9, 0xb0, 0x85, 0x8d,
-            0x19, 0xf5, 0x56, 0xc6, 0xee, 0x9b, 0xd8, 0x87, 0x8a, 0x39, 0xf9, 0x21, 0x35, 0xaa,
-            0x42, 0x50, 0x6d, 0xa3, 0x5a, 0x3f, 0x67, 0x55, 0x6a, 0x5c, 0x6c, 0x92, 0x07, 0x44,
-            0xd3, 0xd6, 0x97, 0x6b, 0x5a, 0x5c, 0xcf, 0x6b, 0xdf, 0xf5, 0x1d, 0x4c, 0xde, 0x3f,
-            0x2d, 0xf7, 0x95, 0x3c, 0x70, 0xde, 0x65, 0xcf, 0x22, 0x96, 0xe8, 0x12, 0x8f, 0xa7,
-            0x9a, 0xa7, 0x68, 0xfe, 0x00, 0x18, 0x7f, 0x6d, 0xed, 0x98, 0xc9, 0x6b, 0xfc, 0xd2,
-            0x9b, 0xa9, 0x08, 0x93, 0x3e, 0x3e, 0x7f, 0x7c, 0x63, 0x03, 0x49, 0xdf, 0x52, 0x18,
-            0xcf, 0x9f, 0xf3, 0xbb, 0x11, 0xb5, 0xa3, 0x05, 0x03, 0x6b, 0xba, 0xf8, 0x91, 0x60,
-            0xc2, 0xf1, 0x1e, 0x5f, 0x0c, 0x81, 0x08, 0x25, 0xda, 0xed, 0xef, 0xa0, 0xfe, 0x73,
-            0xbf, 0xd8, 0xe3, 0xdb, 0xdc, 0xf6, 0x54, 0x42, 0x9a, 0xea, 0xf2, 0x69, 0x46, 0x14,
-            0x0c, 0x86, 0x97, 0x56, 0x95, 0x8b, 0x5b, 0x1f, 0x87, 0x99, 0x5c, 0xaf, 0x6a, 0xf4,
-            0xe5, 0x66, 0xe9, 0xf9, 0x7b, 0xa5, 0x1f, 0xf8, 0x8e, 0xa7, 0x81, 0xcc, 0x4e, 0xdd,
-            0x20, 0x94, 0x2d, 0x31, 0x78, 0xb6, 0x26, 0xf6, 0x41, 0x07, 0xa7, 0xad, 0x97, 0x18,
-            0xff, 0x7a, 0x0f, 0x3c, 0x55, 0x4b, 0xc3, 0x4d, 0x58, 0xc9, 0x56, 0xed, 0x6b, 0x69,
-            0xc4, 0x56, 0xf4, 0xf0, 0x5f, 0x58, 0x7f, 0x98, 0xfa, 0x4a, 0xf7, 0x8e, 0xda, 0x49,
-            0xc8, 0x69, 0x88, 0xae, 0x9c, 0x39, 0x1f, 0xa2, 0xc4, 0x58, 0x78, 0x35, 0xba, 0x73,
-            0x01, 0xae, 0xa2, 0xa9, 0x4d, 0x90, 0xf3, 0x98, 0x14, 0xb9, 0x6f, 0x4f, 0x21, 0x01,
-            0xdd, 0xad, 0x1a, 0x52, 0x45, 0x13, 0xe9, 0x08, 0xb0, 0x89, 0x54, 0xee, 0xe3, 0x44,
-            0x08, 0xd4, 0x77, 0x4b, 0xab, 0x65, 0x6e, 0xba, 0xec, 0xf9, 0xce, 0x9d, 0x5f, 0xd5,
-            0x4a, 0xde, 0xdf, 0x8f, 0x67, 0x47, 0x65, 0xe2, 0x2f, 0x8f, 0x9f, 0x53, 0xab, 0x56,
-            0xb1, 0x22, 0x6c, 0xe3, 0x5c, 0x8e, 0x97, 0x2f, 0x9f, 0x82, 0xf1, 0xd2, 0x11, 0x2f,
-            0x1a, 0xc3, 0x2a, 0x60, 0x28, 0x83,
-        ];
-
-        // ed_LTSK random bytes:
-        let ed_ltsk = [
-            0x15, 0xf5, 0xa7, 0xdb, 0xa0, 0x11, 0x21, 0xea, 0x23, 0xea, 0x88, 0x7f, 0x0a, 0x14,
-            0xb0, 0x27, 0xb6, 0xe6, 0xd4, 0x2d, 0xd1, 0x5b, 0xc9, 0x59, 0x19, 0x94, 0xbc, 0x22,
-            0xee, 0x52, 0xfa, 0xa9,
-        ];
-
-        const TIMED_WRITE_SLOTS: usize = 8;
-        const TIMED_WRITE_SLOTS_DATA: usize = 128;
-
-        let timed_write_data = {
-            let v = vec![0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA];
-            v.leak()
-        };
-
-        let timed_writes = {
-            let v: Vec<Option<TimedWrite>> = vec![None; TIMED_WRITE_SLOTS];
-            v.leak()
-        };
-
-        let mut ctx = HapPeripheralContext::new(
-            buffer,
-            ctx,
-            timed_write_data,
-            timed_writes,
-            &server.accessory_information,
-            &server.protocol,
-            &server.pairing,
-        )?;
-        ctx.add_service(&server.lightbulb)?;
-        ctx.assign_static_data(&accessory_static_data);
-
-        let mut support = crate::pairing::test::TestPairSupport::default();
-        support.ed_ltsk = ed_ltsk;
-        Ok(TestContainer {
-            server: Some(server),
-            accessory: Some(accessory),
-            context: Some(ctx),
-            platform: Some(support),
-        })
-    }
-}
-
 #[tokio::test]
 async fn test_message_exchanges() -> Result<(), InternalError> {
     crate::test::init();
@@ -246,6 +68,53 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
         STATE.init([0u8; 2048])
     };
+
+    struct LightBulbAccessory {
+        name: HeaplessString<32>,
+        bulb_on_state: bool,
+    }
+    impl crate::AccessoryInterface for LightBulbAccessory {
+        async fn read_characteristic(
+            &self,
+            char_id: CharId,
+        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            if char_id == CHAR_ID_LIGHTBULB_NAME {
+                Ok(self.name.as_bytes())
+            } else if char_id == CHAR_ID_LIGHTBULB_ON {
+                Ok(self.bulb_on_state.as_bytes())
+            } else {
+                Err(InterfaceError::CharacteristicUnknown(char_id))
+            }
+        }
+        async fn write_characteristic(
+            &mut self,
+            char_id: CharId,
+            data: &[u8],
+        ) -> Result<CharacteristicResponse, InterfaceError> {
+            info!(
+                "AccessoryInterface to characterstic: 0x{:02x?} data: {:02x?}",
+                char_id, data
+            );
+
+            if char_id == CHAR_ID_LIGHTBULB_ON {
+                let value = data
+                    .get(0)
+                    .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
+                let val_as_bool = *value != 0;
+
+                let response = if self.bulb_on_state != val_as_bool {
+                    CharacteristicResponse::Modified
+                } else {
+                    CharacteristicResponse::Unmodified
+                };
+                self.bulb_on_state = val_as_bool;
+                info!("Set bulb to: {:?}", self.bulb_on_state);
+                Ok(response)
+            } else {
+                Err(InterfaceError::CharacteristicUnknown(char_id))
+            }
+        }
+    }
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
     let mut accessory = LightBulbAccessory {
@@ -336,22 +205,6 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     let mut support = crate::pairing::test::TestPairSupport::default();
     support.ed_ltsk = ed_ltsk;
     support.add_random(&random_buffer);
-
-    // server: Option<Server<'values>>,
-    // accessory: Option<LightBulbAccessory>,
-    // context: Option<HapPeripheralContext>,
-    // platform: Option<TestPairSupport>,
-
-    let TestContainer {
-        server,
-        accessory,
-        context,
-        platform,
-    } = TestContainer::new()?;
-    let mut server = server.unwrap();
-    let mut accessory = accessory.unwrap();
-    let mut context = context.unwrap();
-    let mut platform = platform.unwrap();
 
     struct ExchangeTest {
         handle: u16,
@@ -1181,7 +1034,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing);
     }
 
-    // Service signature on the lightbulb service. TODO: This is technically using the wrong handle.
+    // Service signature on the lightbulb service.
     {
         let incoming_data: &[u8] = &[
             0xef, 0xdd, 0xe0, 0xf7, 0xc8, 0x2a, 0xec, 0x9e, 0xa5, 0xcc, 0x78, 0x68, 0x03, 0x1c,
@@ -1471,7 +1324,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(&*resp_buffer, outgoing);
     }
 
-    // Write request to name TODO This is not on lightbulb_name, but on accessory info name!
+    // Write request to name
     {
         let incoming_data: &[u8] = &[
             0x5e, 0x7b, 0xa0, 0x2b, 0x34, 0xcf, 0x30, 0xeb, 0xa5, 0xab, 0x30, 0xd9, 0x1d, 0x3e,
