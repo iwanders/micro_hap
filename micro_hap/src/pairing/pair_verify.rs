@@ -174,9 +174,6 @@ pub fn pair_verify_process_m1(
             provided_session_id, public_key, encrypted_data
         );
 
-        todo!(
-            "Verify this pairing id here, what about if we reboot and the session is cleared, should this be empty?"
-        );
         if ctx.session.pairing_id.is_none() {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
             // NONCOMPLIANCE? do we ever use this method field?

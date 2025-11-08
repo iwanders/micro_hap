@@ -1582,103 +1582,151 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         assert_eq!(support.global_state_number, 3);
     }
 
+    const TEST_REMOVE_ACCESSORY: bool = false;
     // This TimedWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
-    {
-        let mut copied_c_to_a = {
-            let v = ctx.pair_ctx.borrow();
-            (*v).session.c_to_a
-        };
-        let mut copied_a_to_c = {
-            let v = ctx.pair_ctx.borrow();
-            (*v).session.a_to_c
-        };
-        let timed_write_plain = [
-            0x00, 0x04, 0x26, 0x25, 0x00, 0x34, 0x00, 0x01, 0x2c, 0x00, 0x01, 0x04, 0x06, 0x01,
-            0x01, 0x01, 0x24, 0x37, 0x37, 0x37, 0x35, 0x35, 0x44, 0x44, 0x35, 0x2d, 0x37, 0x32,
-            0x32, 0x33, 0x2d, 0x34, 0x41, 0x33, 0x42, 0x2d, 0x38, 0x37, 0x44, 0x32, 0x2d, 0x43,
-            0x32, 0x34, 0x41, 0x32, 0x34, 0x46, 0x34, 0x30, 0x36, 0x39, 0x35, 0x08, 0x01, 0x19,
-            0x09, 0x01, 0x01,
-        ];
-        info!("timed_write_plain len: {}", timed_write_plain.len());
-        let mut timed_write_encr =
-            vec![0; timed_write_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-        timed_write_encr[0..timed_write_plain.len()].copy_from_slice(&timed_write_plain);
-        let payload = copied_c_to_a
-            .encrypt(&mut timed_write_encr, timed_write_plain.len())
-            .unwrap();
-        info!("encrypted timed write: {:?} len {}", payload, payload.len());
+    if TEST_REMOVE_ACCESSORY {
+        {
+            let mut copied_c_to_a = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.c_to_a
+            };
+            let mut copied_a_to_c = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.a_to_c
+            };
+            let timed_write_plain = [
+                0x00, 0x04, 0x26, 0x25, 0x00, 0x34, 0x00, 0x01, 0x2c, 0x00, 0x01, 0x04, 0x06, 0x01,
+                0x01, 0x01, 0x24, 0x37, 0x37, 0x37, 0x35, 0x35, 0x44, 0x44, 0x35, 0x2d, 0x37, 0x32,
+                0x32, 0x33, 0x2d, 0x34, 0x41, 0x33, 0x42, 0x2d, 0x38, 0x37, 0x44, 0x32, 0x2d, 0x43,
+                0x32, 0x34, 0x41, 0x32, 0x34, 0x46, 0x34, 0x30, 0x36, 0x39, 0x35, 0x08, 0x01, 0x19,
+                0x09, 0x01, 0x01,
+            ];
+            info!("timed_write_plain len: {}", timed_write_plain.len());
+            let mut timed_write_encr =
+                vec![0; timed_write_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+            timed_write_encr[0..timed_write_plain.len()].copy_from_slice(&timed_write_plain);
+            let payload = copied_c_to_a
+                .encrypt(&mut timed_write_encr, timed_write_plain.len())
+                .unwrap();
+            info!("encrypted timed write: {:?} len {}", payload, payload.len());
 
-        ctx.handle_write_incoming_test(
-            &hap,
-            &mut support,
-            &mut accessory,
-            payload,
-            handle_pair_pairings,
-        )
-        .await?;
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                payload,
+                handle_pair_pairings,
+            )
+            .await?;
 
-        let outgoing_plain: &[u8] = &[0x02u8, 0x26, 0x00];
+            let outgoing_plain: &[u8] = &[0x02u8, 0x26, 0x00];
 
-        info!("timed_write_plain len: {}", outgoing_plain.len());
-        let mut outgoing_encr =
-            vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-        outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
-        let outgoing = copied_a_to_c
-            .encrypt(&mut outgoing_encr, outgoing_plain.len())
-            .unwrap();
-        info!("outgoing_encr: {:?} len {}", payload, payload.len());
+            info!("timed_write_plain len: {}", outgoing_plain.len());
+            let mut outgoing_encr =
+                vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+            outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
+            let outgoing = copied_a_to_c
+                .encrypt(&mut outgoing_encr, outgoing_plain.len())
+                .unwrap();
+            info!("outgoing_encr: {:?} len {}", payload, payload.len());
 
-        let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
-        let resp_buffer = resp.expect("expecting a outgoing response");
-        info!("outgoing: {:02x?}", &*resp_buffer);
-        assert_eq!(&*resp_buffer, outgoing);
+            let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:02x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
+
+        // Next up is CharacteristicExecuteWrite
+        // This CharacteristicExecuteWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
+        {
+            let mut copied_c_to_a = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.c_to_a
+            };
+            let mut copied_a_to_c = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.a_to_c
+            };
+            let execute_write_plain = [0x00, 0x05, 0xcc, 0x25, 0x00];
+            info!("timed_write_plain len: {}", execute_write_plain.len());
+            let mut execute_write_encr = vec![
+                0;
+                execute_write_plain.len()
+                    + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES
+            ];
+            execute_write_encr[0..execute_write_plain.len()].copy_from_slice(&execute_write_plain);
+            let payload = copied_c_to_a
+                .encrypt(&mut execute_write_encr, execute_write_plain.len())
+                .unwrap();
+            info!("encrypted exec write: {:?} len {}", payload, payload.len());
+
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                payload,
+                handle_pair_pairings,
+            )
+            .await?;
+
+            let outgoing_plain: &[u8] =
+                &[0x02, 0xcc, 0x00, 0x05, 0x00, 0x01, 0x03, 0x06, 0x01, 0x02];
+
+            info!("{} outgoing len: {}", line!(), outgoing_plain.len());
+            let mut outgoing_encr =
+                vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+            outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
+            let outgoing = copied_a_to_c
+                .encrypt(&mut outgoing_encr, outgoing_plain.len())
+                .unwrap();
+            info!("outgoing_encr: {:?} len {}", payload, payload.len());
+
+            let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:02x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
     }
+    //
 
-    // Next up is CharacteristicExecuteWrite
-    // This CharacteristicExecuteWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
-    {
-        let mut copied_c_to_a = {
-            let v = ctx.pair_ctx.borrow();
-            (*v).session.c_to_a
-        };
-        let mut copied_a_to_c = {
-            let v = ctx.pair_ctx.borrow();
-            (*v).session.a_to_c
-        };
-        let execute_write_plain = [0x00, 0x05, 0xcc, 0x25, 0x00];
-        info!("timed_write_plain len: {}", execute_write_plain.len());
-        let mut execute_write_encr =
-            vec![0; execute_write_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-        execute_write_encr[0..execute_write_plain.len()].copy_from_slice(&execute_write_plain);
-        let payload = copied_c_to_a
-            .encrypt(&mut execute_write_encr, execute_write_plain.len())
-            .unwrap();
-        info!("encrypted exec write: {:?} len {}", payload, payload.len());
-
-        ctx.handle_write_incoming_test(
-            &hap,
-            &mut support,
-            &mut accessory,
-            payload,
-            handle_pair_pairings,
-        )
-        .await?;
-
-        let outgoing_plain: &[u8] = &[0x02, 0xcc, 0x00, 0x05, 0x00, 0x01, 0x03, 0x06, 0x01, 0x02];
-
-        info!("{} outgoing len: {}", line!(), outgoing_plain.len());
-        let mut outgoing_encr =
-            vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-        outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
-        let outgoing = copied_a_to_c
-            .encrypt(&mut outgoing_encr, outgoing_plain.len())
-            .unwrap();
-        info!("outgoing_encr: {:?} len {}", payload, payload.len());
-
-        let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
-        let resp_buffer = resp.expect("expecting a outgoing response");
-        info!("outgoing: {:02x?}", &*resp_buffer);
-        assert_eq!(&*resp_buffer, outgoing);
+    const TEST_PAIR_RESUME_AFTER_DISCONNECT: bool = true;
+    if TEST_PAIR_RESUME_AFTER_DISCONNECT {
+        ctx.handle_disconnect();
+        {
+            let incoming_data: &[u8] = &[
+                0, 2, 95, 35, 0, 73, 0, 1, 68, 6, 1, 1, 0, 1, 6, 14, 8, 117, 120, 116, 50, 165, 39,
+                80, 173, 5, 16, 28, 188, 210, 81, 134, 137, 130, 27, 114, 95, 36, 68, 212, 131, 7,
+                178, 3, 32, 179, 38, 60, 29, 24, 170, 94, 234, 67, 180, 116, 204, 115, 55, 140,
+                210, 21, 35, 47, 53, 194, 183, 218, 20, 13, 164, 143, 239, 175, 111, 4, 50, 9, 1,
+                1,
+            ];
+            let outgoing: &[u8] = &[
+                0x02, 0x5f, 0x00, 0x8e, 0x00, 0x01, 0x8c, 0x06, 0x01, 0x02, 0x03, 0x20, 0x8f, 0x40,
+                0xc5, 0xad, 0xb6, 0x8f, 0x25, 0x62, 0x4a, 0xe5, 0xb2, 0x14, 0xea, 0x76, 0x7a, 0x6e,
+                0xc9, 0x4d, 0x82, 0x9d, 0x3d, 0x7b, 0x5e, 0x1a, 0xd1, 0xba, 0x6f, 0x3e, 0x21, 0x38,
+                0x28, 0x5f, 0x05, 0x65, 0xc4, 0x51, 0xaf, 0x47, 0x0f, 0x8b, 0xa6, 0x4d, 0x0f, 0xfc,
+                0x66, 0x16, 0x61, 0xb3, 0x34, 0xa7, 0xde, 0xa1, 0x5f, 0x76, 0x80, 0x5f, 0xcb, 0x4e,
+                0xf7, 0xee, 0x3e, 0x45, 0x4c, 0x44, 0xe7, 0xa3, 0xfc, 0x3f, 0x4e, 0x09, 0xbe, 0xe4,
+                0x8b, 0xf0, 0xdc, 0x26, 0xaa, 0x56, 0x5b, 0x57, 0xbb, 0x39, 0x91, 0x28, 0xe2, 0xe0,
+                0x33, 0xf7, 0xf0, 0xe5, 0x1b, 0x02, 0x88, 0xeb, 0x17, 0x39, 0xea, 0xe4, 0x63, 0x67,
+                0x87, 0xf6, 0xa8, 0xac, 0x69, 0x13, 0x32, 0xbd, 0xd4, 0xdf, 0xd0, 0xd7, 0xb1, 0x6f,
+                0x47, 0xf2, 0x93, 0xfc, 0xeb, 0x41, 0xd8, 0x15, 0x00, 0x76, 0xd2, 0xc5, 0x84, 0x01,
+                0x58, 0x4b, 0x8c, 0x45, 0xd7, 0x59, 0x7d,
+            ];
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle_pair_verify,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:02x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(support.global_state_number, 3);
+        }
     }
     Ok(())
 }
