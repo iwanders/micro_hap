@@ -1732,6 +1732,56 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
             assert_eq!(&*resp_buffer, outgoing);
             assert_eq!(support.global_state_number, 3);
         }
+
+        // Next, we get
+        // 0, 8, 49, 16, 0, 4, 0, 1, 0, 2, 0?
+        //
+        eprintln!("\n\n\nNext message \n\n\n");
+        ctx.handle_disconnect();
+        {
+            let mut copied_c_to_a = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.c_to_a
+            };
+            let mut copied_a_to_c = {
+                let v = ctx.pair_ctx.borrow();
+                (*v).session.a_to_c
+            };
+            let incoming_plain = [0, 8, 49, 16, 0, 4, 0, 1, 0, 2, 0];
+            info!("timed_write_plain len: {}", incoming_plain.len());
+            let mut incoming_encr =
+                vec![0; incoming_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+            incoming_encr[0..incoming_plain.len()].copy_from_slice(&incoming_plain);
+            let payload = copied_c_to_a
+                .encrypt(&mut incoming_encr, incoming_plain.len())
+                .unwrap();
+            info!("encrypted exec write: {:?} len {}", payload, payload.len());
+
+            // No idea against which handle this is.
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                payload,
+                handle_pair_pairings,
+            )
+            .await?;
+
+            let outgoing_plain: &[u8] = &[];
+            info!("{} outgoing len: {}", line!(), outgoing_plain.len());
+            let mut outgoing_encr =
+                vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
+            outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
+            let outgoing = copied_a_to_c
+                .encrypt(&mut outgoing_encr, outgoing_plain.len())
+                .unwrap();
+            info!("outgoing_encr: {:?} len {}", payload, payload.len());
+
+            let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:02x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+        }
     }
     Ok(())
 }

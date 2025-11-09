@@ -221,7 +221,7 @@ mod hap_temp_accessory {
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = TemperatureAccessory {
-            temperature_value: 5.0,
+            temperature_value: 6.0,
         };
 
         // Create the pairing context.

@@ -191,18 +191,18 @@ pub fn pair_verify_process_m1(
             // This searches the session_id and assigns session->state.pairVerify.cv_KEY from the cache for that
             // session. If it can't find it it sets the pairing_id to -1.
             //ctx.session.pairing_id = PairingId::none();
-            if let Some(shared_secret) = ctx.server.ble_session_cache.fetch(&session_id) {
-                ctx.server.pair_verify.cv_key = shared_secret;
-                ctx.server.pair_verify.pairing_id = true;
+            if let Some(cache_hit) = ctx.server.ble_session_cache.fetch(&session_id) {
+                ctx.server.pair_verify.cv_key = cache_hit.shared_secret;
+                ctx.server.pair_verify.pairing_id = Some(cache_hit.pairing_id);
             } else {
-                ctx.server.pair_verify.pairing_id = false;
+                ctx.server.pair_verify.pairing_id = None;
             }
             info!("ctx.session.pairing_id: {:?}", ctx.session.pairing_id);
         } else {
-            ctx.server.pair_verify.pairing_id = false;
+            ctx.server.pair_verify.pairing_id = None;
         }
 
-        if ctx.server.pair_verify.pairing_id == false {
+        if ctx.server.pair_verify.pairing_id.is_none() {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L331
             info!(
@@ -421,9 +421,12 @@ pub async fn pair_verify_process_get_m2_ble(
     );
 
     let session_id_t = SessionId::from(session_id)?;
-    ctx.server
-        .ble_session_cache
-        .save(support, &session_id_t, &ctx.server.pair_verify.cv_key);
+    ctx.server.ble_session_cache.save(
+        support,
+        &session_id_t,
+        ctx.server.pair_verify.pairing_id.as_ref().unwrap(),
+        &ctx.server.pair_verify.cv_key,
+    );
 
     let mut writer = TLVWriter::new(data);
     writer = writer.add_slice(
@@ -488,7 +491,7 @@ pub async fn pair_verify_process_m3(
     // NONCOMPLIANCE reference stores session->state.pairVerify.pairingID = (int) key;, but we use the full pairing id?
     // do we need to track integers?
     ctx.session.pairing_id = pairing_id;
-    ctx.server.pair_verify.pairing_id = true;
+    ctx.server.pair_verify.pairing_id = Some(pairing_id);
 
     // What's next, we collect: IOS public key, pairing id, accessory public key, check if signature matches that.
     // We use the 'right' slot in our scratch memory.
@@ -526,6 +529,7 @@ pub fn pair_verify_process_get_m4(
     if TRANSPORT_BLE {
         // Create the initial session id for storing it into the session resume cache.
         let key = &ctx.server.pair_verify.cv_key;
+        let pairing_id = ctx.server.pair_verify.pairing_id.as_ref().unwrap();
 
         let mut session_id = SessionId::default();
 
@@ -535,7 +539,9 @@ pub fn pair_verify_process_get_m4(
             PAIR_VERIFY_RESUME_SESSION_ID_INFO.as_bytes(),
             &mut session_id.0,
         )?;
-        ctx.server.ble_session_cache.save(support, &session_id, key);
+        ctx.server
+            .ble_session_cache
+            .save(support, &session_id, &pairing_id, key);
         info!("Stored session id: {:?}", session_id);
     }
 
@@ -578,6 +584,7 @@ pub fn pair_verify_start_session(
     ctx.session.security_active = true;
     // Its now a non-transient session?
     ctx.session.transient = false;
+    ctx.session.pairing_id = ctx.server.pair_verify.pairing_id.unwrap();
 
     Ok(())
 }

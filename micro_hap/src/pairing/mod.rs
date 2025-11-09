@@ -390,7 +390,7 @@ pub struct PairVerify {
     pub cv_pk: [u8; X25519_BYTES],
     pub cv_sk: [u8; X25519_SCALAR_BYTES],
     pub cv_key: [u8; X25519_BYTES],
-    pub pairing_id: bool,
+    pub pairing_id: Option<PairingId>,
     pub controller_cv_pk: [u8; X25519_BYTES],
 }
 
