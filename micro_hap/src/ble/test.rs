@@ -1691,7 +1691,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     const TEST_PAIR_RESUME_AFTER_DISCONNECT: bool = true;
     if TEST_PAIR_RESUME_AFTER_DISCONNECT {
         eprintln!("\n\n\nDISCONNECT\n\n\n");
-        ctx.handle_disconnect();
+        ctx.handle_disconnect().await;
 
         support.add_random(&(0..32).collect::<Vec<_>>());
 
@@ -1732,56 +1732,86 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
             assert_eq!(&*resp_buffer, outgoing);
             assert_eq!(support.global_state_number, 3);
         }
+    }
 
-        // Next, we get
-        // 0, 8, 49, 16, 0, 4, 0, 1, 0, 2, 0?
-        //
-        eprintln!("\n\n\nNext message \n\n\n");
-        ctx.handle_disconnect();
+    {
+        support.add_random(&(0..32).collect::<Vec<_>>());
+        ctx.handle_disconnect().await;
         {
-            let mut copied_c_to_a = {
-                let v = ctx.pair_ctx.borrow();
-                (*v).session.c_to_a
-            };
-            let mut copied_a_to_c = {
-                let v = ctx.pair_ctx.borrow();
-                (*v).session.a_to_c
-            };
-            let incoming_plain = [0, 8, 49, 16, 0, 4, 0, 1, 0, 2, 0];
-            info!("timed_write_plain len: {}", incoming_plain.len());
-            let mut incoming_encr =
-                vec![0; incoming_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-            incoming_encr[0..incoming_plain.len()].copy_from_slice(&incoming_plain);
-            let payload = copied_c_to_a
-                .encrypt(&mut incoming_encr, incoming_plain.len())
-                .unwrap();
-            info!("encrypted exec write: {:?} len {}", payload, payload.len());
-
-            // No idea against which handle this is.
+            let incoming_data: &[u8] = &[
+                0, 2, 83, 35, 0, 42, 0, 1, 37, 6, 1, 1, 3, 32, 28, 36, 155, 22, 10, 139, 87, 176,
+                144, 214, 147, 132, 0, 78, 239, 41, 253, 207, 59, 58, 252, 111, 108, 109, 221, 82,
+                114, 33, 155, 233, 175, 9, 9, 1, 1,
+            ];
+            let outgoing: &[u8] = &[
+                0x02, 0x53, 0x00, 0x8e, 0x00, 0x01, 0x8c, 0x06, 0x01, 0x02, 0x03, 0x20, 0x8f, 0x40,
+                0xc5, 0xad, 0xb6, 0x8f, 0x25, 0x62, 0x4a, 0xe5, 0xb2, 0x14, 0xea, 0x76, 0x7a, 0x6e,
+                0xc9, 0x4d, 0x82, 0x9d, 0x3d, 0x7b, 0x5e, 0x1a, 0xd1, 0xba, 0x6f, 0x3e, 0x21, 0x38,
+                0x28, 0x5f, 0x05, 0x65, 0x84, 0x41, 0xfb, 0xcf, 0xd4, 0x84, 0x31, 0xb2, 0x54, 0x7c,
+                0xa3, 0x4a, 0x8c, 0xc0, 0xce, 0x6f, 0x1c, 0xa7, 0x28, 0x6d, 0xd7, 0x24, 0x83, 0x69,
+                0x2b, 0x58, 0xa9, 0xad, 0xb3, 0x14, 0x3d, 0x44, 0x65, 0x30, 0x6d, 0x0c, 0xcf, 0xda,
+                0xcc, 0x87, 0xe2, 0x6f, 0x23, 0x48, 0x06, 0xf2, 0xff, 0x5f, 0x95, 0x9e, 0x09, 0x3c,
+                0x1b, 0x3b, 0x5e, 0xd9, 0xad, 0xc2, 0xe2, 0xc4, 0xc5, 0x3b, 0x6b, 0xb8, 0x6a, 0xc6,
+                0xac, 0xbf, 0xdf, 0xee, 0x31, 0x05, 0xea, 0x94, 0xc2, 0x90, 0x60, 0xda, 0x12, 0x9f,
+                0xb3, 0x17, 0x37, 0x01, 0x7e, 0x65, 0x90, 0xe7, 0x06, 0x96, 0x06, 0x44, 0x23, 0xba,
+                0xa3, 0x3a, 0x79, 0x3b, 0x4d, 0x91, 0x46,
+            ];
+            eprintln!("\n\n\nPair verifyzzzz \n\n\n");
             ctx.handle_write_incoming_test(
                 &hap,
                 &mut support,
                 &mut accessory,
-                payload,
-                handle_pair_pairings,
+                incoming_data,
+                handle_pair_verify,
             )
             .await?;
-
-            let outgoing_plain: &[u8] = &[];
-            info!("{} outgoing len: {}", line!(), outgoing_plain.len());
-            let mut outgoing_encr =
-                vec![0; outgoing_plain.len() + crate::crypto::aead::CHACHA20_POLY1305_KEY_BYTES];
-            outgoing_encr[0..outgoing_plain.len()].copy_from_slice(&outgoing_plain);
-            let outgoing = copied_a_to_c
-                .encrypt(&mut outgoing_encr, outgoing_plain.len())
-                .unwrap();
-            info!("outgoing_encr: {:?} len {}", payload, payload.len());
-
-            let resp = ctx.handle_read_outgoing(handle_pair_pairings).await?;
+            let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
             let resp_buffer = resp.expect("expecting a outgoing response");
             info!("outgoing: {:02x?}", &*resp_buffer);
             assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(support.global_state_number, 3);
         }
+        // WHy does the phone disconnect after here?????
+    }
+    {
+        support.add_random(&(0..32).collect::<Vec<_>>());
+        ctx.handle_disconnect().await;
+
+        {
+            let incoming_data: &[u8] = &[
+                0, 2, 136, 35, 0, 42, 0, 1, 37, 6, 1, 1, 3, 32, 124, 147, 166, 88, 97, 15, 59, 250,
+                72, 84, 72, 102, 118, 194, 181, 10, 123, 21, 200, 234, 185, 163, 95, 13, 203, 233,
+                97, 16, 120, 61, 96, 86, 9, 1, 1,
+            ];
+            let outgoing: &[u8] = &[
+                0x02, 0x88, 0x00, 0x8e, 0x00, 0x01, 0x8c, 0x06, 0x01, 0x02, 0x03, 0x20, 0x8f, 0x40,
+                0xc5, 0xad, 0xb6, 0x8f, 0x25, 0x62, 0x4a, 0xe5, 0xb2, 0x14, 0xea, 0x76, 0x7a, 0x6e,
+                0xc9, 0x4d, 0x82, 0x9d, 0x3d, 0x7b, 0x5e, 0x1a, 0xd1, 0xba, 0x6f, 0x3e, 0x21, 0x38,
+                0x28, 0x5f, 0x05, 0x65, 0xec, 0x35, 0xc4, 0x0d, 0xcb, 0x15, 0xf1, 0x2c, 0xb2, 0x88,
+                0x9e, 0x89, 0xf8, 0x9a, 0x42, 0xee, 0x88, 0xd1, 0x07, 0xfd, 0xc8, 0x1a, 0xfe, 0x54,
+                0xcd, 0x00, 0xa3, 0x22, 0xa2, 0x1f, 0x7a, 0xb7, 0x61, 0x63, 0xc7, 0x33, 0x74, 0x45,
+                0x0e, 0xc5, 0x59, 0x7a, 0x51, 0x57, 0x5e, 0xb6, 0xee, 0x8f, 0x29, 0x52, 0x92, 0x9f,
+                0x16, 0x47, 0xe2, 0x06, 0x67, 0x59, 0xaa, 0x14, 0xe4, 0x4f, 0x46, 0x85, 0xce, 0x28,
+                0x0a, 0xc6, 0x9a, 0x72, 0x91, 0xf0, 0x23, 0xfa, 0x9f, 0x7c, 0xe5, 0x50, 0xb5, 0x2b,
+                0x1b, 0x69, 0xe4, 0xb7, 0x43, 0x97, 0xd6, 0x28, 0xfe, 0xc5, 0x7d, 0x2a, 0xe3, 0xce,
+                0x34, 0x02, 0xb4, 0x42, 0xd2, 0xd5, 0xc3,
+            ];
+            eprintln!("\n\n\nPair verifyzzzz \n\n\n");
+            ctx.handle_write_incoming_test(
+                &hap,
+                &mut support,
+                &mut accessory,
+                incoming_data,
+                handle_pair_verify,
+            )
+            .await?;
+            let resp = ctx.handle_read_outgoing(handle_pair_verify).await?;
+            let resp_buffer = resp.expect("expecting a outgoing response");
+            info!("outgoing: {:02x?}", &*resp_buffer);
+            assert_eq!(&*resp_buffer, outgoing);
+            assert_eq!(support.global_state_number, 3);
+        }
+        // Same, phone disconnects. Maybe we MUST write the BLE session cache to the disk?
     }
     Ok(())
 }

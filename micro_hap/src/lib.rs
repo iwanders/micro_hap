@@ -656,6 +656,10 @@ impl AccessoryContext {
         self.session = Default::default();
         self.server.disconnect();
     }
+    fn reset_secure_session(&mut self) {
+        error!("resetting secure session.");
+        self.session = Default::default()
+    }
 }
 
 #[cfg(test)]

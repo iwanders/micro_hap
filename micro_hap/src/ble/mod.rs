@@ -571,6 +571,8 @@ impl HapPeripheralContext {
             info!("Done, len: {}", len);
             Ok(BufferResponse(len))
         } else if is_pair_verify {
+            pair_ctx.reset_secure_session();
+            self.should_encrypt_reply = false;
             // NONCOMPLIANCE this seems to reset the secure session, which we currently don't do?
             crate::pairing::pair_verify::handle_incoming(
                 &mut **pair_ctx,
@@ -848,6 +850,8 @@ impl HapPeripheralContext {
                 }
             }
         } else {
+            let buff = self.buffer.borrow();
+            info!("Plaintext reply: {:?}", &buff[0..value.0]);
             Ok(value)
         }
     }
@@ -1200,6 +1204,7 @@ impl HapPeripheralContext {
 
     pub async fn handle_disconnect(&mut self) {
         let mut l = self.pair_ctx.borrow_mut();
+        l.reset_secure_session();
         l.disconnect();
     }
 
