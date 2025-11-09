@@ -389,6 +389,7 @@ pub async fn pair_verify_process_get_m2_ble(
         (salt_idx.start - request_key_idx.end)..(session_idx.end - request_key_idx.end);
     let salt = &remainder[shifted_salt_session_idx];
     info!("Pair Resume M2: salt.: {:02?}", salt);
+
     let key = &ctx.server.pair_verify.cv_key;
     let info = PAIR_VERIFY_M2_RESUME_INFO.as_bytes();
     hkdf_sha512(key, salt, info, result_key)?;
@@ -421,11 +422,16 @@ pub async fn pair_verify_process_get_m2_ble(
     );
 
     let session_id_t = SessionId::from(session_id)?;
+    let pairing_id = ctx.server.pair_verify.pairing_id.as_ref().unwrap();
     ctx.server.ble_session_cache.save(
         support,
         &session_id_t,
-        ctx.server.pair_verify.pairing_id.as_ref().unwrap(),
+        pairing_id,
         &ctx.server.pair_verify.cv_key,
+    );
+    info!(
+        "Saving session {:?} with secret {:?} and pairing id {:?}",
+        session_id_t, &ctx.server.pair_verify.cv_key, pairing_id
     );
 
     let mut writer = TLVWriter::new(data);
@@ -542,7 +548,11 @@ pub fn pair_verify_process_get_m4(
         ctx.server
             .ble_session_cache
             .save(support, &session_id, &pairing_id, key);
-        info!("Stored session id: {:?}", session_id);
+
+        info!(
+            "Stored session id: {:?} with shared secret key {:?} and pairing id {:?}",
+            session_id, key, pairing_id
+        );
     }
 
     let mut writer = TLVWriter::new(data);
@@ -563,7 +573,7 @@ pub fn pair_verify_start_session(
     let _ = support;
     ctx.server.pair_verify.setup.state = Default::default();
     // Do not wipe the session here, we already stored the pairing id into it.
-    //ctx.session = Default::default();
+    ctx.session = Default::default();
     ctx.session.a_to_c.nonce = 0;
     ctx.session.c_to_a.nonce = 0;
     hkdf_sha512(

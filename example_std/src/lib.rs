@@ -144,17 +144,18 @@ impl PlatformSupport for ActualPairSupport {
     }
 
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
-        error!("Storing {:?}", pairing);
+        error!("store_pairing {:?}", pairing);
         self.pairings.insert(pairing.id, *pairing);
         self.save()?;
         Ok(())
     }
 
     async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
-        error!("retrieving id {:?}", id);
+        error!("get_pairing id {:?}", id);
         Ok(self.pairings.get(id).cloned())
     }
     async fn remove_pairing(&mut self, id: &PairingId) -> Result<(), InterfaceError> {
+        error!("remove_pairing {:?}", id);
         self.pairings.remove(id);
         self.save()?;
         Ok(())
@@ -185,12 +186,17 @@ impl PlatformSupport for ActualPairSupport {
     async fn get_ble_broadcast_parameters(
         &self,
     ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, InterfaceError> {
+        error!(
+            "get_ble_broadcast_parameters {:?}",
+            self.broadcast_parameters
+        );
         Ok(self.broadcast_parameters)
     }
     async fn set_ble_broadcast_parameters(
         &mut self,
         params: &micro_hap::ble::broadcast::BleBroadcastParameters,
     ) -> Result<(), InterfaceError> {
+        error!("set_ble_broadcast_parameters {:?}", params);
         self.broadcast_parameters = *params;
         self.save()?;
         Ok(())
