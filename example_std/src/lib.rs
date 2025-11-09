@@ -17,6 +17,9 @@ pub struct CommonArgs {
     #[arg(short, long)]
     pub state: Option<PathBuf>,
 
+    #[arg(short, long,action = clap::ArgAction::SetTrue)]
+    pub wipe: bool,
+
     /// The bluetooth device number to use
     #[arg(short, long)]
     pub device: Option<u16>,
@@ -25,6 +28,7 @@ impl CommonArgs {
     pub fn to_runtime_config(&self) -> RuntimeConfig {
         RuntimeConfig {
             file_path: self.state.clone(),
+            wipe: self.wipe.clone(),
         }
     }
 }
@@ -32,6 +36,7 @@ impl CommonArgs {
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct RuntimeConfig {
     pub file_path: Option<PathBuf>,
+    pub wipe: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -56,11 +61,19 @@ pub struct ActualPairSupport {
 use std::fs;
 use std::path::{Path, PathBuf};
 
+// jskdlfjsdf
 impl ActualPairSupport {
     pub fn new_from_config(runtime_config: RuntimeConfig) -> Result<Self, anyhow::Error> {
         if let Some(path) = &runtime_config.file_path {
             let mut z = Self::new_or_load(path)?;
             z.runtime_config = runtime_config;
+            if z.runtime_config.wipe {
+                let c = z.runtime_config;
+                z = Default::default();
+                z.runtime_config = c;
+
+                z.save()?;
+            }
             Ok(z)
         } else {
             Ok(Self {
