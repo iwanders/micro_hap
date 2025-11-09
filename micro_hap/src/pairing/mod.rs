@@ -373,6 +373,13 @@ pub struct PairServer {
     pub pairings: Pairings,
     pub ble_session_cache: BleSessionCache,
 }
+impl PairServer {
+    pub fn disconnect(&mut self) {
+        self.pair_setup = Default::default();
+        self.pair_verify = Default::default();
+        self.pairings = Default::default();
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
