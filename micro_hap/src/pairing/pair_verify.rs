@@ -170,11 +170,28 @@ pub fn pair_verify_process_m1(
 
         let provided_session_id = session_id.short_data()?;
         info!(
-            "Pair resume with {:02?}, {:02?} {:02?}",
+            "Pair resume with session {:02?}, public key {:02?} encrypted {:02?}",
             provided_session_id, public_key, encrypted_data
         );
 
-        if ctx.session.pairing_id.is_none() {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L268-L277
+        const TRANSPORT_BLE: bool = true;
+        if TRANSPORT_BLE {
+            // NONCOMPLIANCE try to retrieve session from the bluetooth session cache.
+            // TODO This is probably a nice shortcut to speed things up though.
+            // This searches the session_id and assigns session->state.pairVerify.cv_KEY from the cache for that
+            // session. If it can't find it it sets the pairing_id to -1.
+            //ctx.session.pairing_id = PairingId::none();
+            ctx.server.pair_verify.pairing_id = PairingId::none();
+            info!("ctx.session.pairing_id: {:?}", ctx.session.pairing_id);
+            todo!(
+                "The BLE cache is actually used during the setup, we need it to handle first pair & pair resume"
+            );
+        } else {
+            ctx.session.pairing_id = PairingId::none();
+        }
+
+        if ctx.server.pair_verify.pairing_id.is_none() {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L331
             info!(

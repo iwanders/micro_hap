@@ -1693,6 +1693,9 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     if TEST_PAIR_RESUME_AFTER_DISCONNECT {
         eprintln!("\n\n\nDISCONNECT\n\n\n");
         ctx.handle_disconnect();
+
+        support.add_random(&(0..32).collect::<Vec<_>>());
+
         {
             let incoming_data: &[u8] = &[
                 0x00, 0x02, 0x5f, 0x23, 0x00, 0x49, 0x00, 0x01, 0x44, 0x06, 0x01, 0x01, 0x00, 0x01,

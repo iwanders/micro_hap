@@ -121,8 +121,14 @@ impl PairingId {
             .map_err(|_| PairingError::UuidError)?,
         ))
     }
+
+    /// Checks if the pairing is none.
     pub fn is_none(&self) -> bool {
         self == &Default::default()
+    }
+    /// Returns a none pairing id.
+    pub fn none() -> Self {
+        Default::default()
     }
 }
 
@@ -332,7 +338,7 @@ pub struct PairVerify {
     pub cv_pk: [u8; X25519_BYTES],
     pub cv_sk: [u8; X25519_SCALAR_BYTES],
     pub cv_key: [u8; X25519_BYTES],
-    pub pairing_id: usize,
+    pub pairing_id: PairingId,
     pub controller_cv_pk: [u8; X25519_BYTES],
 }
 
