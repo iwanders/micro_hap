@@ -59,13 +59,13 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Make the `PlatformSupport` methods async.~ Async now, but `PlatformSupport: Send` because `Send` is on all futures, this likely needs
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
-- Verify pair resume actually works, keep a list of sessions...
+- ~Verify pair resume actually works, keep a list of sessions...~
 - ~Make `pairing` and `pair_verify` modules crate-private?~ They are now, and refactored, error is still public.
 - ~Implement TimedWrite request.~
 - ~Implement `CharacteristicExecuteWrite`.~
 - Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
-- Bluetooth session cache for session resume.
+- ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts.~ Issue is that the device id shouldn't change!
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

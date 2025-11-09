@@ -203,17 +203,11 @@ mod hap_temp_accessory {
         }))
         .unwrap();
 
+        let device_id = micro_hap::DeviceId([13, 13, 13, 13, 13, 13]);
         // Setup the accessory information.
         let static_information = micro_hap::AccessoryInformationStatic {
             name: "micro_hap",
-            device_id: micro_hap::DeviceId([
-                address.addr.raw()[0],
-                address.addr.raw()[1],
-                address.addr.raw()[2],
-                address.addr.raw()[3],
-                address.addr.raw()[4],
-                address.addr.raw()[5],
-            ]),
+            device_id,
             category: 5, // 5 is lighting
             ..Default::default()
         };
@@ -221,7 +215,7 @@ mod hap_temp_accessory {
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = TemperatureAccessory {
-            temperature_value: 6.0,
+            temperature_value: 16.0,
         };
 
         // Create the pairing context.

@@ -1503,7 +1503,7 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
         // And now we go into pair verify yet again!
         // Feed the device the necessary random.
         support.add_random(&[0x4b, 0xff, 0x03, 0x1d, 0x7d, 0x97, 0x5f, 0x01]);
-        const FAIL_RESUME: bool = true;
+        const FAIL_RESUME: bool = false;
         if FAIL_RESUME {
             support.add_random(&[0x4b, 0xff, 0x03, 0x1d, 0x7d, 0x97, 0x5f, 0x01]);
             support.add_random(&[0x4b, 0xff, 0x03, 0x1d, 0x7d, 0x97, 0x5f, 0x01]);
