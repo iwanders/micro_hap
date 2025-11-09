@@ -80,17 +80,18 @@ pub use pairing::PairCode;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
 pub struct AccessoryInformationStatic {
-    pub hardware_revision: &'static str,
-    pub serial_number: &'static str,
+    pub hardware_revision: &'static str, // "x.y.z" with u32.
+    pub serial_number: &'static str,     // String at least 1, max 64
     //pub service_instance: u16,
-    pub model: &'static str,
-    pub name: &'static str,
-    pub manufacturer: &'static str,
-    pub firmware_revision: &'static str,
+    pub model: &'static str,             // String at least 1, max 64
+    pub name: &'static str,              // String at least 1, max 64
+    pub manufacturer: &'static str,      // String at least 1, max 64
+    pub firmware_revision: &'static str, // "x.y.z" with u32.
     pub category: u16,
 
     pub device_id: DeviceId,
 
+    /// Setup code made up of four uppercase letters. This is constant even across factory reset.
     pub setup_id: SetupId,
 }
 impl Default for AccessoryInformationStatic {
@@ -139,6 +140,7 @@ impl defmt::Format for SvcId {
 }
 
 /// A device id, could be the MAC address.
+/// This changes when a factory reset happens, but should be constant in all other cases.
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPDeviceID.h#L23
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -173,7 +175,7 @@ impl DeviceId {
     }
 }
 
-/// The device id as a ':' delimited hexadecimal string.
+/// The device id as a ':' delimited hexadecimal string; "11:22:33:44:55:66"
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -184,7 +186,8 @@ impl DeviceIdString {
     }
 }
 
-/// The setup id (is this always 4 letters upper case?)
+/// The setup id, always 4 uppercase letters, like "ABCD".
+/// Constant event across factory resets.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -193,6 +196,16 @@ pub struct SetupId(pub [u8; 4]);
 impl Default for SetupId {
     fn default() -> Self {
         SetupId([b'A', b'B', b'C', b'D'])
+    }
+}
+impl SetupId {
+    pub fn from(four_bytes: &[u8; 4]) -> Self {
+        SetupId([
+            (four_bytes[0].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
+            (four_bytes[1].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
+            (four_bytes[2].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
+            (four_bytes[3].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
+        ])
     }
 }
 
@@ -669,5 +682,13 @@ mod test {
             .is_test(false)
             .filter_level(log::LevelFilter::max())
             .try_init();
+    }
+
+    #[test]
+    fn test_setupid() {
+        init();
+        let four_bytes = ['A' as u8, 'B' as u8, 0, 230];
+        let s = crate::SetupId::from(&four_bytes);
+        info!("s: {s:?}");
     }
 }

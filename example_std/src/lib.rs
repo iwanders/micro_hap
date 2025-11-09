@@ -1,6 +1,8 @@
 use anyhow::Context;
 use log::{error, info, warn};
-use micro_hap::{InterfaceError, PlatformSupport, ble::broadcast::BleBroadcastParameters};
+use micro_hap::{
+    DeviceId, InterfaceError, PlatformSupport, SetupId, ble::broadcast::BleBroadcastParameters,
+};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use trouble_host::prelude::*;
@@ -57,6 +59,12 @@ pub struct ActualPairSupport {
     ///
     /// TODO: I forgot how these are used >_<
     pub broadcast_parameters: BleBroadcastParameters,
+
+    /// The device id for this accessory, must be constant across reboots.
+    pub device_id: DeviceId,
+
+    /// The setup id, constant across factory reset.
+    pub setup_id: SetupId,
 }
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -115,6 +123,11 @@ impl Default for ActualPairSupport {
     fn default() -> Self {
         let mut ed_ltsk = [0; ED25519_LTSK];
         ed_ltsk.fill_with(rand::random);
+        let mut device_id = DeviceId::default();
+        device_id.0.fill_with(rand::random);
+        let mut r_bytes = [0u8; 4];
+        r_bytes.fill_with(rand::random);
+        let setup_id = SetupId::from(&r_bytes);
         Self {
             runtime_config: Default::default(),
             ed_ltsk,
@@ -122,6 +135,8 @@ impl Default for ActualPairSupport {
             global_state_number: 1,
             config_number: 1,
             broadcast_parameters: Default::default(),
+            device_id,
+            setup_id,
         }
     }
 }

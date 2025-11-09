@@ -203,19 +203,22 @@ mod hap_temp_accessory {
         }))
         .unwrap();
 
-        let device_id = micro_hap::DeviceId([13, 13, 13, 13, 13, 13]);
-        // Setup the accessory information.
-        let static_information = micro_hap::AccessoryInformationStatic {
-            name: "micro_hap",
-            device_id,
-            category: 5, // 5 is lighting
-            ..Default::default()
-        };
-
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = TemperatureAccessory {
-            temperature_value: 16.0,
+            temperature_value: -6.0,
+        };
+
+        // And the platform support.
+        let mut support =
+            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
+
+        let static_information = micro_hap::AccessoryInformationStatic {
+            name: "micro_hap",
+            device_id: support.device_id,
+            setup_id: support.setup_id,
+            category: 10, // 10 is sensors
+            ..Default::default()
         };
 
         // Create the pairing context.
@@ -223,10 +226,10 @@ mod hap_temp_accessory {
             static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
             STATE.init_with(micro_hap::AccessoryContext::default)
         };
-        pair_ctx.accessory = static_information;
         pair_ctx
             .info
             .assign_from(rand::random(), PairCode::from_str("111-22-333").unwrap());
+        pair_ctx.accessory = static_information;
 
         // Create the buffer for hap messages in the gatt server.
         let buffer: &mut [u8] = {
@@ -265,9 +268,6 @@ mod hap_temp_accessory {
 
         hap_context.assign_static_data(&static_information);
 
-        // And the platform support.
-        let mut support =
-            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
         println!("support: {support:?}");
 
         let _ = join(ble_task(runner), async {
