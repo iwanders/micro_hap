@@ -571,6 +571,7 @@ impl HapPeripheralContext {
             info!("Done, len: {}", len);
             Ok(BufferResponse(len))
         } else if is_pair_verify {
+            // NONCOMPLIANCE this seems to reset the secure session, which we currently don't do?
             crate::pairing::pair_verify::handle_incoming(
                 &mut **pair_ctx,
                 pair_support,

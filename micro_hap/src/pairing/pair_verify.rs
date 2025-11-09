@@ -1,6 +1,7 @@
 // use bitfield_struct::bitfield;
 use zerocopy::{IntoBytes, TryFromBytes};
 
+use super::TRANSPORT_BLE;
 use crate::PlatformSupport;
 use crate::crypto::{
     aead::{self, CHACHA20_POLY1305_KEY_BYTES},
@@ -8,14 +9,20 @@ use crate::crypto::{
     hkdf_sha512,
 };
 use crate::pairing::{
-    AccessoryContext, ED25519_BYTES, PairState, PairingError, PairingId, PairingMethod, TLVType,
-    X25519_BYTES, tlv::*,
+    AccessoryContext, ED25519_BYTES, PairState, PairingError, PairingId, PairingMethod, SessionId,
+    TLVType, X25519_BYTES, tlv::*,
 };
 use crate::tlv::{TLVReader, TLVWriter};
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L972
 
 // constants used in the pair verify process
+//
+//
+// HAP/HAPPairingPairVerify.c
+// 271:                    ->sessionCache.fetch(
+// 641:            ->sessionCache.save(
+// 966:                ->sessionCache.save(
 
 const PAIR_VERIFY_M1_RESUME_INFO: &'static str = "Pair-Resume-Request-Info";
 const PAIR_VERIFY_M1_RESUME_NONCE: &'static str = "PR-Msg01";
@@ -27,6 +34,9 @@ const PAIR_VERIFY_M2_SALT: &'static str = "Pair-Verify-Encrypt-Salt";
 const PAIR_VERIFY_M2_INFO: &'static str = "Pair-Verify-Encrypt-Info";
 const PAIR_VERIFY_M2_NONCE: &'static str = "PV-Msg02";
 const PAIR_VERIFY_M3_NONCE: &'static str = "PV-Msg03";
+
+const PAIR_VERIFY_RESUME_SESSION_ID_SALT: &'static str = "Pair-Verify-ResumeSessionID-Salt";
+const PAIR_VERIFY_RESUME_SESSION_ID_INFO: &'static str = "Pair-Verify-ResumeSessionID-Info";
 
 // Salt and info for the control channel.
 pub const CONTROL_CHANNEL_SALT: &'static str = "Control-Salt";
@@ -168,30 +178,31 @@ pub fn pair_verify_process_m1(
         info!("Pair Resume M1: Resume Request");
         // NONCOMPLIANCE; They have a session cache here... we don't have a session cache?
 
-        let provided_session_id = session_id.short_data()?;
+        let session_id = SessionId::from_tlv(&session_id)?;
         info!(
             "Pair resume with session {:02?}, public key {:02?} encrypted {:02?}",
-            provided_session_id, public_key, encrypted_data
+            session_id, public_key, encrypted_data
         );
 
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L268-L277
-        const TRANSPORT_BLE: bool = true;
         if TRANSPORT_BLE {
             // NONCOMPLIANCE try to retrieve session from the bluetooth session cache.
             // TODO This is probably a nice shortcut to speed things up though.
             // This searches the session_id and assigns session->state.pairVerify.cv_KEY from the cache for that
             // session. If it can't find it it sets the pairing_id to -1.
             //ctx.session.pairing_id = PairingId::none();
-            ctx.server.pair_verify.pairing_id = PairingId::none();
+            if let Some(shared_secret) = ctx.server.ble_session_cache.fetch(&session_id) {
+                ctx.server.pair_verify.cv_key = shared_secret;
+                ctx.server.pair_verify.pairing_id = true;
+            } else {
+                ctx.server.pair_verify.pairing_id = false;
+            }
             info!("ctx.session.pairing_id: {:?}", ctx.session.pairing_id);
-            todo!(
-                "The BLE cache is actually used during the setup, we need it to handle first pair & pair resume"
-            );
         } else {
-            ctx.session.pairing_id = PairingId::none();
+            ctx.server.pair_verify.pairing_id = false;
         }
 
-        if ctx.server.pair_verify.pairing_id.is_none() {
+        if ctx.server.pair_verify.pairing_id == false {
             ctx.server.pair_verify.setup.method = PairingMethod::PairVerify;
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L331
             info!(
@@ -204,11 +215,11 @@ pub fn pair_verify_process_m1(
         let mut scratch = ctx.server.pair_setup.B;
         let request_key_idx = 0..CHACHA20_POLY1305_KEY_BYTES;
         let salt_idx = request_key_idx.end..request_key_idx.end + X25519_BYTES;
-        let session_idx = salt_idx.end..salt_idx.end + provided_session_id.len();
+        let session_idx = salt_idx.end..salt_idx.end + session_id.0.len();
 
         // Copy the data there.
         public_key.copy_body(&mut scratch[salt_idx.clone()])?;
-        session_id.copy_body(&mut scratch[session_idx.clone()])?;
+        scratch[session_idx.clone()].copy_from_slice(&session_id.as_bytes());
 
         let (first_section, right_scratch) = scratch.split_at_mut(session_idx.end);
 
@@ -409,7 +420,10 @@ pub async fn pair_verify_process_get_m2_ble(
         ctx.server.pair_verify.cv_key
     );
 
-    // NONCOMPLIANCE save session to cache.
+    let session_id_t = SessionId::from(session_id)?;
+    ctx.server
+        .ble_session_cache
+        .save(support, &session_id_t, &ctx.server.pair_verify.cv_key);
 
     let mut writer = TLVWriter::new(data);
     writer = writer.add_slice(
@@ -474,6 +488,7 @@ pub async fn pair_verify_process_m3(
     // NONCOMPLIANCE reference stores session->state.pairVerify.pairingID = (int) key;, but we use the full pairing id?
     // do we need to track integers?
     ctx.session.pairing_id = pairing_id;
+    ctx.server.pair_verify.pairing_id = true;
 
     // What's next, we collect: IOS public key, pairing id, accessory public key, check if signature matches that.
     // We use the 'right' slot in our scratch memory.
@@ -506,7 +521,23 @@ pub fn pair_verify_process_get_m4(
 ) -> Result<usize, PairingError> {
     info!("Pair Verify M4: Verify Finish Response.");
 
-    // NONCOMPLIANCE: BLE Igorning pair resume
+    // BLE Pair Resume.
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L930
+    if TRANSPORT_BLE {
+        // Create the initial session id for storing it into the session resume cache.
+        let key = &ctx.server.pair_verify.cv_key;
+
+        let mut session_id = SessionId::default();
+
+        hkdf_sha512(
+            key,
+            PAIR_VERIFY_RESUME_SESSION_ID_SALT.as_bytes(),
+            PAIR_VERIFY_RESUME_SESSION_ID_INFO.as_bytes(),
+            &mut session_id.0,
+        )?;
+        ctx.server.ble_session_cache.save(support, &session_id, key);
+        info!("Stored session id: {:?}", session_id);
+    }
 
     let mut writer = TLVWriter::new(data);
     writer = writer.add_entry(TLVType::State, &ctx.server.pair_verify.setup.state)?;

@@ -1687,7 +1687,6 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
             assert_eq!(&*resp_buffer, outgoing);
         }
     }
-    //
 
     const TEST_PAIR_RESUME_AFTER_DISCONNECT: bool = true;
     if TEST_PAIR_RESUME_AFTER_DISCONNECT {

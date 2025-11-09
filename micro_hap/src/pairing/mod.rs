@@ -28,10 +28,13 @@ use crate::crypto::{aead::CHACHA20_POLY1305_KEY_BYTES, homekit_srp_client};
 pub(crate) mod pair_pairing;
 pub(crate) mod pair_setup;
 pub(crate) mod pair_verify;
+pub(crate) mod session_cache;
 use crate::{AccessoryContext, InterfaceError};
 use pair_pairing::Pairings;
+use session_cache::BleSessionCache;
 use thiserror::Error;
 
+pub const TRANSPORT_BLE: bool = true;
 /// Errors associated to pairing, and configuration / initialisation of the pairing properties.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Error, Debug, Copy, Clone, Eq, PartialEq)]
@@ -155,6 +158,47 @@ impl PairingPublicKey {
     }
     pub fn as_ref(&self) -> &[u8; 32] {
         &self.0
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Hash,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Default,
+    TryFromBytes,
+    IntoBytes,
+    Immutable,
+    KnownLayout,
+)]
+#[repr(transparent)]
+pub struct SessionId(pub [u8; 8]);
+impl SessionId {
+    pub fn from(bytes: &[u8]) -> Result<Self, PairingError> {
+        let mut r = Self::default();
+        if bytes.len() != r.0.len() {
+            return Err(PairingError::IncorrectLength);
+        }
+        r.0.copy_from_slice(bytes);
+        Ok(r)
+    }
+    pub fn as_ref(&self) -> &[u8; 8] {
+        &self.0
+    }
+    pub fn from_tlv(identifier: &TLVSessionId) -> Result<SessionId, PairingError> {
+        Ok(*SessionId::try_ref_from_bytes(
+            identifier
+                .short_data()
+                .map_err(|_| PairingError::InvalidData)?,
+        )
+        .map_err(|_| PairingError::InvalidData)?)
     }
 }
 
@@ -327,6 +371,7 @@ pub struct PairServer {
     pub pair_setup: ServerPairSetup,
     pub pair_verify: PairVerify,
     pub pairings: Pairings,
+    pub ble_session_cache: BleSessionCache,
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPSession.h#L127
@@ -338,7 +383,7 @@ pub struct PairVerify {
     pub cv_pk: [u8; X25519_BYTES],
     pub cv_sk: [u8; X25519_SCALAR_BYTES],
     pub cv_key: [u8; X25519_BYTES],
-    pub pairing_id: PairingId,
+    pub pairing_id: bool,
     pub controller_cv_pk: [u8; X25519_BYTES],
 }
 
