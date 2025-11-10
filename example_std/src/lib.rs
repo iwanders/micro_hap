@@ -1,5 +1,6 @@
 use anyhow::Context;
 use log::{error, info, warn};
+use micro_hap::PairCode;
 use micro_hap::{
     DeviceId, InterfaceError, PlatformSupport, SetupId, ble::broadcast::BleBroadcastParameters,
 };
@@ -285,4 +286,19 @@ pub fn make_address(address_type: AddressType) -> Address {
             addr: BdAddr::new([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]),
         },
     }
+}
+
+pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
+    let pairstr = micro_hap::setup_payload(&pair_code, &setup_id, category.into());
+
+    use qrcode::QrCode;
+    use qrcode::render::unicode;
+
+    let code = QrCode::new(pairstr.as_bytes()).unwrap();
+    let image = code
+        .render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+    println!("{image}");
 }

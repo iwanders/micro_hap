@@ -54,7 +54,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
-- Modify/add second example to show how to add a service, ensure common stuff is shared.
+- ~Modify/add second example to show how to add a service, ensure common stuff is shared.~
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
 - ~Make the `PlatformSupport` methods async.~ Async now, but `PlatformSupport: Send` because `Send` is on all futures, this likely needs
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
@@ -63,9 +63,9 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Make `pairing` and `pair_verify` modules crate-private?~ They are now, and refactored, error is still public.
 - ~Implement TimedWrite request.~
 - ~Implement `CharacteristicExecuteWrite`.~
-- Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).
+- ~Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).~
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
-- ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts.~ Issue is that the device id shouldn't change!
+- ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

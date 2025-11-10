@@ -72,6 +72,7 @@ use core::future::Future;
 //
 // Ah, well we can't have Arc<dyn Foo> with heapless arc... it needs https://rust-lang.github.io/rfcs/2580-ptr-meta.html I think?
 
+use heapless::String;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub use pairing::PairCode;
@@ -109,6 +110,101 @@ impl Default for AccessoryInformationStatic {
             setup_id: Default::default(),
         }
     }
+}
+
+pub struct SetupPayloadProperties {
+    pub paired: bool,
+    pub support_ip: bool,
+    pub support_ble: bool,
+    pub category: u8,
+}
+impl From<u8> for SetupPayloadProperties {
+    fn from(category: u8) -> Self {
+        Self {
+            paired: false,
+            support_ip: false,
+            support_ble: true,
+            category,
+        }
+    }
+}
+
+pub const SETUP_PAYLOAD_URI_LEN: usize = 9 + "X-HM://".len() + 100;
+/// Calculate the setup payload, this is an URL for use in a QR code for easy setup.
+pub fn setup_payload(
+    pair_code: &PairCode,
+    setup_id: &SetupId,
+    properties: SetupPayloadProperties,
+) -> String<SETUP_PAYLOAD_URI_LEN> {
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPAccessorySetupGetSetupPayloadTest.c#L9-L14
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessorySetup.c#L102
+
+    let mut result: String<SETUP_PAYLOAD_URI_LEN> = String::new();
+    result.push_str(&"X-HM://").unwrap();
+
+    // 46 bit value holding setup code concatenated with the setup id.
+    let mut left: u64 = 0;
+    left |= 0 << 43; // version
+    left |= 0 << 39; // reserved
+    left |= (properties.category as u64) << 31;
+    left |= (if properties.support_ble { 1 } else { 0 }) << 29;
+    left |= (if properties.support_ip { 1 } else { 0 }) << 28;
+    left |= (if properties.paired { 1 } else { 0 }) << 27;
+
+    let digits = pair_code.to_digits();
+    left |= (digits[0] as u64) * 10_000_000+
+    (digits[1] as u64) * 1_000_000 +
+    (digits[2] as u64) * 100_000 +
+    (digits[3] as u64) * 10_000 +
+    (digits[4] as u64) * 1_000 +
+    (digits[5] as u64) * 100 +
+    (digits[6] as u64) * 10 +
+     (digits[7] as u64) * 1;
+
+    info!("left: {:b}", left);
+    info!("left: {:b}", 2467727686u64 );
+
+    // Base36 encode.
+    fn value_to_b36(x: u8) -> u8 {
+        if x < 10 {
+            x + '0' as u8
+        } else {
+            x - 10 + 'A' as u8
+        }
+    }
+    // Okay, well... manually implementing this missed zero's, so we'll just copy the C code here.
+    let mut code = left;
+    let mut other_dir = [0u8; 9];
+    for i in 0..9 {
+        // Divide code by 36 and get remainder.
+
+        let x = code  ;
+        let mut q = x - (x >> 3);
+
+        q = q + (q >> 6);
+        q = q + (q >> 12);
+        q = q + (q >> 24);
+        q = q + (q >> 48); // not needed for x < 2^48
+        /* q = x * 8/9 +0/-5 */
+        q = q >> 5;
+        /* q = x / 36 +0/-1 */
+        //let r = (x as u32) - ( q as u32).overflowing_mul(36).0;
+        let r = (x as u32) - (q * 36) as u32;
+        /* 0 <= r < 72 */
+        let d = (r + 28) >> 6;
+        /* d = 1 if r > 35 */
+        code = q + d as u64;
+        let c = ((r - d * 36)) as u8;
+        assert!(c < 36);
+        other_dir[i] = c;
+    }
+    for c in other_dir.iter().rev() {
+        result.push(value_to_b36(*c) as char).unwrap();
+    }
+    for b in setup_id.as_bytes() {
+        result.push(*b as char).unwrap();
+    }
+    result
 }
 
 /// A characteristic id.
@@ -186,7 +282,7 @@ impl DeviceIdString {
     }
 }
 
-/// The setup id, always 4 uppercase letters, like "ABCD".
+/// The setup id, always 4 alphanumeric uppercase letters, like "ABCD", or "7OSX".
 /// Constant event across factory resets.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -199,12 +295,26 @@ impl Default for SetupId {
     }
 }
 impl SetupId {
+    /// Create a setup id from four bytes, roundtrips if they are valid, otherwise modulo's appropriately.
     pub fn from(four_bytes: &[u8; 4]) -> Self {
+        fn shift(v: u8) -> u8 {
+            if v.is_ascii_alphanumeric() {
+                v.to_ascii_uppercase()
+            } else {
+                // Pick out of the letters and alphabet.
+                let x = v.rem_euclid(26 + 10);
+                if x < 10 {
+                    x + '0' as u8
+                } else {
+                    x.to_ascii_uppercase()
+                }
+            }
+        }
         SetupId([
-            (four_bytes[0].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
-            (four_bytes[1].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
-            (four_bytes[2].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
-            (four_bytes[3].rem_euclid(26) + 'A' as u8).to_ascii_uppercase(),
+            shift(four_bytes[0]),
+            shift(four_bytes[1]),
+            shift(four_bytes[2]),
+            shift(four_bytes[3]),
         ])
     }
 }
@@ -677,6 +787,7 @@ impl AccessoryContext {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     pub fn init() {
         let _ = env_logger::builder()
             .is_test(false)
@@ -685,10 +796,78 @@ mod test {
     }
 
     #[test]
-    fn test_setupid() {
+    fn test_setup_id() {
         init();
-        let four_bytes = ['A' as u8, 'B' as u8, 0, 230];
+        let four_bytes = ['A' as u8, '0' as u8, 0, 230];
         let s = crate::SetupId::from(&four_bytes);
+        assert_eq!(s.0[1], '0' as u8);
         info!("s: {s:?}");
+        let setup_id = SetupId::from(&['7' as u8, 'O' as u8, 'S' as u8, 'X' as u8]);
+        // verify round trip.
+        assert_eq!(setup_id.0[0], '7' as u8);
+        assert_eq!(setup_id.0[1], 'O' as u8);
+        assert_eq!(setup_id.0[2], 'S' as u8);
+        assert_eq!(setup_id.0[3], 'X' as u8);
+    }
+
+    #[test]
+    fn test_setup_payload_uri() {
+        init();
+        let pair_code = PairCode::from_str("518-08-582").unwrap();
+        let pair_code_n = PairCode::from_str("000-00-000").unwrap();
+        let setup_id = SetupId::from(&['7' as u8, 'O' as u8, 'S' as u8, 'X' as u8]);
+        let setup_id_n = SetupId::from(&['0' as u8, '0' as u8, '0' as u8, '0' as u8]);
+
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPAccessorySetupGetSetupPayloadTest.c#L9-L14
+        // The bottom one.
+        assert_eq!(
+            &setup_payload(&pair_code, &setup_id, 7.into()),
+            "X-HM://0076CDMX27OSX"
+        );
+        println!("ble passes");
+
+        // The other ones.
+        // // first one.
+        assert_eq!(
+            &setup_payload(
+                &pair_code,
+                &setup_id,
+                SetupPayloadProperties {
+                    support_ip: true,
+                    support_ble: false,
+                    paired: false,
+                    category: 7
+                }
+            ),
+            "X-HM://0071WK4SM7OSX"
+        );
+        // second one.
+        assert_eq!(
+            &setup_payload(
+                &pair_code_n,
+                &setup_id_n,
+                SetupPayloadProperties {
+                    support_ip: true,
+                    support_ble: false,
+                    paired: false,
+                    category: 7
+                }
+            ),
+            "X-HM://00711PP1C0000"
+        );
+        // The third, paired one.
+        assert_eq!(
+            &setup_payload(
+                &pair_code_n,
+                &setup_id_n,
+                SetupPayloadProperties {
+                    support_ip: true,
+                    support_ble: false,
+                    paired: true,
+                    category: 7
+                }
+            ),
+            "X-HM://00739MG3K0000"
+        );
     }
 }

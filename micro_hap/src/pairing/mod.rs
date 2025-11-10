@@ -205,6 +205,7 @@ impl SessionId {
 /// Represents the 8 digit pairing code the user is prompted for during the pairing procedure.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub struct PairCode([u8; 8 + 2]);
 impl PairCode {
     /// Create the pairing code from an array of digits, for example \[1,1,1,2,2,3,3,3\].
@@ -232,6 +233,23 @@ impl PairCode {
             offset + v[7],
         ]))
     }
+
+    pub const fn to_digits(&self) -> [u8; 8] {
+        let offset = '0' as u8;
+        [
+            self.0[0] - offset,
+            self.0[1] - offset,
+            self.0[2] - offset,
+            //3 -
+            self.0[4] - offset,
+            self.0[5] - offset,
+            //4 -
+            self.0[7] - offset,
+            self.0[8] - offset,
+            self.0[9] - offset,
+        ]
+    }
+
     /// Create a pairing code from a string, including the hyphens: `111-22-333`.
     pub fn from_str(v: &'static str) -> Result<Self, ()> {
         let mut r = [0u8; 10];
@@ -850,8 +868,9 @@ pub mod test {
             0x49, 0xd7, 0xe7, 0xbe, 0xf1, 0x8f,
         ];
         // let pass = "111-22-333";
-
-        let p = PairCode::from_digits([1, 1, 1, 2, 2, 3, 3, 3]).unwrap();
+        let as_array = [1, 1, 1, 2, 2, 3, 3, 3];
+        let p = PairCode::from_digits(as_array).unwrap();
+        assert_eq!(&as_array, &p.to_digits());
         let mut verifier = [0u8; 384];
         p.calculate_verifier(&salt, &mut verifier);
         assert_eq!(&verifier, &expected_verifier);

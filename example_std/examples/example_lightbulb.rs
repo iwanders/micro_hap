@@ -137,6 +137,7 @@ mod hap_lightbulb {
             ]),
             ..Default::default()
         };
+        let setup_id = static_information.setup_id;
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
@@ -151,9 +152,8 @@ mod hap_lightbulb {
             STATE.init_with(micro_hap::AccessoryContext::default)
         };
         pair_ctx.accessory = static_information;
-        pair_ctx
-            .info
-            .assign_from(rand::random(), PairCode::from_str("111-22-333").unwrap());
+        let pair_code = PairCode::from_str("111-22-333").unwrap();
+        pair_ctx.info.assign_from(rand::random(), pair_code);
 
         // Create the buffer for hap messages in the gatt server.
         let buffer: &mut [u8] = {
@@ -193,6 +193,8 @@ mod hap_lightbulb {
 
         // And the platform support.
         let mut support = ActualPairSupport::default();
+
+        example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
 
         let _ = join(ble_task(runner), async {
             loop {

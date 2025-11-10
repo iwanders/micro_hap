@@ -21,6 +21,7 @@ zerocopy = { version = "0.8.26", features = ["derive"] }
 static_cell = "2.1"
 
 
+qrcode = { version = "0.14.1", default-features = false  }
 
 # Bluetooth stack and deps to use the linux bt-hci interface.
 trouble-host = { features = [
