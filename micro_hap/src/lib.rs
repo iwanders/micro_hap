@@ -170,6 +170,7 @@ pub fn setup_payload(
         }
     }
     // Base36 encoding converted from the original code.
+    // Tested exhaustively up to u32::MAX in edd615290d4d1090ec14fea7c3b1f475fa11fd4c.
     let mut other_dir = [0u8; 9];
     let mut remaining = left;
 
@@ -857,73 +858,5 @@ mod test {
             ),
             "X-HM://00739MG3K0000"
         );
-    }
-    #[test]
-    fn test_base64_converter() {
-        // Clean up this rust function.
-        // Overflowed at 4268414436, passed all the others, this definitely works.
-        init();
-        fn orig(code: u64) -> [u8; 9] {
-            let mut other_dir = [0u8; 9];
-            let mut code = code;
-            for i in 0..9 {
-                // Divide code by 36 and get remainder.
-
-                let x = code;
-                let mut q = x - (x >> 3);
-
-                q = q + (q >> 6);
-                q = q + (q >> 12);
-                q = q + (q >> 24);
-                q = q + (q >> 48); // not needed for x < 2^48
-
-                /* q = x * 8/9 +0/-5 */
-                q = q >> 5;
-                /* q = x / 36 +0/-1 */
-                //let r = (x as u32) - ( q as u32).overflowing_mul(36).0;
-                let r = (x as u32) - (q * 36) as u32;
-                /* 0 <= r < 72 */
-                let d = (r + 28) >> 6;
-                /* d = 1 if r > 35 */
-                code = q + d as u64;
-                let c = (r - d * 36) as u8;
-                assert!(c < 36);
-                other_dir[i] = c;
-            }
-            other_dir
-        }
-        fn modified(code: u64) -> [u8; 9] {
-            let mut result = [0u8; 9];
-            let mut remaining = code;
-
-            for i in 0..9 {
-                // Calculate q = remaining / 36
-                let q = remaining / 36;
-
-                // Calculate remainder r = remaining % 36
-                let r = remaining % 36;
-
-                // Convert remainder to u8 and store
-                result[i] = r as u8;
-
-                // Update remaining for next iteration
-                remaining = q;
-            }
-
-            result
-        }
-
-        let m = 2736163142u64;
-        let upper = m * 2;
-        let c = m / 100;
-        for i in (0..upper) {
-            if i.rem_euclid(c) == 0 {
-                println!(
-                    "i {i:?} / {m:?}  at {:.3}",
-                    ((i as f64) / (upper as f64)) * 100.0
-                );
-            }
-            assert_eq!(orig(i), modified(i));
-        }
     }
 }

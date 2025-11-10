@@ -1367,6 +1367,7 @@ impl HapPeripheralContext {
         support: &mut impl PlatformSupport,
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
     ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
+        let _ = accessory;
         let z = self.pair_ctx.borrow();
         let static_info = z.accessory;
         let broadcast_params = support.get_ble_broadcast_parameters().await.unwrap();
