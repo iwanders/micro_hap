@@ -105,7 +105,7 @@ mod hap_temp_sensor {
 mod hap_temp_accessory {
     use super::hap_temp_sensor;
     use example_std::RuntimeConfig;
-    use example_std::{ActualPairSupport, AddressType, advertise, make_address};
+    use example_std::{ActualPairSupport, AddressType, make_address};
 
     use embassy_futures::join::join;
     use log::info;
@@ -220,15 +220,15 @@ mod hap_temp_accessory {
             category: 10, // 10 is sensors
             ..Default::default()
         };
+        let setup_id = static_information.setup_id;
 
         // Create the pairing context.
         let pair_ctx = {
             static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
             STATE.init_with(micro_hap::AccessoryContext::default)
         };
-        pair_ctx
-            .info
-            .assign_from(rand::random(), PairCode::from_str("111-22-333").unwrap());
+        let pair_code = PairCode::from_str("111-22-333").unwrap();
+        pair_ctx.info.assign_from(rand::random(), pair_code);
         pair_ctx.accessory = static_information;
 
         // Create the buffer for hap messages in the gatt server.
@@ -267,6 +267,7 @@ mod hap_temp_accessory {
         hap_context.add_service(&server.temp_sensor).unwrap();
 
         hap_context.assign_static_data(&static_information);
+        example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
 
         println!("support: {support:?}");
 

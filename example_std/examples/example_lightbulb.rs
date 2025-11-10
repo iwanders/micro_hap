@@ -4,7 +4,7 @@ use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
 mod hap_lightbulb {
-    use example_std::{ActualPairSupport, AddressType, advertise, make_address};
+    use example_std::{ActualPairSupport, AddressType, make_address};
 
     use embassy_futures::join::join;
     use log::info;
@@ -198,7 +198,10 @@ mod hap_lightbulb {
 
         let _ = join(ble_task(runner), async {
             loop {
-                match advertise(name, &mut peripheral, &static_information).await {
+                match hap_context
+                    .advertise(&mut accessory, &mut support, &mut peripheral)
+                    .await
+                {
                     Ok(conn) => {
                         // Increase the data length to 251 bytes per package, default is like 27.
                         conn.update_data_length(&stack, 251, 2120)

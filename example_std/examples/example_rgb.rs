@@ -329,7 +329,7 @@ mod hap_rgb_bulb {
 
 mod hap_rgb {
     use super::hap_rgb_bulb;
-    use example_std::{ActualPairSupport, AddressType, advertise, make_address};
+    use example_std::{ActualPairSupport, AddressType, make_address};
 
     use embassy_futures::join::join;
     use log::info;
@@ -536,6 +536,7 @@ mod hap_rgb {
             category: 5, // 5 is lighting
             ..Default::default()
         };
+        let setup_id = static_information.setup_id;
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
@@ -602,7 +603,10 @@ mod hap_rgb {
 
         let _ = join(ble_task(runner), async {
             loop {
-                match advertise(name, &mut peripheral, &static_information).await {
+                match hap_context
+                    .advertise(&mut accessory, &mut support, &mut peripheral)
+                    .await
+                {
                     Ok(conn) => {
                         // Increase the data length to 251 bytes per package, default is like 27.
                         conn.update_data_length(&stack, 251, 2120)
