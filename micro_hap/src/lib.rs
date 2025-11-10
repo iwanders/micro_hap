@@ -152,17 +152,14 @@ pub fn setup_payload(
     left |= (if properties.paired { 1 } else { 0 }) << 27;
 
     let digits = pair_code.to_digits();
-    left |= (digits[0] as u64) * 10_000_000+
-    (digits[1] as u64) * 1_000_000 +
-    (digits[2] as u64) * 100_000 +
-    (digits[3] as u64) * 10_000 +
-    (digits[4] as u64) * 1_000 +
-    (digits[5] as u64) * 100 +
-    (digits[6] as u64) * 10 +
-     (digits[7] as u64) * 1;
-
-    info!("left: {:b}", left);
-    info!("left: {:b}", 2467727686u64 );
+    left |= (digits[0] as u64) * 10_000_000
+        + (digits[1] as u64) * 1_000_000
+        + (digits[2] as u64) * 100_000
+        + (digits[3] as u64) * 10_000
+        + (digits[4] as u64) * 1_000
+        + (digits[5] as u64) * 100
+        + (digits[6] as u64) * 10
+        + (digits[7] as u64) * 1;
 
     // Base36 encode.
     fn value_to_b36(x: u8) -> u8 {
@@ -172,31 +169,22 @@ pub fn setup_payload(
             x - 10 + 'A' as u8
         }
     }
-    // Okay, well... manually implementing this missed zero's, so we'll just copy the C code here.
-    let mut code = left;
+    // Base36 encoding converted from the original code.
     let mut other_dir = [0u8; 9];
+    let mut remaining = left;
+
     for i in 0..9 {
-        // Divide code by 36 and get remainder.
+        // Calculate q = remaining / 36
+        let q = remaining / 36;
 
-        let x = code  ;
-        let mut q = x - (x >> 3);
+        // Calculate remainder r = remaining % 36
+        let r = remaining % 36;
 
-        q = q + (q >> 6);
-        q = q + (q >> 12);
-        q = q + (q >> 24);
-        q = q + (q >> 48); // not needed for x < 2^48
-        /* q = x * 8/9 +0/-5 */
-        q = q >> 5;
-        /* q = x / 36 +0/-1 */
-        //let r = (x as u32) - ( q as u32).overflowing_mul(36).0;
-        let r = (x as u32) - (q * 36) as u32;
-        /* 0 <= r < 72 */
-        let d = (r + 28) >> 6;
-        /* d = 1 if r > 35 */
-        code = q + d as u64;
-        let c = ((r - d * 36)) as u8;
-        assert!(c < 36);
-        other_dir[i] = c;
+        // Convert remainder to u8 and store
+        other_dir[i] = r as u8;
+
+        // Update remaining for next iteration
+        remaining = q;
     }
     for c in other_dir.iter().rev() {
         result.push(value_to_b36(*c) as char).unwrap();
