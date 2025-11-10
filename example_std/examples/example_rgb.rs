@@ -329,7 +329,7 @@ mod hap_rgb_bulb {
 
 mod hap_rgb {
     use super::hap_rgb_bulb;
-    use example_std::{ActualPairSupport, AddressType, make_address};
+    use example_std::{ActualPairSupport, AddressType, RuntimeConfig, make_address};
 
     use embassy_futures::join::join;
     use log::info;
@@ -493,7 +493,7 @@ mod hap_rgb {
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
     /// Run the BLE stack.
-    pub async fn run<C>(controller: C)
+    pub async fn run<C>(controller: C, runtime_config: RuntimeConfig)
     where
         C: Controller
             + ControllerCmdSync<LeReadLocalSupportedFeatures>
@@ -521,18 +521,15 @@ mod hap_rgb {
             appearance: &appearance::power_device::LED_DRIVER,
         }))
         .unwrap();
+        // And the platform support.
+        let mut support =
+            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
 
         // Setup the accessory information.
         let static_information = micro_hap::AccessoryInformationStatic {
             name: "micro_hap",
-            device_id: micro_hap::DeviceId([
-                address.addr.raw()[0],
-                address.addr.raw()[1],
-                address.addr.raw()[2],
-                address.addr.raw()[3],
-                address.addr.raw()[4],
-                address.addr.raw()[5],
-            ]),
+            device_id: support.device_id,
+            setup_id: support.setup_id,
             category: 5, // 5 is lighting
             ..Default::default()
         };
@@ -556,9 +553,8 @@ mod hap_rgb {
             STATE.init_with(micro_hap::AccessoryContext::default)
         };
         pair_ctx.accessory = static_information;
-        pair_ctx
-            .info
-            .assign_from(rand::random(), PairCode::from_str("111-22-333").unwrap());
+        let pair_code = PairCode::from_str("111-22-333").unwrap();
+        pair_ctx.info.assign_from(rand::random(), pair_code);
 
         // Create the buffer for hap messages in the gatt server.
         let buffer: &mut [u8] = {
@@ -597,9 +593,7 @@ mod hap_rgb {
         hap_context.add_service(&server.rgb_bulb).unwrap();
 
         hap_context.assign_static_data(&static_information);
-
-        // And the platform support.
-        let mut support = ActualPairSupport::default();
+        example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
 
         let _ = join(ble_task(runner), async {
             loop {
@@ -651,19 +645,18 @@ mod hap_rgb {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), std::io::Error> {
+    use clap::Parser;
     env_logger::builder()
         .filter_level(log::LevelFilter::max())
         .init();
 
-    let dev = match std::env::args().collect::<Vec<_>>()[..] {
-        [_] => 0,
-        [_, ref s] => s.parse::<u16>().expect("Could not parse device number"),
-        _ => panic!(
-            "Provide the device number as the one and only command line argument, or no arguments to use device 0."
-        ),
-    };
+    let args = example_std::CommonArgs::parse();
+    println!("args: {args:?}");
+
+    let dev = args.device.unwrap_or(0);
+    let config = args.to_runtime_config();
     let transport = Transport::new(dev)?;
     let controller = ExternalController::<_, 8>::new(transport);
-    hap_rgb::run(controller).await;
+    hap_rgb::run(controller, config).await;
     Ok(())
 }

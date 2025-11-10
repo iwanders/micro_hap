@@ -4,6 +4,7 @@ use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
 mod hap_lightbulb {
+    use example_std::RuntimeConfig;
     use example_std::{ActualPairSupport, AddressType, make_address};
 
     use embassy_futures::join::join;
@@ -95,7 +96,7 @@ mod hap_lightbulb {
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
     /// Run the BLE stack.
-    pub async fn run<C>(controller: C)
+    pub async fn run<C>(controller: C, runtime_config: RuntimeConfig)
     where
         C: Controller
             + ControllerCmdSync<LeReadLocalSupportedFeatures>
@@ -124,21 +125,6 @@ mod hap_lightbulb {
         }))
         .unwrap();
 
-        // Setup the accessory information.
-        let static_information = micro_hap::AccessoryInformationStatic {
-            name: "micro_hap",
-            device_id: micro_hap::DeviceId([
-                address.addr.raw()[0],
-                address.addr.raw()[1],
-                address.addr.raw()[2],
-                address.addr.raw()[3],
-                address.addr.raw()[4],
-                address.addr.raw()[5],
-            ]),
-            ..Default::default()
-        };
-        let setup_id = static_information.setup_id;
-
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = LightBulbAccessory {
@@ -151,7 +137,6 @@ mod hap_lightbulb {
             static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
             STATE.init_with(micro_hap::AccessoryContext::default)
         };
-        pair_ctx.accessory = static_information;
         let pair_code = PairCode::from_str("111-22-333").unwrap();
         pair_ctx.info.assign_from(rand::random(), pair_code);
 
@@ -176,6 +161,20 @@ mod hap_lightbulb {
             SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
         };
 
+        // And the platform support.
+        let mut support =
+            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
+
+        // Setup the accessory information.
+        let static_information = micro_hap::AccessoryInformationStatic {
+            name: "micro_hap",
+            device_id: support.device_id,
+            setup_id: support.setup_id,
+            ..Default::default()
+        };
+        let setup_id = static_information.setup_id;
+        pair_ctx.accessory = static_information;
+
         // Then finally we can create the hap peripheral context.
         let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
             buffer,
@@ -188,11 +187,7 @@ mod hap_lightbulb {
         )
         .unwrap();
         hap_context.add_service(&server.lightbulb).unwrap();
-
         hap_context.assign_static_data(&static_information);
-
-        // And the platform support.
-        let mut support = ActualPairSupport::default();
 
         example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
 
@@ -246,19 +241,18 @@ mod hap_lightbulb {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), std::io::Error> {
+    use clap::Parser;
     env_logger::builder()
         .filter_level(log::LevelFilter::max())
         .init();
 
-    let dev = match std::env::args().collect::<Vec<_>>()[..] {
-        [_] => 0,
-        [_, ref s] => s.parse::<u16>().expect("Could not parse device number"),
-        _ => panic!(
-            "Provide the device number as the one and only command line argument, or no arguments to use device 0."
-        ),
-    };
+    let args = example_std::CommonArgs::parse();
+    println!("args: {args:?}");
+
+    let dev = args.device.unwrap_or(0);
+    let config = args.to_runtime_config();
     let transport = Transport::new(dev)?;
     let controller = ExternalController::<_, 8>::new(transport);
-    hap_lightbulb::run(controller).await;
+    hap_lightbulb::run(controller, config).await;
     Ok(())
 }
