@@ -1375,7 +1375,9 @@ impl HapPeripheralContext {
 
         let adv_config = if is_paired {
             crate::adv::AdvertisementConfig {
-                device_id: broadcast_params.advertising_id.unwrap(),
+                device_id: broadcast_params
+                    .advertising_id
+                    .unwrap_or(static_info.device_id),
                 setup_id: static_info.setup_id,
                 accessory_category: static_info.category,
                 global_state: support.get_global_state_number().await.unwrap(),
