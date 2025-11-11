@@ -299,10 +299,6 @@ impl SetupId {
                 }
             }
         }
-        info!("\n");
-        for i in 0..4 {
-            info!("in {:?} -> {:?}", four_bytes[i], shift(four_bytes[i]));
-        }
 
         SetupId([
             shift(four_bytes[0]),
