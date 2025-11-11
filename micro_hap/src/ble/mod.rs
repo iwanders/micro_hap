@@ -1386,6 +1386,8 @@ impl HapPeripheralContext {
                 ..Default::default()
             }
         } else {
+            info!("not paired adv  device_id {:?}", static_info.device_id);
+            info!("not paired adv setup_id {:?}", static_info.setup_id);
             crate::adv::AdvertisementConfig {
                 device_id: static_info.device_id,
                 setup_id: static_info.setup_id,

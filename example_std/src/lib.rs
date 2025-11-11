@@ -126,6 +126,8 @@ impl Default for ActualPairSupport {
         ed_ltsk.fill_with(rand::random);
         let mut device_id = DeviceId::default();
         device_id.0.fill_with(rand::random);
+        device_id.0[0] |= 0b11;
+        device_id.0[5] |= 0b11;
         let mut r_bytes = [0u8; 4];
         r_bytes.fill_with(rand::random);
         let setup_id = SetupId::from(&r_bytes);
@@ -244,7 +246,9 @@ pub fn make_address(address_type: AddressType) -> Address {
 }
 
 pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
+    println!("Qr code for: pair {pair_code:?}, setup id: {setup_id:?}");
     let pairstr = micro_hap::setup_payload(&pair_code, &setup_id, category.into());
+    println!("\n\n\n\n\n{pairstr:?}\n\n\n\n\n");
 
     use qrcode::QrCode;
     use qrcode::render::unicode;

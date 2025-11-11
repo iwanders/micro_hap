@@ -295,10 +295,15 @@ impl SetupId {
                 if x < 10 {
                     x + '0' as u8
                 } else {
-                    x.to_ascii_uppercase()
+                    (x - 10) + 'A' as u8
                 }
             }
         }
+        info!("\n");
+        for i in 0..4 {
+            info!("in {:?} -> {:?}", four_bytes[i], shift(four_bytes[i]));
+        }
+
         SetupId([
             shift(four_bytes[0]),
             shift(four_bytes[1]),
@@ -797,6 +802,13 @@ mod test {
         assert_eq!(setup_id.0[1], 'O' as u8);
         assert_eq!(setup_id.0[2], 'S' as u8);
         assert_eq!(setup_id.0[3], 'X' as u8);
+        //23, 89, 31, 32
+        let four_bytes = [23, 89, 31, 32];
+        let s = crate::SetupId::from(&four_bytes);
+        assert_eq!(s.0[0], 'N' as u8);
+        assert_eq!(s.0[1], 'Y' as u8);
+        assert_eq!(s.0[2], 'V' as u8);
+        assert_eq!(s.0[3], 'W' as u8);
     }
 
     #[test]
@@ -857,6 +869,24 @@ mod test {
                 }
             ),
             "X-HM://00739MG3K0000"
+        );
+
+        let four_bytes = [23, 89, 31, 32];
+        let bad_setupid = crate::SetupId::from(&four_bytes);
+        let code_test = PairCode::from_str("111-22-333").unwrap();
+        info!("bad_setupid: {bad_setupid:?}, code_test {code_test:?}");
+        assert_eq!(
+            &setup_payload(
+                &code_test,
+                &bad_setupid,
+                SetupPayloadProperties {
+                    support_ip: false,
+                    support_ble: true,
+                    paired: false,
+                    category: 7
+                }
+            ),
+            "X-HM://0075O5L7HNYVW"
         );
     }
 }
