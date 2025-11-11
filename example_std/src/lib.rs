@@ -248,8 +248,6 @@ pub fn make_address(address_type: AddressType) -> Address {
 pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
     println!("Qr code for: pair {pair_code:?}, setup id: {setup_id:?}");
     let pairstr = micro_hap::setup_payload(&pair_code, &setup_id, category.into());
-    println!("\n\n\n\n\n{pairstr:?}\n\n\n\n\n");
-
     use qrcode::QrCode;
     use qrcode::render::unicode;
 

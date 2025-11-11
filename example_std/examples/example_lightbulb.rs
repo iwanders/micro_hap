@@ -102,13 +102,8 @@ mod hap_lightbulb {
             + ControllerCmdSync<LeReadLocalSupportedFeatures>
             + ControllerCmdSync<LeSetDataLength>,
     {
-        // And the platform support.
-        let mut support =
-            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
-
         // Bring up the stack.
-        //let address = make_address(AddressType::Random);
-        let address = Address::random(support.device_id.0);
+        let address = make_address(AddressType::Random);
         info!("Our address = {:?}", address);
 
         let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
@@ -166,6 +161,10 @@ mod hap_lightbulb {
             SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
         };
 
+        // And the platform support.
+        let mut support =
+            ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
+
         // Setup the accessory information.
         let static_information = micro_hap::AccessoryInformationStatic {
             name: "micro_hap",
@@ -173,7 +172,7 @@ mod hap_lightbulb {
             setup_id: support.setup_id,
             ..Default::default()
         };
-        let setup_id = support.setup_id;
+        let setup_id = static_information.setup_id;
         pair_ctx.accessory = static_information;
 
         // Then finally we can create the hap peripheral context.
