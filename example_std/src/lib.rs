@@ -259,3 +259,149 @@ pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
         .build();
     println!("{image}");
 }
+
+use micro_hap::ble::HapPeripheralContext;
+use micro_hap::ble::TimedWrite;
+use static_cell::StaticCell;
+// This is just a helper to reduce boilerplate in the examples!
+pub fn example_context_factory(
+    pair_code: PairCode,
+    support: &ActualPairSupport,
+    information_service: &micro_hap::ble::services::AccessoryInformationService,
+    protocol: &micro_hap::ble::services::ProtocolInformationService,
+    pairing: &micro_hap::ble::services::PairingService,
+) -> HapPeripheralContext {
+    // Create the pairing context.
+    let pair_ctx = {
+        static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
+        STATE.init_with(micro_hap::AccessoryContext::default)
+    };
+    pair_ctx.info.assign_from(rand::random(), pair_code);
+
+    // Create the buffer for hap messages in the gatt server.
+    let buffer: &mut [u8] = {
+        static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
+        STATE.init([0u8; 2048])
+    };
+
+    const TIMED_WRITE_SLOTS: usize = 8;
+    const TIMED_WRITE_SLOTS_DATA: usize = 128;
+
+    let timed_write_data = {
+        static DATA_STATE: StaticCell<[u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA]> =
+            StaticCell::new();
+        DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
+    };
+
+    let timed_write = {
+        static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> = StaticCell::new();
+        SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
+    };
+
+    // Setup the accessory information.
+    let static_information = micro_hap::AccessoryInformationStatic {
+        name: "micro_hap",
+        device_id: support.device_id,
+        setup_id: support.setup_id,
+        ..Default::default()
+    };
+    pair_ctx.accessory = static_information;
+
+    // Then finally we can create the hap peripheral context.
+    let mut ctx = micro_hap::ble::HapPeripheralContext::new(
+        buffer,
+        pair_ctx,
+        timed_write_data,
+        timed_write,
+        information_service,
+        protocol,
+        pairing,
+    )
+    .unwrap();
+
+    ctx.assign_static_data(&static_information);
+    ctx
+}
+
+use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
+use bt_hci::cmd::le::LeSetDataLength;
+use bt_hci::controller::ControllerCmdSync;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+/// Max number of connections
+const CONNECTIONS_MAX: usize = 3;
+
+/// Max number of L2CAP channels.
+const L2CAP_CHANNELS_MAX: usize = 5; // Signal + att
+
+use trouble_host::PacketPool;
+
+pub async fn example_hap_loop<
+    'values,
+    'server,
+    C: Controller,
+    M: RawMutex,
+    const ATT_MAX: usize,
+    const CCCD_MAX: usize,
+    const CONN_MAX: usize,
+>(
+    address: Address,
+    controller: C,
+    ctx: &mut HapPeripheralContext,
+    accessory: &mut impl micro_hap::AccessoryInterface,
+    support: &mut impl PlatformSupport,
+    server: &'server AttributeServer<'values, M, DefaultPacketPool, ATT_MAX, CCCD_MAX, CONN_MAX>,
+    hap_services: &'server micro_hap::ble::HapServices<'_>,
+) where
+    C: Controller
+        + ControllerCmdSync<LeReadLocalSupportedFeatures>
+        + ControllerCmdSync<LeSetDataLength>,
+{
+    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
+        HostResources::new();
+
+    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
+    let Host {
+        mut peripheral,
+        runner,
+        ..
+    } = stack.build();
+
+    /// This is a background task that is required to run forever alongside any other BLE tasks.
+    async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
+        loop {
+            if let Err(e) = runner.run().await {
+                panic!("[ble_task] error: {:?}", e);
+            }
+        }
+    }
+
+    use embassy_futures::join::join;
+    let _ = join(ble_task(runner), async {
+        loop {
+            match ctx.advertise(accessory, support, &mut peripheral).await {
+                Ok(conn) => {
+                    // Increase the data length to 251 bytes per package, default is like 27.
+                    conn.update_data_length(&stack, 251, 2120)
+                        .await
+                        .expect("Failed to set data length");
+                    let conn = conn
+                        .with_attribute_server(server)
+                        .expect("Failed to create attribute server");
+
+                    // set up tasks when the connection is established to a central, so they don't run when no one is connected.
+                    let a = ctx.gatt_events_task(accessory, support, &hap_services, &conn);
+
+                    // run until any task ends (usually because the connection has been closed),
+                    // then return to advertising state.
+                    if let Err(e) = a.await {
+                        log::error!("Error occured in processing: {e:?}");
+                    }
+                }
+                Err(e) => {
+                    panic!("[adv] error: {:?}", e);
+                }
+            }
+        }
+    })
+    .await;
+}
