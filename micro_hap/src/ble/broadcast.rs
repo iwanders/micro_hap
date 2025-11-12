@@ -29,6 +29,7 @@ Following the path of a accesory notifying the HAP Server.
                 Which seems to go to the hardware?
                     for Darwin it does an updateCharacteristic: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/Darwin/HAPPlatformBLEPeripheralManager.m#L673
                 trouble_host::attribute::Characteristic::notify ...
+                    We need some elegant way to to tell micro_hap to notify on characteristics that changed.
 
 
         This actually calculates the advertisement payload and passes that to updateAdvertisingData.

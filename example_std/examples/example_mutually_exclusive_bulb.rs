@@ -3,25 +3,118 @@
 use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
+mod services {
+    use micro_hap::ble::{FacadeDummyType, HapBleError, HapBleService, sig};
+    use micro_hap::{
+        BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
+        ServiceProperties, SvcId, characteristic, descriptor, service,
+    };
+    use trouble_host::prelude::*;
+
+    // Why do we duplicate this from micro_hap::ble::services? because the gatt_service macro contains a static cell
+    // and we want to allocate two of them... They must also be offset with their CharIds.
+    // TODO: This is obviously less than ideal.
+    const ID_OFFSET: u16 = 0x10;
+    pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32 + ID_OFFSET);
+    pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33 + ID_OFFSET);
+    #[gatt_service(uuid = service::LIGHTBULB)]
+    pub struct OtherLightbulbService {
+        #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x30 + ID_OFFSET)]
+        pub service_instance: u16,
+
+        /// Service signature, only two bytes.
+        #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=(0x31u16 + ID_OFFSET).to_le_bytes())]
+        pub service_signature: FacadeDummyType,
+
+        // 0x0023
+        /// Name for the device.
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=(CHAR_ID_LIGHTBULB_NAME.0 ).to_le_bytes())]
+        #[characteristic(uuid=characteristic::NAME, read, write )]
+        pub name: FacadeDummyType,
+
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=(CHAR_ID_LIGHTBULB_ON.0 ).to_le_bytes())]
+        #[characteristic(uuid=characteristic::ON, read, write )]
+        pub on: FacadeDummyType,
+    }
+    impl HapBleService for OtherLightbulbService {
+        fn populate_support(&self) -> Result<Service, HapBleError> {
+            let mut service = Service {
+                ble_handle: Some(self.handle),
+                uuid: service::LIGHTBULB.into(),
+                iid: SvcId(0x30 + ID_OFFSET),
+                characteristics: Default::default(),
+                properties: ServiceProperties::new().with_primary(true),
+            };
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        characteristic::SERVICE_SIGNATURE.into(),
+                        CharId(0x31u16 + ID_OFFSET),
+                    )
+                    .with_properties(CharacteristicProperties::new().with_read(true))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.service_signature.handle)
+                            .with_format_opaque(),
+                    ),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(characteristic::NAME.into(), CharId(0x32u16 + ID_OFFSET))
+                        .with_properties(CharacteristicProperties::new().with_read(true))
+                        .with_ble_properties(
+                            BleProperties::from_handle(self.name.handle)
+                                .with_format(sig::Format::StringUtf8),
+                        )
+                        .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(characteristic::ON.into(), CharId(0x33u16 + ID_OFFSET))
+                        .with_properties(
+                            CharacteristicProperties::new()
+                                .with_rw(true)
+                                .with_supports_event_notification(true)
+                                .with_supports_disconnect_notification(true)
+                                .with_supports_broadcast_notification(true),
+                        )
+                        .with_ble_properties(
+                            BleProperties::from_handle(self.on.handle)
+                                .with_format(sig::Format::Boolean),
+                        )
+                        .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            Ok(service)
+        }
+    }
+}
+
 mod hap_lightbulb {
     use example_std::RuntimeConfig;
     use example_std::{ActualPairSupport, AddressType, make_address};
 
-    use embassy_futures::join::join;
     use log::info;
-    use static_cell::StaticCell;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{
-        AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
-        ble::TimedWrite,
-    };
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
-        name: HeaplessString<32>,
-        bulb_on_state: bool,
+        name_a: HeaplessString<32>,
+        name_b: HeaplessString<32>,
+        bulb_state_a: bool,
+        bulb_state_b: bool,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -31,9 +124,13 @@ mod hap_lightbulb {
             char_id: CharId,
         ) -> Result<impl Into<&[u8]>, InterfaceError> {
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-                Ok(self.name.as_bytes())
+                Ok(self.name_a.as_bytes())
+            } else if char_id == super::services::CHAR_ID_LIGHTBULB_NAME {
+                Ok(self.name_b.as_bytes())
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                Ok(self.bulb_on_state.as_bytes())
+                Ok(self.bulb_state_a.as_bytes())
+            } else if char_id == super::services::CHAR_ID_LIGHTBULB_ON {
+                Ok(self.bulb_state_b.as_bytes())
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -48,23 +145,32 @@ mod hap_lightbulb {
                 char_id, data
             );
 
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                let value = data
-                    .get(0)
-                    .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
-                let val_as_bool = *value != 0;
-
-                let response = if self.bulb_on_state != val_as_bool {
-                    CharacteristicResponse::Modified
-                } else {
-                    CharacteristicResponse::Unmodified
-                };
-                self.bulb_on_state = val_as_bool;
-                info!("\nSet bulb to: {:?}\n", self.bulb_on_state);
-                Ok(response)
-            } else {
-                Err(InterfaceError::CharacteristicUnknown(char_id))
+            if char_id != micro_hap::ble::CHAR_ID_LIGHTBULB_ON
+                && char_id != super::services::CHAR_ID_LIGHTBULB_ON
+            {
+                return Err(InterfaceError::CharacteristicUnknown(char_id));
             }
+
+            println!("Before {}, {}", self.bulb_state_a, self.bulb_state_b);
+            let boolean_val = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                &mut self.bulb_state_a
+            } else {
+                &mut self.bulb_state_b
+            };
+
+            let value = data
+                .get(0)
+                .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
+            let val_as_bool = *value != 0;
+
+            let response = if *boolean_val != val_as_bool {
+                CharacteristicResponse::Modified
+            } else {
+                CharacteristicResponse::Unmodified
+            };
+            *boolean_val = val_as_bool;
+            println!("After {}, {}", self.bulb_state_a, self.bulb_state_b);
+            Ok(response)
         }
     }
 
@@ -74,7 +180,8 @@ mod hap_lightbulb {
         accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
         protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
         pairing: micro_hap::ble::PairingService,                            // 0x0055
-        lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
+        lightbulb_a: micro_hap::ble::LightbulbService,                      // 0x0043
+        lightbulb_b: super::services::OtherLightbulbService,                // 0x0043
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
@@ -112,8 +219,10 @@ mod hap_lightbulb {
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = LightBulbAccessory {
-            name: "Light Bulb".try_into().unwrap(),
-            bulb_on_state: false,
+            name_a: "Bulb A".try_into().unwrap(),
+            name_b: "Bulb B".try_into().unwrap(),
+            bulb_state_a: false,
+            bulb_state_b: false,
         };
 
         // And the platform support.
@@ -131,7 +240,8 @@ mod hap_lightbulb {
             &server.pairing,
         );
 
-        hap_context.add_service(&server.lightbulb).unwrap();
+        hap_context.add_service(&server.lightbulb_a).unwrap();
+        hap_context.add_service(&server.lightbulb_b).unwrap();
         let hap_category = 8;
         example_std::print_pair_qr(&pair_code, &setup_id, hap_category);
 
