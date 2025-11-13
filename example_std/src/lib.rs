@@ -384,6 +384,8 @@ pub async fn example_hap_loop<
                     conn.update_data_length(&stack, 251, 2120)
                         .await
                         .expect("Failed to set data length");
+                    let z = server.get_cccd_table(&conn);
+                    println!("ccd table: {z:?}");
                     let conn = conn
                         .with_attribute_server(server)
                         .expect("Failed to create attribute server");

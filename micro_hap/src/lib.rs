@@ -374,12 +374,14 @@ impl Service {
 pub struct BleProperties {
     pub handle: u16,
     pub format: ble::sig::CharacteristicRepresentation,
+    pub characteristic: Option<trouble_host::attribute::Characteristic<ble::FacadeDummyType>>,
 }
 impl BleProperties {
     pub fn from_handle(handle: u16) -> Self {
         Self {
             handle,
             format: Default::default(),
+            characteristic: Default::default(),
         }
     }
     pub fn with_format(self, format: ble::sig::Format) -> Self {
@@ -402,6 +404,17 @@ impl BleProperties {
         let mut format = self.format;
         format.format = ble::sig::Format::Opaque;
         Self { format, ..self }
+    }
+
+    pub fn with_characteristic(
+        self,
+        characteristic: trouble_host::attribute::Characteristic<ble::FacadeDummyType>,
+    ) -> Self {
+        let characteristic = Some(characteristic);
+        Self {
+            characteristic,
+            ..self
+        }
     }
 }
 
@@ -644,10 +657,11 @@ pub trait AccessoryInterface {
 }
 
 /// Enum that specifies whether a characteristic was changed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CharacteristicResponse {
     Modified,
     Unmodified,
+    Notify(trouble_host::attribute::Characteristic<ble::FacadeDummyType>),
 }
 
 /// Dummy no-op accessory that discards reads and writes.

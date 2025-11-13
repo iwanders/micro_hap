@@ -260,6 +260,11 @@ pub struct HapPeripheralContext {
     pairing_service: crate::Service,
 
     user_services: heapless::Vec<crate::Service, 8>,
+
+    // This is a bit of a crux, this should ideally be a channel, but that taints this struct with a Mutex type
+    // this works and facilitates exploration of the architecture.
+    to_notify_characteristic:
+        core::cell::Cell<Option<trouble_host::attribute::Characteristic<FacadeDummyType>>>,
 }
 impl HapPeripheralContext {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
@@ -380,6 +385,7 @@ impl HapPeripheralContext {
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
+            to_notify_characteristic: Default::default(),
         })
     }
 
@@ -410,9 +416,9 @@ impl HapPeripheralContext {
         }
     }
 
-    pub fn add_service(&mut self, srv: &impl HapBleService) -> Result<(), HapBleError> {
+    pub fn add_service(&mut self, srv: crate::Service) -> Result<(), HapBleError> {
         self.user_services
-            .push(srv.populate_support()?)
+            .push(srv)
             .map_err(|_| HapBleError::AllocationOverrun)?;
         Ok(())
     }
@@ -635,12 +641,19 @@ impl HapPeripheralContext {
                         .write_characteristic(char_id, incoming_data)
                         .await?;
 
-                    if r == CharacteristicResponse::Modified {
-                        // Do things to this characteristic to mark it dirty.
-                        error!(
-                            "Should mark the characteristic dirty and advance the global state number, and notify!"
-                        );
-                        let _ = pair_support.advance_global_state_number().await?;
+                    match r {
+                        CharacteristicResponse::Modified => {
+                            // Do things to this characteristic to mark it dirty.
+                            error!(
+                                "Should mark the characteristic dirty and advance the global state number, and notify!"
+                            );
+                            // let _ = pair_support.advance_global_state_number().await?;
+                        }
+                        CharacteristicResponse::Unmodified => {}
+                        CharacteristicResponse::Notify(characteristic) => {
+                            self.to_notify_characteristic.set(Some(characteristic));
+                            let _ = pair_support.advance_global_state_number().await?;
+                        }
                     }
 
                     let reply = parsed.header.header.to_success();
@@ -1283,7 +1296,15 @@ impl HapPeripheralContext {
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), HapBleError> {
         const SUPER_VERBOSE: bool = false;
+
         let reason = loop {
+            {
+                // Check if we need to notify.
+                if let Some(n) = self.to_notify_characteristic.take() {
+                    info!("NOtifying!");
+                    n.notify(conn, &[]).await.unwrap()
+                }
+            }
             match conn.next().await {
                 GattConnectionEvent::Disconnected { reason } => {
                     info!("[gatt] disconnected: {:?}", reason);
@@ -1426,6 +1447,14 @@ impl HapPeripheralContext {
         let conn = advertiser.accept().await?;
         info!("[adv] connection established");
         Ok(conn)
+    }
+
+    // This api is not good, but works for now.
+    pub async fn to_notify_characteristic(
+        &self,
+        chr: trouble_host::attribute::Characteristic<FacadeDummyType>,
+    ) {
+        self.to_notify_characteristic.set(Some(chr));
     }
 }
 

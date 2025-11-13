@@ -34,11 +34,33 @@ mod services {
         pub name: FacadeDummyType,
 
         #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=(CHAR_ID_LIGHTBULB_ON.0 ).to_le_bytes())]
-        #[characteristic(uuid=characteristic::ON, read, write )]
+        #[characteristic(uuid=characteristic::ON, read, write, indicate, notify )]
         pub on: FacadeDummyType,
     }
-    impl HapBleService for OtherLightbulbService {
-        fn populate_support(&self) -> Result<Service, HapBleError> {
+    //
+    //
+    //
+    //
+    use embassy_sync::blocking_mutex::raw::RawMutex;
+    impl OtherLightbulbService {
+        pub fn create_hap_service<
+            'server,
+            'values,
+            M: RawMutex,
+            const ATT_MAX: usize,
+            const CCCD_MAX: usize,
+            const CONN_MAX: usize,
+        >(
+            &self,
+            server: &'server AttributeServer<
+                'values,
+                M,
+                DefaultPacketPool,
+                ATT_MAX,
+                CCCD_MAX,
+                CONN_MAX,
+            >,
+        ) -> Result<Service, HapBleError> {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: service::LIGHTBULB.into(),
@@ -88,7 +110,13 @@ mod services {
                         )
                         .with_ble_properties(
                             BleProperties::from_handle(self.on.handle)
-                                .with_format(sig::Format::Boolean),
+                                .with_format(sig::Format::Boolean)
+                                .with_characteristic(
+                                    server
+                                        .table()
+                                        .find_characteristic_by_value_handle(self.on.handle)
+                                        .unwrap(),
+                                ),
                         )
                         .with_data(DataSource::AccessoryInterface),
                 )
@@ -104,17 +132,19 @@ mod hap_lightbulb {
     use example_std::{ActualPairSupport, AddressType, make_address};
 
     use log::info;
+    use micro_hap::ble::FacadeDummyType;
+    use micro_hap::ble::HapBleService;
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
-
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
-
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
         name_a: HeaplessString<32>,
         name_b: HeaplessString<32>,
         bulb_state_a: bool,
         bulb_state_b: bool,
+        characteristic_a: trouble_host::attribute::Characteristic<FacadeDummyType>,
+        characteristic_b: trouble_host::attribute::Characteristic<FacadeDummyType>,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -152,10 +182,16 @@ mod hap_lightbulb {
             }
 
             println!("Before {}, {}", self.bulb_state_a, self.bulb_state_b);
-            let boolean_val = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                &mut self.bulb_state_a
+            let (boolean_val, boolean_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                (&mut self.bulb_state_a, &mut self.bulb_state_b)
             } else {
-                &mut self.bulb_state_b
+                (&mut self.bulb_state_b, &mut self.bulb_state_a)
+            };
+            let (_, characteristic_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                (&mut self.characteristic_a, &mut self.characteristic_b)
+            } else {
+                // always return b.
+                (&mut self.characteristic_a, &mut self.characteristic_b)
             };
 
             let value = data
@@ -163,10 +199,15 @@ mod hap_lightbulb {
                 .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
             let val_as_bool = *value != 0;
 
+            if val_as_bool {
+                *boolean_other = false;
+            }
+
             let response = if *boolean_val != val_as_bool {
-                CharacteristicResponse::Modified
+                CharacteristicResponse::Notify(*characteristic_other)
             } else {
-                CharacteristicResponse::Unmodified
+                // CharacteristicResponse::Unmodified
+                CharacteristicResponse::Notify(*characteristic_other)
             };
             *boolean_val = val_as_bool;
             println!("After {}, {}", self.bulb_state_a, self.bulb_state_b);
@@ -223,6 +264,14 @@ mod hap_lightbulb {
             name_b: "Bulb B".try_into().unwrap(),
             bulb_state_a: false,
             bulb_state_b: false,
+            characteristic_a: server
+                .table()
+                .find_characteristic_by_value_handle(server.lightbulb_a.on.handle)
+                .unwrap(),
+            characteristic_b: server
+                .table()
+                .find_characteristic_by_value_handle(server.lightbulb_b.on.handle)
+                .unwrap(),
         };
 
         // And the platform support.
@@ -240,10 +289,23 @@ mod hap_lightbulb {
             &server.pairing,
         );
 
-        hap_context.add_service(&server.lightbulb_a).unwrap();
-        hap_context.add_service(&server.lightbulb_b).unwrap();
+        // hap_context.add_service(&server.lightbulb_a).unwrap();
+        hap_context
+            .add_service(server.lightbulb_a.populate_support().unwrap())
+            .unwrap();
+        hap_context
+            .add_service(
+                server
+                    .lightbulb_b
+                    .create_hap_service(&server.server)
+                    .unwrap(),
+            )
+            .unwrap();
         let hap_category = 8;
         example_std::print_pair_qr(&pair_code, &setup_id, hap_category);
+
+        let value_a = server.lightbulb_a.on;
+        let value_b = server.lightbulb_b.on;
 
         let _ = example_std::example_hap_loop(
             address,

@@ -10,15 +10,15 @@ resolver = "2"
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
-    ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
-#], path = "../../trouble/host" }
+  #  ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
+], path = "../../trouble/host" }
 # ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",
 # ], rev = "1e6f2d743857ab6888a8a59199ad0c186bbf38c7" }
 # /ble deps
 #
-embassy-sync = { version = "0.7.2" } # For a mutex in the ble module.
+embassy-sync = { version = "0.7.2" } # For a mutex in the ble module, and the channel to collect notifications.
 embassy-time = "0.5.0"
 
 # For SRP

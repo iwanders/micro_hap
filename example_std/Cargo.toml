@@ -28,8 +28,8 @@ trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
     "log",
-    ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
-    #], path = "../../trouble/host" }
+ #   ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
+    ], path = "../../trouble/host" }
 bt-hci-linux = { git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
 bt-hci = { version = "0.4", default-features = false, features=["log"] }
 tokio = { version = "1", features = [

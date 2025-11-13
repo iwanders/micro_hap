@@ -25,9 +25,12 @@ Following the path of a accesory notifying the HAP Server.
                 https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPeripheralManager.c#L1637
             Which sets a pending notificaiton, does some gatt stuff and calls
                 SendPendingEventNotifications  https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPeripheralManager.c#L279
-                Then into HAPPlatformBLEPeripheralManagerSendHandleValueIndication
+                Then into HAPPlatformBLEPeripheralManagerSendHandleValueIndication https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPeripheralManager.c#L279
+
                 Which seems to go to the hardware?
                     for Darwin it does an updateCharacteristic: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/Darwin/HAPPlatformBLEPeripheralManager.m#L673
+                    This seems to be always called with an empty payload;
+                        Does that just indicate a flag that says; this is changed?
                 trouble_host::attribute::Characteristic::notify ...
                     We need some elegant way to to tell micro_hap to notify on characteristics that changed.
 
