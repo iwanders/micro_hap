@@ -34,7 +34,7 @@ mod services {
         pub name: FacadeDummyType,
 
         #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=(CHAR_ID_LIGHTBULB_ON.0 ).to_le_bytes())]
-        #[characteristic(uuid=characteristic::ON, read, write, indicate, notify )]
+        #[characteristic(uuid=characteristic::ON, read, write, indicate )]
         pub on: FacadeDummyType,
     }
     //
@@ -306,6 +306,8 @@ mod hap_lightbulb {
 
         let value_a = server.lightbulb_a.on;
         let value_b = server.lightbulb_b.on;
+
+        println!("\n\n\n handle: {}\n\n\n", value_b.handle);
 
         let _ = example_std::example_hap_loop(
             address,

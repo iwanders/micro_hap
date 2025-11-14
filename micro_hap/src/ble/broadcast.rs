@@ -43,6 +43,16 @@ Following the path of a accesory notifying the HAP Server.
         That also has the normal broadcast spec.
             Also something with times here https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L246
 
+
+So 759eaca1278b99e82029785f79e56a27262421e2 added a great hack to explore notifications.
+
+The problem is that iOS doesn't actually subscribe to my notifications, force sending it does work.
+
+What's more, the one single characteristic that has indicate, loses the indicate flag if we read it from NRF Connect.
+This does NOT happen if we modify the bas peripheral; https://github.com/embassy-rs/trouble/blob/bb61f8a0b8e84b4afa175674a56c91b6e545acd3/examples/apps/src/ble_bas_peripheral.rs#L24
+to have indicate, in that case a read does NOT make the indicate attribute go away.
+
+Are we replying incorrectly?
  */
 
 // Some helpers to handle the whole broadcast key and global state number stuff.
