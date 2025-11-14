@@ -55,6 +55,11 @@ to have indicate, in that case a read does NOT make the indicate attribute go aw
 Are we replying incorrectly? Okay, probably not, the problem was that one ON characteristic had indicate, but the other didn't, because of that we lost it.
 
 Still doesn't make iOS properly register though.
+
+Separate issue...
+    The second lightbulb services has no characteristics, this is despite the characteristics being correctly responded with?
+    Is this an NRF connect display issue, or an actual problem?
+    Lets assume it is not a problem for now, we should try with a single bulb, see if iOS then subscribes to the notify.
  */
 
 // Some helpers to handle the whole broadcast key and global state number stuff.

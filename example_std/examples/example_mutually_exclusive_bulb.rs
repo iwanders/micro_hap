@@ -17,7 +17,9 @@ mod services {
     const ID_OFFSET: u16 = 0x10;
     pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32 + ID_OFFSET);
     pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33 + ID_OFFSET);
-    #[gatt_service(uuid = service::LIGHTBULB)]
+    pub const TSTDFDS: micro_hap::uuid::HomekitUuid16 = micro_hap::uuid::HomekitUuid16::new(0x1043);
+    #[gatt_service(uuid =  service::LIGHTBULB)]
+    // #[gatt_service(uuid =  TSTDFDS)]
     pub struct OtherLightbulbService {
         #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x30 + ID_OFFSET)]
         pub service_instance: u16,
@@ -218,11 +220,11 @@ mod hap_lightbulb {
     // GATT Server definition
     #[gatt_server]
     struct Server {
+        protocol: micro_hap::ble::ProtocolInformationService, // 0x00a2
+        pairing: micro_hap::ble::PairingService,              // 0x0055
+        lightbulb_a: micro_hap::ble::LightbulbService,        // 0x0043
+        lightbulb_b: super::services::OtherLightbulbService,  // 0x0043
         accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
-        protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
-        pairing: micro_hap::ble::PairingService,                            // 0x0055
-        lightbulb_a: micro_hap::ble::LightbulbService,                      // 0x0043
-        lightbulb_b: super::services::OtherLightbulbService,                // 0x0043
     }
     impl Server<'_> {
         pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
