@@ -1295,7 +1295,7 @@ impl HapPeripheralContext {
         hap_services: &HapServices<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), HapBleError> {
-        const SUPER_VERBOSE: bool = false;
+        const SUPER_VERBOSE: bool = true;
 
         let reason = loop {
             {
@@ -1354,7 +1354,7 @@ impl HapPeripheralContext {
                                         info!("[gatt-attclient]: {:?}", att_cfm);
                                     }
                                 }
-                                info!("[gatt] other event ");
+                                info!("[gatt] other event {:?}", peek.incoming());
                             }
                         } //_ => {}
                     };

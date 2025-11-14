@@ -52,7 +52,9 @@ What's more, the one single characteristic that has indicate, loses the indicate
 This does NOT happen if we modify the bas peripheral; https://github.com/embassy-rs/trouble/blob/bb61f8a0b8e84b4afa175674a56c91b6e545acd3/examples/apps/src/ble_bas_peripheral.rs#L24
 to have indicate, in that case a read does NOT make the indicate attribute go away.
 
-Are we replying incorrectly?
+Are we replying incorrectly? Okay, probably not, the problem was that one ON characteristic had indicate, but the other didn't, because of that we lost it.
+
+Still doesn't make iOS properly register though.
  */
 
 // Some helpers to handle the whole broadcast key and global state number stuff.

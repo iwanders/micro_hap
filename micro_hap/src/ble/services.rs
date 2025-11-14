@@ -352,7 +352,7 @@ pub struct LightbulbService {
     pub name: FacadeDummyType,
 
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_LIGHTBULB_ON.0.to_le_bytes())]
-    #[characteristic(uuid=characteristic::ON, read, write )]
+    #[characteristic(uuid=characteristic::ON, read, write, indicate )]
     pub on: FacadeDummyType,
 }
 impl HapBleService for LightbulbService {
