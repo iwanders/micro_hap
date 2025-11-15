@@ -1312,6 +1312,28 @@ impl HapPeripheralContext {
                     break reason;
                 }
                 GattConnectionEvent::Gatt { event } => {
+                    let h = event.payload().handle();
+                    if h == Some(75) || h == Some(91) {
+                        panic!("got something on the CCCD table");
+                        /*
+                         * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
+                         got something on the CCCD table
+                         note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
+
+                             Write req cmd 91, data: [2, 0]
+                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server] Writing attribute data! 0, data [2, 0]
+                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
+
+                             Setting notify Identity { bd_addr: BdAddr([211, 87, 131, 116, 80, 67]) }, 91, false
+                         [2025-11-15T01:27:32Z TRACE trouble_host::attribute_server] [cccd] set_notify(91) = false
+                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute]
+
+                             set notify to false
+                         [2025-11-15T01:27:32Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
+
+                        */
+                    }
                     match &event {
                         GattEvent::Read(event) => {
                             if SUPER_VERBOSE {

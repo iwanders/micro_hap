@@ -308,8 +308,14 @@ mod hap_lightbulb {
 
         let value_a = server.lightbulb_a.on;
         let value_b = server.lightbulb_b.on;
+        // 0x2902 is Client Characteristic Configuration
+        // On A is handle a: 74
+        // 75 is bulb a cccd
+        // On B is handle b: 90
+        // 91 is bulb b cccd
 
-        println!("\n\n\n handle: {}\n\n\n", value_b.handle);
+        println!("\n\n\n handle a: {}\n\n\n", value_a.handle);
+        println!("\n\n\n handle b: {}\n\n\n", value_b.handle);
 
         let _ = example_std::example_hap_loop(
             address,
