@@ -1332,6 +1332,7 @@ impl HapPeripheralContext {
                              set notify to false
                          [2025-11-15T01:27:32Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
 
+                         Ah...  indicate is not implemented; https://github.com/embassy-rs/trouble/blob/53e34022ca3a561f53c6cccea67c6dbc8b69528d/host/src/attribute_server.rs#L370
                         */
                     }
                     match &event {
