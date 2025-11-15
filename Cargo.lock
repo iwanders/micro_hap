@@ -147,9 +147,9 @@ dependencies = [
 
 [[package]]
 name = "bt-hci"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a496a585c0e2e00195e558af18342f79afd67598d3edb32e78c006e606a31386"
+checksum = "bb938a3b4c5cc6c2409275bad789c0346a0495fa071a0acc5d72b9bd3175a2f7"
 dependencies = [
  "btuuid",
  "defmt 1.0.1",
@@ -157,14 +157,13 @@ dependencies = [
  "embedded-io",
  "embedded-io-async",
  "futures-intrusive",
- "heapless 0.8.0",
+ "heapless 0.9.1",
  "log",
 ]
 
 [[package]]
 name = "bt-hci-linux"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/trouble?rev=26ec6794d0a976dd91cd694b631c72b16ddf651b#26ec6794d0a976dd91cd694b631c72b16ddf651b"
 dependencies = [
  "bt-hci",
  "critical-section",
@@ -1467,7 +1466,7 @@ dependencies = [
 
 [[package]]
 name = "trouble-host"
-version = "0.2.4"
+version = "0.5.0"
 dependencies = [
  "bt-hci",
  "defmt 1.0.1",
@@ -1486,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "trouble-host-macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "convert_case",
  "darling",

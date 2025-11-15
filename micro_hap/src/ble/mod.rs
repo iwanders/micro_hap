@@ -1301,8 +1301,8 @@ impl HapPeripheralContext {
             {
                 // Check if we need to notify.
                 if let Some(n) = self.to_notify_characteristic.take() {
-                    info!("NOtifying!");
-                    n.notify(conn, &[]).await.unwrap()
+                    info!("indicate!");
+                    n.indicate(conn, &[]).await.unwrap()
                 }
             }
             match conn.next().await {
@@ -1312,9 +1312,12 @@ impl HapPeripheralContext {
                     break reason;
                 }
                 GattConnectionEvent::Gatt { event } => {
+                    // We need this for now to prevent the security from gobbling up the cccd write!
+                    let mut should_skip = false;
+
                     let h = event.payload().handle();
                     if h == Some(75) || h == Some(91) {
-                        panic!("got something on the CCCD table");
+                        //panic!("got something on the CCCD table");
                         /*
                          * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
                          got something on the CCCD table
@@ -1334,6 +1337,8 @@ impl HapPeripheralContext {
 
                          Ah...  indicate is not implemented; https://github.com/embassy-rs/trouble/blob/53e34022ca3a561f53c6cccea67c6dbc8b69528d/host/src/attribute_server.rs#L370
                         */
+                        info!("\n\n\n Somrething on CCCD");
+                        should_skip = true;
                     }
                     match &event {
                         GattEvent::Read(event) => {
@@ -1383,18 +1388,21 @@ impl HapPeripheralContext {
                     };
                     // This step is also performed at drop(), but writing it explicitly is necessary
                     // in order to ensure reply is sent.
-
-                    let fallthrough_event = self
-                        .process_gatt_event(hap_services, support, accessory, event)
-                        .await?;
-
-                    if let Some(event) = fallthrough_event {
-                        match event.accept() {
-                            Ok(reply) => reply.send().await,
-                            Err(e) => warn!("[gatt] error sending response: {:?}", e),
-                        };
+                    //
+                    if should_skip {
                     } else {
-                        warn!("Omitted processing for event because it was handled");
+                        let fallthrough_event = self
+                            .process_gatt_event(hap_services, support, accessory, event)
+                            .await?;
+
+                        if let Some(event) = fallthrough_event {
+                            match event.accept() {
+                                Ok(reply) => reply.send().await,
+                                Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                            };
+                        } else {
+                            warn!("Omitted processing for event because it was handled");
+                        }
                     }
                 }
                 _ => {} // ignore other Gatt Connection Events

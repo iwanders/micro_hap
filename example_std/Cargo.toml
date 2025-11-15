@@ -30,8 +30,11 @@ trouble-host = { features = [
     "log",
  #   ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
     ], path = "../../trouble/host" }
-bt-hci-linux = { git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
-bt-hci = { version = "0.4", default-features = false, features=["log"] }
+bt-hci-linux = {path = "../../trouble/bt-hci-linux"}
+    #git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b"
+
+
+bt-hci = { version = "0.6", default-features = false, features=["log"] }
 tokio = { version = "1", features = [
     "io-util",
     "net",
