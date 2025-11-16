@@ -15,18 +15,19 @@ use trouble_host::prelude::*;
 use zerocopy::IntoBytes;
 
 use micro_hap::{
-    ble::broadcast::BleBroadcastParameters, AccessoryInterface, InterfaceError, CharId, CharacteristicResponse,
-    PlatformSupport,
-    ble::TimedWrite,
+    ble::broadcast::BleBroadcastParameters, ble::HapBleService, ble::TimedWrite,
+    AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PlatformSupport,
 };
-
 struct LightBulbAccessory<'a> {
     name: HeaplessString<32>,
     bulb_on_state: bool,
     bulb_control: cyw43::Control<'a>,
 }
 impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
-    async fn read_characteristic(&self, char_id: CharId) -> Result<impl Into<&[u8]>, InterfaceError> {
+    async fn read_characteristic(
+        &self,
+        char_id: CharId,
+    ) -> Result<impl Into<&[u8]>, InterfaceError> {
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
             Ok(self.name.as_bytes())
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
@@ -46,7 +47,9 @@ impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
         );
 
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-            let value = data.get(0).ok_or(InterfaceError::CharacteristicWriteInvalid)?;
+            let value = data
+                .get(0)
+                .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
             let val_as_bool = *value != 0;
 
             let response = if self.bulb_on_state != val_as_bool {
@@ -100,7 +103,7 @@ pub struct ActualPairSupport {
         2,
     >,
     pub global_state_number: u16,
-    pub config_number: u16,
+    pub config_number: u8,
     pub broadcast_parameters: BleBroadcastParameters,
     pub random_bytes: &'static [u8],
     pub random_byte_index: usize,
@@ -153,8 +156,7 @@ impl Default for ActualPairSupport {
     }
 }
 impl PlatformSupport for ActualPairSupport {
-
-    fn get_time(&self) -> embassy_time::Instant{
+    fn get_time(&self) -> embassy_time::Instant {
         embassy_time::Instant::now()
     }
 
@@ -171,7 +173,8 @@ impl PlatformSupport for ActualPairSupport {
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
         error!("Storing pairing");
         self.pairings
-            .insert(pairing.id, *pairing).expect("assuming we have anough space for now");
+            .insert(pairing.id, *pairing)
+            .expect("assuming we have anough space for now");
         Ok(())
     }
 
@@ -183,6 +186,9 @@ impl PlatformSupport for ActualPairSupport {
         let _ = self.pairings.remove(id);
         Ok(())
     }
+    async fn is_paired(&mut self) -> Result<bool, micro_hap::InterfaceError> {
+        Ok(!self.pairings.is_empty())
+    }
 
     async fn get_global_state_number(&self) -> Result<u16, InterfaceError> {
         Ok(self.global_state_number)
@@ -192,10 +198,10 @@ impl PlatformSupport for ActualPairSupport {
         self.global_state_number = value;
         Ok(())
     }
-    async fn get_config_number(&self) -> Result<u16, InterfaceError> {
+    async fn get_config_number(&self) -> Result<u8, InterfaceError> {
         Ok(self.config_number)
     }
-    async fn set_config_number(&mut self, value: u16) -> Result<(), InterfaceError> {
+    async fn set_config_number(&mut self, value: u8) -> Result<(), InterfaceError> {
         self.config_number = value;
         Ok(())
     }
@@ -316,7 +322,6 @@ where
         STATE.init([0u8; 2048])
     };
 
-
     const TIMED_WRITE_SLOTS: usize = 8;
     const TIMED_WRITE_SLOTS_DATA: usize = 128;
 
@@ -327,11 +332,20 @@ where
     };
 
     let timed_write = {
-        static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> =
-            StaticCell::new();
+        static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> = StaticCell::new();
         SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
     };
 
+    let control_channel = {
+        type Mutex = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+        const CONTROL_CHANNEL_N: usize = 16;
+
+        static CONTROL_CHANNEL: StaticCell<micro_hap::HapControlChannel<Mutex, CONTROL_CHANNEL_N>> =
+            StaticCell::new();
+        CONTROL_CHANNEL.init(micro_hap::HapControlChannel::<Mutex, CONTROL_CHANNEL_N>::new())
+    };
+    let control_receiver = control_channel.get_receiver();
+    let control_sender: micro_hap::HapInterfaceSender<'_> = control_channel.get_sender();
 
     // This is also pretty big on the stack :/
     let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
@@ -342,9 +356,12 @@ where
         &server.accessory_information,
         &server.protocol,
         &server.pairing,
+        control_receiver,
     )
     .unwrap();
-    hap_context.add_service(&server.lightbulb).unwrap();
+    hap_context
+        .add_service(server.lightbulb.populate_support().unwrap())
+        .unwrap();
 
     hap_context.assign_static_data(&static_information);
 
@@ -378,8 +395,12 @@ where
                         .expect("Failed to create attribute server");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let mut hap_services = server.as_hap();
-                    let a =
-                        hap_context.gatt_events_task( &mut accessory, support, &mut hap_services, &conn);
+                    let a = hap_context.gatt_events_task(
+                        &mut accessory,
+                        support,
+                        &mut hap_services,
+                        &conn,
+                    );
                     let b = custom_task(&server, &conn, &stack);
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
@@ -426,8 +447,6 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
         }
     }
 }
-
-
 
 /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
 async fn advertise<'values, 'server, C: Controller>(

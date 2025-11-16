@@ -10,6 +10,7 @@
 use super::{PairingId, SessionId, X25519_BYTES};
 use crate::PlatformSupport;
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 struct CacheEntry {
     // How is this pairing id used here? it's an integer....
@@ -29,12 +30,14 @@ impl CacheEntry {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CacheHit {
     pub pairing_id: PairingId,
     pub session_id: SessionId,
     pub shared_secret: [u8; X25519_BYTES],
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct BleSessionCache {
     entries: [CacheEntry; 8],
