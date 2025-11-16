@@ -58,6 +58,8 @@ serde = { version = "1.0", features = ["derive"], optional=true }
 embassy-futures = "0.1.1"
 embassy-time = "0.5"
 
+critical-section = { version = "1.2", features = ["std"]}
+
 # To run an async test, can we switch this to embassy executor?
 tokio = { version = "1", features = [
     "io-util",

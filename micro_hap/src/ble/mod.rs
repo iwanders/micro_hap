@@ -8,10 +8,8 @@ pub mod broadcast;
 mod pdu;
 use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
-use crate::HapControlChannel;
 use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, SvcId};
-use embassy_sync::blocking_mutex::raw::RawMutex;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // Todo, we should probably detach this completely from the HapServices struct
 // because it would be really nice if we can keep properties per service, characteristic and property.
