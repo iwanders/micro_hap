@@ -8,8 +8,11 @@ There are many HAP implementations available, a few implement the logic needed t
 - It roughly follows the [reference implementation](https://github.com/apple/HomeKitADK), and thus has the same license.
 - It uses [trouble](https://github.com/embassy-rs/trouble) for interacting with Bluetooth.
 - It was originally developed in [this repo](https://github.com/iwanders/pico2w_thing_91c27), but seemed worthwhile to split out.
-- Code needs some cleanup, but it can pair and toggle an LED on a RPi Pico 2W.
-- Example (and code) currently only supports a single pairing procedure and only the 'happy path'.
+- Pairing fully works, including pair resume.
+- Enumeration of the device works.
+- Read and Writes over the HAP session work.
+- Services & Characeristics can be defined out-of-crate.
+- Still missing; Characteristic changes via broadcasts & status number broadcasts.
 
 ## Testing
 The main test for the BLE transport right now is in [./micro_hap/src/ble/test.rs](./micro_hap/src/ble/test.rs).
@@ -45,13 +48,13 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Clean up error handling.n (snafu / thiserror?)~
 - ~Correctly return HAP errors, instead of failing the BLE request.~
 - ~Any errors currently drop the request instead of returning the correct HAP error code.~
-- Figure out when `MaxProcedures` should be returned..
+- ~Figure out when `MaxProcedures` should be returned..~ Looks like a sentinel?
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
 - When the state on the accessory changes, it is supposed to increment the global state number.
 - The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
 - Add periodic 'service' method to handle global state counter, advertisement and expiring timed writes to free slots.
 - How do the advertisements actually work?
-- And what about notify while a connection is active?
+- ~And what about notify while a connection is active?~ Send indicate over BLE
 - ~Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.~ Can pair numerous times now.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
 - How much is shared between BLE & IP? Can we implement IP as well with minimal work?
@@ -69,7 +72,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.
-- To notify, we need the handle of the characteristic, which we currently don't have.
+- To notify, we need the handle of the characteristic, which we currently don't have. File PR into trouble.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.
