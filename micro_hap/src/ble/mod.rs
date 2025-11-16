@@ -8,10 +8,11 @@ pub mod broadcast;
 mod pdu;
 use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
+use crate::HapControlChannel;
 use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, SvcId};
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
-
 // Todo, we should probably detach this completely from the HapServices struct
 // because it would be really nice if we can keep properties per service, characteristic and property.
 //
@@ -242,7 +243,7 @@ pub struct TimedWrite {
 struct TimedWriteSlot(usize);
 
 #[derive(Debug)]
-pub struct HapPeripheralContext {
+pub struct HapPeripheralContext<'c> {
     //protocol_service_properties: ServiceProperties,
     buffer: core::cell::RefCell<&'static mut [u8]>,
     pair_ctx: core::cell::RefCell<&'static mut AccessoryContext>,
@@ -251,7 +252,6 @@ pub struct HapPeripheralContext {
     timed_write_data: core::cell::RefCell<&'static mut [u8]>,
     timed_write: core::cell::RefCell<&'static mut [Option<TimedWrite>]>,
 
-    // NONCOMPLIANCE? Do we need to split this out per characteristic? Can we ever
     prepared_reply: Option<Reply>,
     should_encrypt_reply: bool,
 
@@ -265,8 +265,10 @@ pub struct HapPeripheralContext {
     // this works and facilitates exploration of the architecture.
     to_notify_characteristic:
         core::cell::Cell<Option<trouble_host::attribute::Characteristic<FacadeDummyType>>>,
+
+    control_receiver: crate::HapInterfaceReceiver<'c>,
 }
-impl HapPeripheralContext {
+impl<'c> HapPeripheralContext<'c> {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
         [
             &self.information_service,
@@ -296,6 +298,21 @@ impl HapPeripheralContext {
             }
         }
         Err(HapBleStatusError::InvalidInstanceID(chr.0))
+    }
+
+    // TODO; migrate all the services to something nice that collects the actual gatt characteristics.
+    pub fn ugly_todo_inject_trouble_characteristic(
+        &mut self,
+        chr: CharId,
+        character: Characteristic<FacadeDummyType>,
+    ) {
+        for s in self.services_mut() {
+            if let Some(a) = s.get_characteristic_by_iid_mut(chr) {
+                a.ble_mut().characteristic = Some(character);
+                return;
+            }
+        }
+        panic!("could not find iid to inject into");
     }
 
     fn get_service_by_char(&self, chr: CharId) -> Result<&crate::Service, HapBleStatusError> {
@@ -370,6 +387,7 @@ impl HapPeripheralContext {
         information_service: &AccessoryInformationService,
         protocol_service: &ProtocolInformationService,
         pairing_service: &PairingService,
+        control_receiver: crate::HapInterfaceReceiver<'c>,
     ) -> Result<Self, HapBleError> {
         let timed_write_slot_buffer = timed_write_data.len() / timed_write.len();
         Ok(Self {
@@ -386,6 +404,7 @@ impl HapPeripheralContext {
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
             to_notify_characteristic: Default::default(),
+            control_receiver,
         })
     }
 
@@ -1300,9 +1319,27 @@ impl HapPeripheralContext {
         let reason = loop {
             {
                 // Check if we need to notify.
-                if let Some(n) = self.to_notify_characteristic.take() {
-                    info!("indicate!");
-                    n.indicate(conn, &[]).await.unwrap()
+                // This is ugly, but works for now.
+                let z = self.control_receiver.try_get_event().await;
+                if let Some(v) = z {
+                    match v {
+                        crate::HapEvent::CharacteristicChanged(char_id) => {
+                            let x = self.get_attribute_by_char(char_id).map_err(|_e| {
+                                HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
+                                    char_id,
+                                ))
+                            })?;
+                            x.ble
+                                .as_ref()
+                                .unwrap()
+                                .characteristic
+                                .as_ref()
+                                .unwrap()
+                                .indicate(conn, &[])
+                                .await
+                                .unwrap()
+                        }
+                    }
                 }
             }
             match conn.next().await {

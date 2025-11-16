@@ -26,6 +26,7 @@ use crate::pairing::{ED25519_LTSK, Pairing, PairingId};
 use crypto::aead::ControlChannel;
 
 use core::future::Future;
+use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Channel};
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
@@ -81,7 +82,7 @@ pub use pairing::PairCode;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
 pub struct AccessoryInformationStatic {
-    pub hardware_revision: &'static str, // "x.y.z" with u32.
+    pub hardware_revision: &'static str, // "x.y.z" with x, y, z being u32.
     pub serial_number: &'static str,     // String at least 1, max 64
     //pub service_instance: u16,
     pub model: &'static str,             // String at least 1, max 64
@@ -347,6 +348,15 @@ impl Service {
     /// Retrieve a characteristic by its instance id.
     pub fn get_characteristic_by_iid(&self, chr: CharId) -> Option<&Characteristic> {
         for a in self.characteristics.iter() {
+            if a.iid == chr {
+                return Some(a);
+            }
+        }
+        None
+    }
+    /// Retrieve a characteristic by its instance id.
+    pub fn get_characteristic_by_iid_mut(&mut self, chr: CharId) -> Option<&mut Characteristic> {
+        for a in self.characteristics.iter_mut() {
             if a.iid == chr {
                 return Some(a);
             }
@@ -637,7 +647,7 @@ pub enum InterfaceError {
     Custom(&'static str),
 }
 
-/// Interface through which the characteristics interact with the accessory.
+/// Interface through which characteristics / micro_hap interacts with the accessory.
 pub trait AccessoryInterface {
     /// Read the characteristic value.
     ///
@@ -662,6 +672,61 @@ pub enum CharacteristicResponse {
     Modified,
     Unmodified,
     Notify(trouble_host::attribute::Characteristic<ble::FacadeDummyType>),
+}
+
+/// Interface through which the accessory interacts with micro_hap.
+#[derive(Copy, Clone)]
+pub struct HapInterfaceSender<'a> {
+    sender: embassy_sync::channel::DynamicSender<'a, HapEvent>,
+}
+impl<'a> HapInterfaceSender<'a> {
+    pub fn characteristic_changed(&self, char_id: CharId) -> impl Future<Output = ()> {
+        self.sender.send(HapEvent::CharacteristicChanged(char_id))
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct HapInterfaceReceiver<'a> {
+    receiver: embassy_sync::channel::DynamicReceiver<'a, HapEvent>,
+}
+impl<'a> HapInterfaceReceiver<'a> {
+    async fn get_event(&self) -> impl Future<Output = HapEvent> {
+        self.receiver.receive()
+    }
+    async fn try_get_event(&self) -> Option<HapEvent> {
+        self.receiver.try_receive().ok()
+    }
+}
+impl<'a> core::fmt::Debug for HapInterfaceReceiver<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("HapInterfaceReceiver").finish()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum HapEvent {
+    CharacteristicChanged(CharId),
+}
+#[derive(Debug)]
+pub struct HapControlChannel<M: RawMutex, const N: usize> {
+    channel: Channel<M, HapEvent, N>,
+}
+impl<M: RawMutex, const N: usize> HapControlChannel<M, N> {
+    pub fn new() -> Self {
+        Self {
+            channel: Channel::new(),
+        }
+    }
+    pub fn get_sender(&self) -> HapInterfaceSender<'_> {
+        HapInterfaceSender {
+            sender: self.channel.dyn_sender(),
+        }
+    }
+    pub fn get_receiver(&self) -> HapInterfaceReceiver<'_> {
+        HapInterfaceReceiver {
+            receiver: self.channel.dyn_receiver(),
+        }
+    }
 }
 
 /// Dummy no-op accessory that discards reads and writes.

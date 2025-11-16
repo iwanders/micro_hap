@@ -140,17 +140,18 @@ mod hap_lightbulb {
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
     /// Struct to keep state for this specific accessory, with only a lightbulb.
-    struct LightBulbAccessory {
+    struct LightBulbAccessory<'c> {
         name_a: HeaplessString<32>,
         name_b: HeaplessString<32>,
         bulb_state_a: bool,
         bulb_state_b: bool,
         characteristic_a: trouble_host::attribute::Characteristic<FacadeDummyType>,
         characteristic_b: trouble_host::attribute::Characteristic<FacadeDummyType>,
+        control_sender: micro_hap::HapInterfaceSender<'c>,
     }
 
     /// Implement the accessory interface for the lightbulb.
-    impl AccessoryInterface for LightBulbAccessory {
+    impl<'c> AccessoryInterface for LightBulbAccessory<'c> {
         async fn read_characteristic(
             &self,
             char_id: CharId,
@@ -196,6 +197,12 @@ mod hap_lightbulb {
                 (&mut self.characteristic_a, &mut self.characteristic_b)
             };
 
+            let char_id_other = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                super::services::CHAR_ID_LIGHTBULB_ON
+            } else {
+                micro_hap::ble::CHAR_ID_LIGHTBULB_ON
+            };
+
             let value = data
                 .get(0)
                 .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
@@ -203,6 +210,9 @@ mod hap_lightbulb {
 
             if val_as_bool {
                 *boolean_other = false;
+                self.control_sender
+                    .characteristic_changed(char_id_other)
+                    .await;
             }
 
             let response = if *boolean_val != val_as_bool {
@@ -213,7 +223,11 @@ mod hap_lightbulb {
             };
             *boolean_val = val_as_bool;
             println!("After {}, {}", self.bulb_state_a, self.bulb_state_b);
-            Ok(response)
+
+            // CharacteristicResponse::Unmodified
+            // // Should always be umodified, because we shouldn't send an indication if the value was changed because
+            // of an active write from the controller.
+            Ok(CharacteristicResponse::Unmodified)
         }
     }
 
@@ -259,23 +273,6 @@ mod hap_lightbulb {
         }))
         .unwrap();
 
-        // Create this specific accessory.
-        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
-        let mut accessory = LightBulbAccessory {
-            name_a: "Bulb A".try_into().unwrap(),
-            name_b: "Bulb B".try_into().unwrap(),
-            bulb_state_a: false,
-            bulb_state_b: false,
-            characteristic_a: server
-                .table()
-                .find_characteristic_by_value_handle(server.lightbulb_a.on.handle)
-                .unwrap(),
-            characteristic_b: server
-                .table()
-                .find_characteristic_by_value_handle(server.lightbulb_b.on.handle)
-                .unwrap(),
-        };
-
         // And the platform support.
         let mut support =
             ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
@@ -283,7 +280,7 @@ mod hap_lightbulb {
         let setup_id = support.setup_id;
         let pair_code = PairCode::from_str("111-22-333").unwrap();
 
-        let mut hap_context = example_std::example_context_factory(
+        let (mut hap_context, control_sender) = example_std::example_context_factory(
             pair_code,
             &support,
             &server.accessory_information,
@@ -316,6 +313,30 @@ mod hap_lightbulb {
 
         println!("\n\n\n handle a: {}\n\n\n", value_a.handle);
         println!("\n\n\n handle b: {}\n\n\n", value_b.handle);
+
+        // Create this specific accessory.
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
+        let characteristic_a = server
+            .table()
+            .find_characteristic_by_value_handle(server.lightbulb_a.on.handle)
+            .unwrap();
+        let mut accessory = LightBulbAccessory {
+            name_a: "Bulb A".try_into().unwrap(),
+            name_b: "Bulb B".try_into().unwrap(),
+            bulb_state_a: false,
+            bulb_state_b: false,
+            characteristic_a,
+            characteristic_b: server
+                .table()
+                .find_characteristic_by_value_handle(server.lightbulb_b.on.handle)
+                .unwrap(),
+            control_sender,
+        };
+
+        hap_context.ugly_todo_inject_trouble_characteristic(
+            micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
+            characteristic_a,
+        );
 
         let _ = example_std::example_hap_loop(
             address,

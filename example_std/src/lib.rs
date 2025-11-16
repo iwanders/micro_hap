@@ -263,6 +263,10 @@ pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
 use micro_hap::ble::HapPeripheralContext;
 use micro_hap::ble::TimedWrite;
 use static_cell::StaticCell;
+
+type Mutex = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+const CONTROL_CHANNEL_N: usize = 16;
+
 // This is just a helper to reduce boilerplate in the examples!
 pub fn example_context_factory(
     pair_code: PairCode,
@@ -270,7 +274,10 @@ pub fn example_context_factory(
     information_service: &micro_hap::ble::services::AccessoryInformationService,
     protocol: &micro_hap::ble::services::ProtocolInformationService,
     pairing: &micro_hap::ble::services::PairingService,
-) -> HapPeripheralContext {
+) -> (
+    HapPeripheralContext<'static>,
+    micro_hap::HapInterfaceSender<'static>,
+) {
     // Create the pairing context.
     let pair_ctx = {
         static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
@@ -307,6 +314,13 @@ pub fn example_context_factory(
     };
     pair_ctx.accessory = static_information;
 
+    let control_channel = {
+        static CONTROL_CHANNEL: StaticCell<micro_hap::HapControlChannel<Mutex, CONTROL_CHANNEL_N>> =
+            StaticCell::new();
+        CONTROL_CHANNEL.init(micro_hap::HapControlChannel::<Mutex, CONTROL_CHANNEL_N>::new())
+    };
+    let control_receiver = control_channel.get_receiver();
+    let control_sender: micro_hap::HapInterfaceSender<'_> = control_channel.get_sender();
     // Then finally we can create the hap peripheral context.
     let mut ctx = micro_hap::ble::HapPeripheralContext::new(
         buffer,
@@ -316,11 +330,12 @@ pub fn example_context_factory(
         information_service,
         protocol,
         pairing,
+        control_receiver,
     )
     .unwrap();
 
     ctx.assign_static_data(&static_information);
-    ctx
+    (ctx, control_sender)
 }
 
 use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
@@ -338,6 +353,7 @@ use trouble_host::PacketPool;
 pub async fn example_hap_loop<
     'values,
     'server,
+    'c,
     C: Controller,
     M: RawMutex,
     const ATT_MAX: usize,
@@ -346,7 +362,7 @@ pub async fn example_hap_loop<
 >(
     address: Address,
     controller: C,
-    ctx: &mut HapPeripheralContext,
+    ctx: &mut HapPeripheralContext<'c>,
     accessory: &mut impl micro_hap::AccessoryInterface,
     support: &mut impl PlatformSupport,
     server: &'server AttributeServer<'values, M, DefaultPacketPool, ATT_MAX, CCCD_MAX, CONN_MAX>,
