@@ -11,7 +11,7 @@ edition = "2024"
 micro_hap = {path="../micro_hap/", features=["log"]}
 
 # Parts of embassy that are necessary.
-embassy-sync = { version = "0.7.2" }
+embassy-sync = { version = "0.7.2", features=["std"] }
 embassy-futures = "0.1.1"
 embassy-time = "0.5"
 

@@ -264,7 +264,7 @@ use micro_hap::ble::HapPeripheralContext;
 use micro_hap::ble::TimedWrite;
 use static_cell::StaticCell;
 
-type Mutex = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+type Mutex = embassy_sync::blocking_mutex::raw::NoopRawMutex;
 const CONTROL_CHANNEL_N: usize = 16;
 
 // This is just a helper to reduce boilerplate in the examples!

@@ -333,6 +333,7 @@ mod hap_rgb {
 
     use embassy_futures::join::join;
     use log::info;
+    use micro_hap::ble::HapBleService;
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
@@ -503,38 +504,29 @@ mod hap_rgb {
         let address = make_address(AddressType::Random);
         info!("Our address = {:?}", address);
 
-        let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
-            HostResources::new();
-
-        let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-        let Host {
-            mut peripheral,
-            runner,
-            ..
-        } = stack.build();
-
         // Create the gatt server.
         let name = "Z"; // There's _very_ few bytes left in the advertisement
         info!("Starting advertising and GATT service");
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
-            appearance: &appearance::power_device::LED_DRIVER,
+            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
         }))
         .unwrap();
+
         // And the platform support.
         let mut support =
             ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
 
-        // Setup the accessory information.
-        let static_information = micro_hap::AccessoryInformationStatic {
-            name: "micro_hap",
-            device_id: support.device_id,
-            setup_id: support.setup_id,
-            category: 5, // 5 is lighting
-            ..Default::default()
-        };
-        let setup_id = static_information.setup_id;
+        let setup_id = support.setup_id;
+        let pair_code = PairCode::from_str("111-22-333").unwrap();
 
+        let (mut hap_context, control_sender) = example_std::example_context_factory(
+            pair_code,
+            &support,
+            &server.accessory_information,
+            &server.protocol,
+            &server.pairing,
+        );
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
         let mut accessory = LightBulbAccessory {
@@ -547,99 +539,27 @@ mod hap_rgb {
             hsb_brightness: 50,
         };
 
-        // Create the pairing context.
-        let pair_ctx = {
-            static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
-            STATE.init_with(micro_hap::AccessoryContext::default)
-        };
-        pair_ctx.accessory = static_information;
-        let pair_code = PairCode::from_str("111-22-333").unwrap();
-        pair_ctx.info.assign_from(rand::random(), pair_code);
-
-        // Create the buffer for hap messages in the gatt server.
-        let buffer: &mut [u8] = {
-            static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
-            STATE.init([0u8; 2048])
-        };
-
-        const TIMED_WRITE_SLOTS: usize = 8;
-        const TIMED_WRITE_SLOTS_DATA: usize = 128;
-
-        let timed_write_data = {
-            static DATA_STATE: StaticCell<[u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA]> =
-                StaticCell::new();
-            DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
-        };
-
-        let timed_write = {
-            static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> =
-                StaticCell::new();
-            SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
-        };
-
-        // Then finally we can create the hap peripheral context.
-        let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
-            buffer,
-            pair_ctx,
-            timed_write_data,
-            timed_write,
-            &server.accessory_information,
-            &server.protocol,
-            &server.pairing,
-        )
-        .unwrap();
         // hap_context.add_service(&server.lightbulb).unwrap();
-        hap_context.add_service(&server.temp_bulb).unwrap();
-        hap_context.add_service(&server.rgb_bulb).unwrap();
+        hap_context
+            .add_service(server.temp_bulb.populate_support().unwrap())
+            .unwrap();
+        hap_context
+            .add_service(server.rgb_bulb.populate_support().unwrap())
+            .unwrap();
 
-        hap_context.assign_static_data(&static_information);
-        example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
+        let hap_category = 5; // lighting
+        example_std::print_pair_qr(&pair_code, &setup_id, hap_category);
 
-        let _ = join(ble_task(runner), async {
-            loop {
-                match hap_context
-                    .advertise(&mut accessory, &mut support, &mut peripheral)
-                    .await
-                {
-                    Ok(conn) => {
-                        // Increase the data length to 251 bytes per package, default is like 27.
-                        conn.update_data_length(&stack, 251, 2120)
-                            .await
-                            .expect("Failed to set data length");
-                        let conn = conn
-                            .with_attribute_server(&server)
-                            .expect("Failed to create attribute server");
-                        // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let hap_services = server.as_hap();
-                        let a = hap_context.gatt_events_task(
-                            &mut accessory,
-                            &mut support,
-                            &hap_services,
-                            &conn,
-                        );
-
-                        // run until any task ends (usually because the connection has been closed),
-                        // then return to advertising state.
-                        if let Err(e) = a.await {
-                            log::error!("Error occured in processing: {e:?}");
-                        }
-                    }
-                    Err(e) => {
-                        panic!("[adv] error: {:?}", e);
-                    }
-                }
-            }
-        })
+        let _ = example_std::example_hap_loop(
+            address,
+            controller,
+            &mut hap_context,
+            &mut accessory,
+            &mut support,
+            &server,
+            &server.as_hap(),
+        )
         .await;
-    }
-
-    /// This is a background task that is required to run forever alongside any other BLE tasks.
-    async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
-        loop {
-            if let Err(e) = runner.run().await {
-                panic!("[ble_task] error: {:?}", e);
-            }
-        }
     }
 }
 

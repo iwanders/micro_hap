@@ -9,6 +9,7 @@ mod hap_lightbulb {
 
     use embassy_futures::join::join;
     use log::info;
+    use micro_hap::ble::HapBleService;
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
@@ -161,6 +162,17 @@ mod hap_lightbulb {
             SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
         };
 
+        let control_channel = {
+            type Mutex = embassy_sync::blocking_mutex::raw::NoopRawMutex;
+            const CONTROL_CHANNEL_N: usize = 16;
+
+            static CONTROL_CHANNEL: StaticCell<
+                micro_hap::HapControlChannel<Mutex, CONTROL_CHANNEL_N>,
+            > = StaticCell::new();
+            CONTROL_CHANNEL.init(micro_hap::HapControlChannel::<Mutex, CONTROL_CHANNEL_N>::new())
+        };
+        let control_receiver = control_channel.get_receiver();
+        let control_sender: micro_hap::HapInterfaceSender<'_> = control_channel.get_sender();
         // And the platform support.
         let mut support =
             ActualPairSupport::new_from_config(runtime_config).expect("failed to load file");
@@ -184,9 +196,12 @@ mod hap_lightbulb {
             &server.accessory_information,
             &server.protocol,
             &server.pairing,
+            control_receiver,
         )
         .unwrap();
-        hap_context.add_service(&server.lightbulb).unwrap();
+        hap_context
+            .add_service(server.lightbulb.populate_support().unwrap())
+            .unwrap();
         hap_context.assign_static_data(&static_information);
 
         example_std::print_pair_qr(&pair_code, &setup_id, static_information.category as u8);
