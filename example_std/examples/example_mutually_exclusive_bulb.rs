@@ -190,17 +190,17 @@ mod hap_lightbulb {
             } else {
                 (&mut self.bulb_state_b, &mut self.bulb_state_a)
             };
-            let (_, characteristic_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                (&mut self.characteristic_a, &mut self.characteristic_b)
-            } else {
-                // always return b.
-                (&mut self.characteristic_a, &mut self.characteristic_b)
-            };
 
-            let char_id_other = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                super::services::CHAR_ID_LIGHTBULB_ON
+            let (char_id_val, char_id_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+                (
+                    micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
+                    super::services::CHAR_ID_LIGHTBULB_ON,
+                )
             } else {
-                micro_hap::ble::CHAR_ID_LIGHTBULB_ON
+                (
+                    super::services::CHAR_ID_LIGHTBULB_ON,
+                    micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
+                )
             };
 
             let value = data
@@ -215,12 +215,6 @@ mod hap_lightbulb {
                     .await;
             }
 
-            let response = if *boolean_val != val_as_bool {
-                CharacteristicResponse::Notify(*characteristic_other)
-            } else {
-                // CharacteristicResponse::Unmodified
-                CharacteristicResponse::Notify(*characteristic_other)
-            };
             *boolean_val = val_as_bool;
             println!("After {}, {}", self.bulb_state_a, self.bulb_state_b);
 

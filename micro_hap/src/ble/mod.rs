@@ -1318,25 +1318,30 @@ impl<'c> HapPeripheralContext<'c> {
             {
                 // Check if we need to notify.
                 // This is ugly, but works for now.
-                let z = self.control_receiver.try_get_event().await;
-                if let Some(v) = z {
-                    match v {
-                        crate::HapEvent::CharacteristicChanged(char_id) => {
-                            let x = self.get_attribute_by_char(char_id).map_err(|_e| {
-                                HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
-                                    char_id,
-                                ))
-                            })?;
-                            x.ble
-                                .as_ref()
-                                .unwrap()
-                                .characteristic
-                                .as_ref()
-                                .unwrap()
-                                .indicate(conn, &[])
-                                .await
-                                .unwrap()
+                let mut events = true;
+                while events {
+                    let z = self.control_receiver.try_get_event().await;
+                    if let Some(v) = z {
+                        match v {
+                            crate::HapEvent::CharacteristicChanged(char_id) => {
+                                let x = self.get_attribute_by_char(char_id).map_err(|_e| {
+                                    HapBleError::InterfaceError(
+                                        InterfaceError::CharacteristicUnknown(char_id),
+                                    )
+                                })?;
+                                x.ble
+                                    .as_ref()
+                                    .unwrap()
+                                    .characteristic
+                                    .as_ref()
+                                    .unwrap()
+                                    .indicate(conn, &[])
+                                    .await
+                                    .unwrap()
+                            }
                         }
+                    } else {
+                        events = false;
                     }
                 }
             }
