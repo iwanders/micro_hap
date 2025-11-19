@@ -1,7 +1,9 @@
 use crate::AccessoryInformationStatic;
+use crate::HapEvent;
 use crate::InterfaceError;
 use crate::PlatformSupport;
 use crate::characteristic;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use trouble_host::prelude::*;
 
 pub mod broadcast;
@@ -10,6 +12,7 @@ use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
 
 use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, SvcId};
+use embassy_futures::select::select;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 // Todo, we should probably detach this completely from the HapServices struct
 // because it would be really nice if we can keep properties per service, characteristic and property.
@@ -783,6 +786,7 @@ impl<'c> HapPeripheralContext<'c> {
         }
 
         if have_advertising_id {
+            // NONCOMPLIANCE when is this true?
             todo!();
         }
         if generate_key {
@@ -1021,7 +1025,7 @@ impl<'c> HapPeripheralContext<'c> {
 
                         if !chr.properties.supports_broadcast_notification() {
                             error!(
-                                "setting broadcast for something that doesn't support broadcast notify"
+                                "setting broadcast for something that doesn't support broadcast notification"
                             );
                             return Err(HapBleStatusError::InvalidRequest.into());
                         }
@@ -1352,6 +1356,7 @@ impl<'c> HapPeripheralContext<'c> {
 
                     let h = event.payload().handle();
                     if h == Some(75) || h == Some(91) {
+                        // TODO: THis is super hardcoded on the lightbulb thing right now.
                         //panic!("got something on the CCCD table");
                         /*
                          * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
@@ -1449,7 +1454,7 @@ impl<'c> HapPeripheralContext<'c> {
 
     /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
     pub async fn advertise<'values, C: Controller>(
-        &mut self,
+        &self,
         accessory: &mut impl crate::AccessoryInterface,
         support: &mut impl PlatformSupport,
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
@@ -1505,7 +1510,7 @@ impl<'c> HapPeripheralContext<'c> {
                 &params,
                 Advertisement::ConnectableScannableUndirected {
                     adv_data: &advertiser_data[..len],
-                    scan_data: &[],
+                    scan_data: &[], // TODO can we put the longer name in here if it doesn't fit in the advertisement?
                 },
             )
             .await?;
@@ -1513,6 +1518,95 @@ impl<'c> HapPeripheralContext<'c> {
         let conn = advertiser.accept().await?;
         info!("[adv] connection established");
         Ok(conn)
+    }
+
+    async fn update_broadcast_payload(&mut self, char_id: CharId) {
+        // This can ONLY be called if we are not connected.
+        info!("updating broadcast payload for {:?}", char_id);
+    }
+
+    async fn handle_hap_event(&mut self, event: HapEvent) {
+        info!("got hap event: {:?}", event);
+        match event {
+            HapEvent::CharacteristicChanged(char_id) => {
+                self.update_broadcast_payload(char_id).await
+            }
+        }
+    }
+    #[cfg(test)]
+    async fn test_process_event(&mut self) {
+        self.handle_hap_event(self.control_receiver.get_event().await)
+            .await
+    }
+
+    pub async fn service<
+        'values,
+        'peripheral,
+        'server,
+        C: Controller,
+        M: RawMutex,
+        const ATT_MAX: usize,
+        const CCCD_MAX: usize,
+        const CONN_MAX: usize,
+    >(
+        &mut self,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+        server: &'server AttributeServer<
+            'values,
+            M,
+            DefaultPacketPool,
+            ATT_MAX,
+            CCCD_MAX,
+            CONN_MAX,
+        >,
+        peripheral: &mut Peripheral<'peripheral, C, DefaultPacketPool>,
+        hap_services: &'server crate::ble::HapServices<'_>,
+    ) {
+        async {
+            loop {
+                info!("Falling into advertise & receive event");
+                let v = select(
+                    self.advertise(accessory, support, peripheral),
+                    self.control_receiver.get_event(),
+                )
+                .await;
+                match v {
+                    embassy_futures::select::Either::First(firstres) => {
+                        match firstres {
+                            Ok(conn) => {
+                                // Increase the data length to 251 bytes per package, default is like 27.
+                                // conn.update_data_length(&stack, 251, 2120)
+                                //     .await
+                                //     .expect("Failed to set data length");
+                                let conn = conn
+                                    .with_attribute_server(server)
+                                    .expect("Failed to create attribute server");
+
+                                // set up tasks when the connection is established to a central, so they don't run when no one is connected.
+                                let a =
+                                    self.gatt_events_task(accessory, support, &hap_services, &conn);
+
+                                // run until any task ends (usually because the connection has been closed),
+                                // then return to advertising state.
+                                if let Err(e) = a.await {
+                                    log::error!("Error occured in processing: {e:?}");
+                                }
+                            }
+                            Err(e) => {
+                                panic!("[adv] error: {:?}", e);
+                            }
+                        }
+                    }
+                    embassy_futures::select::Either::Second(v) => {
+                        self.handle_hap_event(v).await;
+                        info!("v: {:?}", v);
+                        continue;
+                    }
+                }
+            }
+        }
+        .await
     }
 }
 

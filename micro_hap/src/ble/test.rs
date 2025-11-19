@@ -2006,6 +2006,8 @@ async fn test_hap_worker(
             0x02, 0xf5, 0xf4,
         ];
 
+        ctx.test_process_event().await;
+
         todo!();
     }
 

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use embassy_futures::join::join;
 use log::{error, info, warn};
 use micro_hap::PairCode;
 use micro_hap::{
@@ -391,35 +392,9 @@ pub async fn example_hap_loop<
         }
     }
 
-    use embassy_futures::join::join;
-    let _ = join(ble_task(runner), async {
-        loop {
-            match ctx.advertise(accessory, support, &mut peripheral).await {
-                Ok(conn) => {
-                    // Increase the data length to 251 bytes per package, default is like 27.
-                    conn.update_data_length(&stack, 251, 2120)
-                        .await
-                        .expect("Failed to set data length");
-                    let z = server.get_cccd_table(&conn);
-                    println!("ccd table: {z:?}");
-                    let conn = conn
-                        .with_attribute_server(server)
-                        .expect("Failed to create attribute server");
-
-                    // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                    let a = ctx.gatt_events_task(accessory, support, &hap_services, &conn);
-
-                    // run until any task ends (usually because the connection has been closed),
-                    // then return to advertising state.
-                    if let Err(e) = a.await {
-                        log::error!("Error occured in processing: {e:?}");
-                    }
-                }
-                Err(e) => {
-                    panic!("[adv] error: {:?}", e);
-                }
-            }
-        }
-    })
+    let _ = join(
+        ble_task(runner),
+        ctx.service(accessory, support, server, &mut peripheral, hap_services),
+    )
     .await;
 }

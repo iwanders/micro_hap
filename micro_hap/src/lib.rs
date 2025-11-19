@@ -697,7 +697,7 @@ pub struct HapInterfaceReceiver<'a> {
     receiver: embassy_sync::channel::DynamicReceiver<'a, HapEvent>,
 }
 impl<'a> HapInterfaceReceiver<'a> {
-    async fn get_event(&self) -> impl Future<Output = HapEvent> {
+    fn get_event(&self) -> impl Future<Output = HapEvent> {
         self.receiver.receive()
     }
     async fn try_get_event(&self) -> Option<HapEvent> {
