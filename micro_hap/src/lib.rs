@@ -679,7 +679,6 @@ pub trait AccessoryInterface {
 pub enum CharacteristicResponse {
     Modified,
     Unmodified,
-    Notify(trouble_host::attribute::Characteristic<ble::FacadeDummyType>),
 }
 
 /// Interface through which the accessory interacts with micro_hap.

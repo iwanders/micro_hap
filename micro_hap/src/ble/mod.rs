@@ -259,11 +259,6 @@ pub struct HapPeripheralContext<'c> {
 
     user_services: heapless::Vec<crate::Service, 8>,
 
-    // This is a bit of a crux, this should ideally be a channel, but that taints this struct with a Mutex type
-    // this works and facilitates exploration of the architecture.
-    to_notify_characteristic:
-        core::cell::Cell<Option<trouble_host::attribute::Characteristic<FacadeDummyType>>>,
-
     control_receiver: crate::HapInterfaceReceiver<'c>,
 }
 impl<'c> HapPeripheralContext<'c> {
@@ -401,7 +396,6 @@ impl<'c> HapPeripheralContext<'c> {
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
-            to_notify_characteristic: Default::default(),
             control_receiver,
         })
     }
@@ -667,10 +661,6 @@ impl<'c> HapPeripheralContext<'c> {
                             // let _ = pair_support.advance_global_state_number().await?;
                         }
                         CharacteristicResponse::Unmodified => {}
-                        CharacteristicResponse::Notify(characteristic) => {
-                            self.to_notify_characteristic.set(Some(characteristic));
-                            let _ = pair_support.advance_global_state_number().await?;
-                        }
                     }
 
                     let reply = parsed.header.header.to_success();
@@ -1523,14 +1513,6 @@ impl<'c> HapPeripheralContext<'c> {
         let conn = advertiser.accept().await?;
         info!("[adv] connection established");
         Ok(conn)
-    }
-
-    // This api is not good, but works for now.
-    pub async fn to_notify_characteristic(
-        &self,
-        chr: trouble_host::attribute::Characteristic<FacadeDummyType>,
-    ) {
-        self.to_notify_characteristic.set(Some(chr));
     }
 }
 
