@@ -1,3 +1,5 @@
+use crate::HapControlChannel;
+
 use super::*;
 use static_cell::StaticCell;
 
@@ -208,13 +210,25 @@ enum TestScenario {
     Default,
     RemoveAccessory,
     FailResume,
+    DisconnectedValueModification,
 }
 
 async fn test_hap_worker(
     server: &Server<'static>,
-    mut ctx: HapPeripheralContext<'static>,
+    values: (
+        &'static HapControlChannel<Mutex, 16>,
+        HapPeripheralContext<'static>,
+    ),
+    // mut ctx: HapPeripheralContext<'static>,
     scenario: TestScenario,
-) -> Result<HapPeripheralContext<'static>, InternalError> {
+) -> Result<
+    (
+        &'static HapControlChannel<Mutex, 16>,
+        HapPeripheralContext<'static>,
+    ),
+    InternalError,
+> {
+    let (control_channel, mut ctx) = values;
     reset_context(&mut ctx).await;
     let name = "Acme Light Bulb";
     let hap = server.as_hap();
@@ -1639,7 +1653,7 @@ async fn test_hap_worker(
             assert_eq!(&*resp_buffer, outgoing);
         }
         if scenario == TestScenario::FailResume {
-            return Ok(ctx);
+            return Ok((control_channel, ctx));
         }
     }
 
@@ -1694,7 +1708,6 @@ async fn test_hap_worker(
         // assert_eq!(support.global_state_number, 3);
     }
 
-    const TEST_REMOVE_ACCESSORY: bool = false;
     // This TimedWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
     if scenario == TestScenario::RemoveAccessory {
         {
@@ -1929,7 +1942,8 @@ async fn test_hap_worker(
         // Same, phone disconnects. Maybe we MUST write the BLE session cache to the disk?
     }
 
-    // This is what we get from the reference, but playing that back does NOT make this accepted by the phone.
+    // This is what we get from the reference, but playing that back does NOT make this accepted by the phone. It does
+    // now? At least, I think we're good now!
     {
         support.add_random(&(0..32).collect::<Vec<_>>());
         ctx.handle_disconnect().await;
@@ -1973,22 +1987,57 @@ async fn test_hap_worker(
         }
         // Same, phone disconnects. Maybe we MUST write the BLE session cache to the disk?
     }
-    Ok(ctx)
+
+    if scenario == TestScenario::DisconnectedValueModification {
+        ctx.handle_disconnect().await;
+        // Send an indication that the on-off characteristic changed.
+        control_channel
+            .get_sender()
+            .characteristic_changed(CHAR_ID_LIGHTBULB_ON)
+            .await;
+
+        // What do we do here? We derp around a bit.. we should wait until this event is processed by... the _other_
+        // thing.
+        //
+
+        let _outgoing_broadcast: &[u8] = &[
+            0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7,
+            0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd,
+            0x02, 0xf5, 0xf4,
+        ];
+
+        todo!();
+    }
+
+    return Ok((control_channel, ctx));
 }
 
+macro_rules! conditional_test {
+    ($env_var:expr, $control_ctx: expr,  $server: expr, $testscenario:expr) => {
+        if std::env::var($env_var).is_ok() {
+            $control_ctx
+        } else {
+            test_hap_worker(&$server, $control_ctx, $testscenario)
+                .await
+                .unwrap()
+        }
+    };
+}
 #[tokio::test]
 async fn test_message_exchanges() -> Result<(), InternalError> {
     crate::test::init();
     let server = create_server();
-    let (control, ctx) = crate_hap_context(&server);
-    let ctx = test_hap_worker(&server, ctx, TestScenario::Default)
-        .await
-        .unwrap();
-    let ctx = test_hap_worker(&server, ctx, TestScenario::RemoveAccessory)
-        .await
-        .unwrap();
-    let ctx = test_hap_worker(&server, ctx, TestScenario::FailResume)
-        .await
-        .unwrap();
+    let v = crate_hap_context(&server);
+
+    let v = conditional_test!("SKIP_DEFAULT", v, &server, TestScenario::Default);
+    let v = conditional_test!("SKIP_REMOVE", v, &server, TestScenario::RemoveAccessory);
+    let v = conditional_test!("SKIP_FAIL_RESUME", v, &server, TestScenario::FailResume);
+    let v = conditional_test!(
+        "SKIP_DISCONNECTED",
+        v,
+        &server,
+        TestScenario::DisconnectedValueModification
+    );
+    let _ = v;
     Ok(())
 }

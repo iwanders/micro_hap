@@ -635,7 +635,7 @@ pub struct Session {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum InterfaceError {
     /// An characteristic that is not provided was read or written to.
-    #[error("characteristic id is unknown")]
+    #[error("characteristic id is unknown {0:?}")]
     CharacteristicUnknown(CharId),
 
     /// Incorrect write payload
@@ -645,6 +645,14 @@ pub enum InterfaceError {
     /// A custom error was encountered
     #[error("error: {0:?}")]
     Custom(&'static str),
+
+    /// An indication was performed on a characteristic that does not support it.
+    #[error("characteristic does not support indication {0:?}")]
+    CharacteristicNoIndicate(CharId),
+
+    /// An indication was performed on a characteristic for which the characteristic gatt server object was not provided.
+    #[error("characteristic gatt server object not provided {0:?}")]
+    CharacteristicObjectNotProvided(CharId),
 }
 
 /// Interface through which characteristics / micro_hap interacts with the accessory.

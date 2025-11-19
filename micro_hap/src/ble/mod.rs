@@ -1318,6 +1318,7 @@ impl<'c> HapPeripheralContext<'c> {
             {
                 // Check if we need to notify.
                 // This is ugly, but works for now.
+                // TODO: can we do a select to obtain the first entity?
                 let mut events = true;
                 while events {
                     let z = self.control_receiver.try_get_event().await;
@@ -1334,10 +1335,14 @@ impl<'c> HapPeripheralContext<'c> {
                                     .unwrap()
                                     .characteristic
                                     .as_ref()
-                                    .unwrap()
+                                    .ok_or(InterfaceError::CharacteristicObjectNotProvided(
+                                        char_id,
+                                    ))?
                                     .indicate(conn, &[])
                                     .await
-                                    .unwrap()
+                                    .map_err(|_e| {
+                                        InterfaceError::CharacteristicNoIndicate(char_id)
+                                    })?
                             }
                         }
                     } else {
