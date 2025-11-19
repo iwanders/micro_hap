@@ -1309,143 +1309,132 @@ impl<'c> HapPeripheralContext<'c> {
         const SUPER_VERBOSE: bool = true;
 
         let reason = loop {
-            {
-                // Check if we need to notify.
-                // This is ugly, but works for now.
-                // TODO: can we do a select to obtain the first entity?
-                let mut events = true;
-                while events {
-                    let z = self.control_receiver.try_get_event().await;
-                    if let Some(v) = z {
-                        match v {
-                            crate::HapEvent::CharacteristicChanged(char_id) => {
-                                let x = self.get_attribute_by_char(char_id).map_err(|_e| {
-                                    HapBleError::InterfaceError(
-                                        InterfaceError::CharacteristicUnknown(char_id),
-                                    )
-                                })?;
-                                x.ble
-                                    .as_ref()
-                                    .unwrap()
-                                    .characteristic
-                                    .as_ref()
-                                    .ok_or(InterfaceError::CharacteristicObjectNotProvided(
-                                        char_id,
-                                    ))?
-                                    .indicate(conn, &[])
-                                    .await
-                                    .map_err(|_e| {
-                                        InterfaceError::CharacteristicNoIndicate(char_id)
-                                    })?
-                            }
-                        }
-                    } else {
-                        events = false;
+            let v = select(self.control_receiver.get_event(), conn.next()).await;
+
+            match v {
+                embassy_futures::select::Either::First(event) => match event {
+                    crate::HapEvent::CharacteristicChanged(char_id) => {
+                        let x = self.get_attribute_by_char(char_id).map_err(|_e| {
+                            HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
+                                char_id,
+                            ))
+                        })?;
+                        x.ble
+                            .as_ref()
+                            .unwrap()
+                            .characteristic
+                            .as_ref()
+                            .ok_or(InterfaceError::CharacteristicObjectNotProvided(char_id))?
+                            .indicate(conn, &[])
+                            .await
+                            .map_err(|_e| InterfaceError::CharacteristicNoIndicate(char_id))?
                     }
-                }
-            }
-            match conn.next().await {
-                GattConnectionEvent::Disconnected { reason } => {
-                    info!("[gatt] disconnected: {:?}", reason);
-                    let _ = self.handle_disconnect().await;
-                    break reason;
-                }
-                GattConnectionEvent::Gatt { event } => {
-                    // We need this for now to prevent the security from gobbling up the cccd write!
-                    let mut should_skip = false;
-
-                    let h = event.payload().handle();
-                    if h == Some(75) || h == Some(91) {
-                        // TODO: THis is super hardcoded on the lightbulb thing right now.
-                        //panic!("got something on the CCCD table");
-                        /*
-                         * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
-                         got something on the CCCD table
-                         note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
-
-                             Write req cmd 91, data: [2, 0]
-                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server] Writing attribute data! 0, data [2, 0]
-                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
-
-                             Setting notify Identity { bd_addr: BdAddr([211, 87, 131, 116, 80, 67]) }, 91, false
-                         [2025-11-15T01:27:32Z TRACE trouble_host::attribute_server] [cccd] set_notify(91) = false
-                         [2025-11-15T01:27:32Z INFO  trouble_host::attribute]
-
-                             set notify to false
-                         [2025-11-15T01:27:32Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
-
-                         Ah...  indicate is not implemented; https://github.com/embassy-rs/trouble/blob/53e34022ca3a561f53c6cccea67c6dbc8b69528d/host/src/attribute_server.rs#L370
-                        */
-                        info!("\n\n\n Somrething on CCCD");
-                        should_skip = true;
-                    }
-                    match &event {
-                        GattEvent::Read(event) => {
-                            if SUPER_VERBOSE {
-                                let peek = event.payload();
-                                match peek.incoming() {
-                                    trouble_host::att::AttClient::Request(att_req) => {
-                                        info!("[gatt-attclient]: {:?}", att_req);
-                                    }
-                                    trouble_host::att::AttClient::Command(att_cmd) => {
-                                        info!("[gatt-attclient]: {:?}", att_cmd);
-                                    }
-                                    trouble_host::att::AttClient::Confirmation(att_cfm) => {
-                                        info!("[gatt-attclient]: {:?}", att_cfm);
-                                    }
-                                }
-                            }
+                },
+                embassy_futures::select::Either::Second(event) => {
+                    match event {
+                        GattConnectionEvent::Disconnected { reason } => {
+                            info!("[gatt] disconnected: {:?}", reason);
+                            let _ = self.handle_disconnect().await;
+                            break reason;
                         }
-                        GattEvent::Write(event) => {
-                            if SUPER_VERBOSE {
-                                info!(
-                                    "[gatt] Write Event to Level Characteristic: {:?}",
-                                    event.data()
-                                );
-                            }
-                        }
-                        GattEvent::Other(t) => {
-                            if SUPER_VERBOSE {
-                                let peek = t.payload();
-                                if let Some(handle) = peek.handle() {
-                                    info!("[gatt] other event on handle: {}", handle);
-                                }
-                                match peek.incoming() {
-                                    trouble_host::att::AttClient::Request(att_req) => {
-                                        info!("[gatt-attclient]: {:?}", att_req);
-                                    }
-                                    trouble_host::att::AttClient::Command(att_cmd) => {
-                                        info!("[gatt-attclient]: {:?}", att_cmd);
-                                    }
-                                    trouble_host::att::AttClient::Confirmation(att_cfm) => {
-                                        info!("[gatt-attclient]: {:?}", att_cfm);
-                                    }
-                                }
-                                info!("[gatt] other event {:?}", peek.incoming());
-                            }
-                        } //_ => {}
-                    };
-                    // This step is also performed at drop(), but writing it explicitly is necessary
-                    // in order to ensure reply is sent.
-                    //
-                    if should_skip {
-                    } else {
-                        let fallthrough_event = self
-                            .process_gatt_event(hap_services, support, accessory, event)
-                            .await?;
+                        GattConnectionEvent::Gatt { event } => {
+                            // We need this for now to prevent the security from gobbling up the cccd write!
+                            let mut should_skip = false;
 
-                        if let Some(event) = fallthrough_event {
-                            match event.accept() {
-                                Ok(reply) => reply.send().await,
-                                Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                            let h = event.payload().handle();
+                            if h == Some(75) || h == Some(91) {
+                                // TODO: THis is super hardcoded on the lightbulb thing right now.
+                                //panic!("got something on the CCCD table");
+                                /*
+                                 * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
+                                 got something on the CCCD table
+                                 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
+
+                                     Write req cmd 91, data: [2, 0]
+                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server] Writing attribute data! 0, data [2, 0]
+                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
+
+                                     Setting notify Identity { bd_addr: BdAddr([211, 87, 131, 116, 80, 67]) }, 91, false
+                                 [2025-11-15T01:27:32Z TRACE trouble_host::attribute_server] [cccd] set_notify(91) = false
+                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute]
+
+                                     set notify to false
+                                 [2025-11-15T01:27:32Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
+
+                                 Ah...  indicate is not implemented; https://github.com/embassy-rs/trouble/blob/53e34022ca3a561f53c6cccea67c6dbc8b69528d/host/src/attribute_server.rs#L370
+                                */
+                                info!("\n\n\n Somrething on CCCD");
+                                should_skip = true;
+                            }
+                            match &event {
+                                GattEvent::Read(event) => {
+                                    if SUPER_VERBOSE {
+                                        let peek = event.payload();
+                                        match peek.incoming() {
+                                            trouble_host::att::AttClient::Request(att_req) => {
+                                                info!("[gatt-attclient]: {:?}", att_req);
+                                            }
+                                            trouble_host::att::AttClient::Command(att_cmd) => {
+                                                info!("[gatt-attclient]: {:?}", att_cmd);
+                                            }
+                                            trouble_host::att::AttClient::Confirmation(att_cfm) => {
+                                                info!("[gatt-attclient]: {:?}", att_cfm);
+                                            }
+                                        }
+                                    }
+                                }
+                                GattEvent::Write(event) => {
+                                    if SUPER_VERBOSE {
+                                        info!(
+                                            "[gatt] Write Event to Level Characteristic: {:?}",
+                                            event.data()
+                                        );
+                                    }
+                                }
+                                GattEvent::Other(t) => {
+                                    if SUPER_VERBOSE {
+                                        let peek = t.payload();
+                                        if let Some(handle) = peek.handle() {
+                                            info!("[gatt] other event on handle: {}", handle);
+                                        }
+                                        match peek.incoming() {
+                                            trouble_host::att::AttClient::Request(att_req) => {
+                                                info!("[gatt-attclient]: {:?}", att_req);
+                                            }
+                                            trouble_host::att::AttClient::Command(att_cmd) => {
+                                                info!("[gatt-attclient]: {:?}", att_cmd);
+                                            }
+                                            trouble_host::att::AttClient::Confirmation(att_cfm) => {
+                                                info!("[gatt-attclient]: {:?}", att_cfm);
+                                            }
+                                        }
+                                        info!("[gatt] other event {:?}", peek.incoming());
+                                    }
+                                } //_ => {}
                             };
-                        } else {
-                            warn!("Omitted processing for event because it was handled");
+                            // This step is also performed at drop(), but writing it explicitly is necessary
+                            // in order to ensure reply is sent.
+                            //
+                            if should_skip {
+                            } else {
+                                let fallthrough_event = self
+                                    .process_gatt_event(hap_services, support, accessory, event)
+                                    .await?;
+
+                                if let Some(event) = fallthrough_event {
+                                    match event.accept() {
+                                        Ok(reply) => reply.send().await,
+                                        Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                                    };
+                                } else {
+                                    warn!("Omitted processing for event because it was handled");
+                                }
+                            }
                         }
+                        _ => {} // ignore other Gatt Connection Events
                     }
                 }
-                _ => {} // ignore other Gatt Connection Events
             }
         };
         info!("[gatt] disconnected: {:?}", reason);
