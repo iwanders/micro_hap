@@ -2006,7 +2006,14 @@ async fn test_hap_worker(
             0x02, 0xf5, 0xf4,
         ];
 
-        ctx.test_process_event().await;
+        ctx.test_process_event(&mut accessory, &mut support).await?;
+
+        let obtained_payload = ctx.test_get_broadcast_payload();
+
+        assert_eq!(
+            &obtained_payload.payload[0..obtained_payload.len],
+            _outgoing_broadcast
+        );
 
         todo!();
     }

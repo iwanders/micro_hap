@@ -151,6 +151,16 @@ enum HapBleStatusError {
     #[error("invalid request")]
     InvalidRequest,
 }
+impl HapBleStatusError {
+    pub fn invalid_iid_to_hap_ble_error(self) -> HapBleError {
+        match self {
+            HapBleStatusError::InvalidInstanceID(z) => {
+                HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(CharId(z)))
+            }
+            _ => todo!(),
+        }
+    }
+}
 
 /// A enum to capture all errors possibly encountered internally. This is used to provide high quality logging
 /// but does not actually end up in the public api of the crate.
@@ -243,6 +253,17 @@ pub struct TimedWrite {
 #[derive(Debug, Copy, Clone)]
 struct TimedWriteSlot(usize);
 
+#[derive(Debug, Copy, Clone, Default)]
+struct BroadCastAdvertisement {
+    payload: [u8; 31],
+    len: usize,
+}
+impl BroadCastAdvertisement {
+    fn clear(&mut self) {
+        *self = Default::default();
+    }
+}
+
 #[derive(Debug)]
 pub struct HapPeripheralContext<'c> {
     //protocol_service_properties: ServiceProperties,
@@ -252,6 +273,8 @@ pub struct HapPeripheralContext<'c> {
     timed_write_slot_buffer: usize,
     timed_write_data: core::cell::RefCell<&'static mut [u8]>,
     timed_write: core::cell::RefCell<&'static mut [Option<TimedWrite>]>,
+
+    broadcast_advertisement: core::cell::RefCell<BroadCastAdvertisement>,
 
     prepared_reply: Option<Reply>,
     should_encrypt_reply: bool,
@@ -399,6 +422,7 @@ impl<'c> HapPeripheralContext<'c> {
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
+            broadcast_advertisement: Default::default(),
             control_receiver,
         })
     }
@@ -1509,23 +1533,66 @@ impl<'c> HapPeripheralContext<'c> {
         Ok(conn)
     }
 
-    async fn update_broadcast_payload(&mut self, char_id: CharId) {
-        // This can ONLY be called if we are not connected.
-        info!("updating broadcast payload for {:?}", char_id);
-    }
-
-    async fn handle_hap_event(&mut self, event: HapEvent) {
+    async fn handle_hap_event_unconnected(
+        &mut self,
+        event: HapEvent,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+    ) -> Result<(), HapBleError> {
         info!("got hap event: {:?}", event);
+
         match event {
             HapEvent::CharacteristicChanged(char_id) => {
-                self.update_broadcast_payload(char_id).await
+                info!("updating broadcast payload for {:?}", char_id);
+                // Check that this characteristic supports broadcast advertisements.
+                let attr = self
+                    .get_attribute_by_char(char_id)
+                    .map_err(|e| e.invalid_iid_to_hap_ble_error())?;
+                if !attr.properties.supports_broadcast_notification() {
+                    info!(
+                        "Not doing anything with characteristic changed, no broadcast notify char: {:?}",
+                        char_id
+                    );
+                    return Ok(());
+                }
+
+                // Get the value.
+                let payload = self.broadcast_advertisement.get_mut();
+                payload.clear();
+                let value: &[u8] = (accessory).read_characteristic(char_id).await?.into();
+                let len = value.len();
+
+                let len =
+                    broadcast::get_advertising_parameters(&mut payload.payload, value, support)?;
+                payload.len = len;
             }
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    async fn test_process_event(
+        &mut self,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+    ) -> Result<(), HapBleError> {
+        let r = self
+            .handle_hap_event_unconnected(
+                self.control_receiver.get_event().await,
+                accessory,
+                support,
+            )
+            .await;
+        if let Err(e) = r {
+            info!("e: {e:?}");
+            panic!();
+        } else {
+            Ok(())
         }
     }
     #[cfg(test)]
-    async fn test_process_event(&mut self) {
-        self.handle_hap_event(self.control_receiver.get_event().await)
-            .await
+    fn test_get_broadcast_payload(&self) -> BroadCastAdvertisement {
+        *self.broadcast_advertisement.borrow()
     }
 
     pub async fn service<
@@ -1551,7 +1618,7 @@ impl<'c> HapPeripheralContext<'c> {
         >,
         peripheral: &mut Peripheral<'peripheral, C, DefaultPacketPool>,
         hap_services: &'server crate::ble::HapServices<'_>,
-    ) {
+    ) -> Result<(), HapBleError> {
         async {
             loop {
                 info!("Falling into advertise & receive event");
@@ -1588,7 +1655,8 @@ impl<'c> HapPeripheralContext<'c> {
                         }
                     }
                     embassy_futures::select::Either::Second(v) => {
-                        self.handle_hap_event(v).await;
+                        self.handle_hap_event_unconnected(v, accessory, support)
+                            .await?;
                         info!("v: {:?}", v);
                         continue;
                     }

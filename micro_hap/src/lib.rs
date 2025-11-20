@@ -700,9 +700,9 @@ impl<'a> HapInterfaceReceiver<'a> {
     fn get_event(&self) -> impl Future<Output = HapEvent> {
         self.receiver.receive()
     }
-    async fn try_get_event(&self) -> Option<HapEvent> {
-        self.receiver.try_receive().ok()
-    }
+    // fn try_get_event(&self) -> Option<HapEvent> {
+    //     self.receiver.try_receive().ok()
+    // }
 }
 impl<'a> core::fmt::Debug for HapInterfaceReceiver<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

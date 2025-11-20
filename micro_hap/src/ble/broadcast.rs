@@ -1,3 +1,4 @@
+use crate::ble::HapBleError;
 use crate::crypto::hkdf_sha512;
 use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, PlatformSupport};
@@ -129,4 +130,13 @@ pub fn configure_broadcast_notification(
         char_id
     );
     Ok(())
+}
+
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L85
+pub fn get_advertising_parameters(
+    advertising: &mut [u8],
+    value: &[u8],
+    support: &mut impl PlatformSupport,
+) -> Result<usize, HapBleError> {
+    todo!()
 }
