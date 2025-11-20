@@ -619,11 +619,11 @@ pub enum BleBroadcastTLV {
 }
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L17
-#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, Default, Copy, Clone)]
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum BleBroadcastInterval {
-    #[default]
+    Disabled = 0x00,
     Interval20ms = 0x01,
     Interval1280ms = 0x02,
     Interval2560ms = 0x03,

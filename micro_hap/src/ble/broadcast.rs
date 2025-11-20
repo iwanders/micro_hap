@@ -1,3 +1,5 @@
+use zerocopy::IntoBytes;
+
 use crate::ble::HapBleError;
 use crate::crypto::hkdf_sha512;
 use crate::pairing::PairingError;
@@ -116,7 +118,8 @@ pub async fn broadcast_generate_key(
 // Combination of HAPBLECharacteristicEnableBroadcastNotifications and HAPBLECharacteristicDisableBroadcastNotifications
 //
 // also an hint is https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L135
-pub fn configure_broadcast_notification(
+/*
+pub fn configure_broadcast_notzification(
     broadcast_enabled: bool,
     interval: super::pdu::BleBroadcastInterval,
     char_id: CharId,
@@ -130,13 +133,51 @@ pub fn configure_broadcast_notification(
         char_id
     );
     Ok(())
-}
+}*/
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L85
-pub fn get_advertising_parameters(
-    advertising: &mut [u8],
+//
+// They have some calls to HAPBLEAdvertisingIntervalCreateFromMilliseconds but I think that's handled at another layer for us?
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/PAL/HAPBase.h#L227-L238
+pub async fn get_advertising_parameters(
+    char_id: CharId,
+    data: &mut [u8],
     value: &[u8],
     support: &mut impl PlatformSupport,
-) -> Result<usize, HapBleError> {
+) -> Result<Option<usize>, HapBleError> {
+    let parameters = support.get_ble_broadcast_parameters().await?;
+
+    if parameters.expiration_gsn == 0 {
+        return Ok(None);
+    }
+    // Get the current gsn;
+    let gsn = support.get_global_state_number().await?;
+
+    let interval = support.get_ble_broadcast_configuration(char_id).await?;
+    // Advertisinginterval is u16?
+    //
+    // Similar to to_advertisement from AdvertisementConfig we start at the section after the company identifier.
+    data[0] = 0x11; // TY
+    data[1] = 0x36; // STL
+    // adv id
+
+    // Here, the adverising ID must exist.
+    let advertising_id = parameters.advertising_id.unwrap(); // This is an assert in reference, so should be fine?
+    data[2..(2 + 6)].copy_from_slice(&advertising_id.0);
+
+    // Now, encrypted bytes start?
+    // encrypted = data[9..]
+    data[9..(9 + 2)].copy_from_slice(&gsn.as_bytes());
+
+    // There's an iid here... what is it? :O  server->ble.adv.broadcastedEvent.iid
+    // It is just the CharId?
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L993
+    data[11..(11 + 2)].copy_from_slice(&char_id.as_bytes());
+
+    // Then, the value.
+    data[13..(13 + value.len())].copy_from_slice(value);
+
+    // Next, we do an authenticated encrypted with authenticated data... which we don't have yet.
+
     todo!()
 }

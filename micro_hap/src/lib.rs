@@ -199,7 +199,7 @@ pub fn setup_payload(
 
 /// A characteristic id.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Hash)]
 #[repr(transparent)]
 pub struct CharId(pub u16);
 
@@ -831,6 +831,20 @@ pub trait PlatformSupport: Send {
         &mut self,
         params: &crate::ble::broadcast::BleBroadcastParameters,
     ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+
+    /// Set the broadcast configuration for a characteristic.
+    // The reference just stores this into a single byte array by accessory id (always 1), and then (cid, v) where
+    // v is the HAPBLECharacteristicBroadcastInterval enum, which conveniently starts at 1.
+    fn set_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+        configuration: ble::BleBroadcastInterval,
+    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    /// Get the broadcast configuration for a characteristic.
+    fn get_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+    ) -> impl Future<Output = Result<Option<ble::BleBroadcastInterval>, InterfaceError>> + Send;
 }
 
 #[derive(Debug)]

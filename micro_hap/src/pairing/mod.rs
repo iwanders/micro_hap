@@ -642,11 +642,13 @@ impl PairState {
     }
 }
 
+// TODO: Forgot to move this after I moved the tests out of this module.
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::PlatformSupport;
+    use crate::ble::BleBroadcastInterval;
     use crate::ble::broadcast::BleBroadcastParameters;
+    use crate::{CharId, PlatformSupport};
     #[derive(Debug, Clone)]
     pub struct TestPairSupport {
         pub ed_ltsk: [u8; ED25519_LTSK],
@@ -655,6 +657,7 @@ pub mod test {
         pub global_state_number: u16,
         pub config_number: u8,
         pub ble_broadcast_parameters: BleBroadcastParameters,
+        pub ble_broadcast_config: std::collections::HashMap<CharId, BleBroadcastInterval>,
     }
     impl Default for TestPairSupport {
         fn default() -> Self {
@@ -665,6 +668,7 @@ pub mod test {
                 global_state_number: 1,
                 config_number: 1,
                 ble_broadcast_parameters: Default::default(),
+                ble_broadcast_config: Default::default(),
             }
         }
     }
@@ -743,6 +747,26 @@ pub mod test {
         ) -> Result<(), InterfaceError> {
             self.ble_broadcast_parameters = *params;
             Ok(())
+        }
+
+        async fn set_ble_broadcast_configuration(
+            &mut self,
+            char_id: CharId,
+            configuration: BleBroadcastInterval,
+        ) -> Result<(), InterfaceError> {
+            if configuration == BleBroadcastInterval::Disabled {
+                self.ble_broadcast_config.remove(&char_id);
+            } else {
+                self.ble_broadcast_config.insert(char_id, configuration);
+            }
+            Ok(())
+        }
+        /// Get the broadcast configuration for a characteristic.
+        async fn get_ble_broadcast_configuration(
+            &mut self,
+            char_id: CharId,
+        ) -> Result<Option<BleBroadcastInterval>, InterfaceError> {
+            Ok(self.ble_broadcast_config.get(&char_id).copied())
         }
     }
 

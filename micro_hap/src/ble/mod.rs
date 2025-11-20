@@ -14,6 +14,8 @@ use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, SvcId};
 use embassy_futures::select::select;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+
+pub use pdu::BleBroadcastInterval;
 // Todo, we should probably detach this completely from the HapServices struct
 // because it would be really nice if we can keep properties per service, characteristic and property.
 //
@@ -1031,6 +1033,7 @@ impl<'c> HapPeripheralContext<'c> {
             }
             pdu::OpCode::CharacteristicConfiguration => {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L336
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BConfiguration.c#L37
                 info!("CharacteristicConfiguration req: {:?}", data);
                 if !security_active {
                     // Nope...
@@ -1040,7 +1043,9 @@ impl<'c> HapPeripheralContext<'c> {
                 let req = pdu::CharacteristicConfigurationRequest::parse_pdu(data)?;
                 info!("CharacteristicConfiguration req: {:?}", req);
 
-                let interval = req.broadcast_interval.unwrap_or_default();
+                let interval = req
+                    .broadcast_interval
+                    .unwrap_or(pdu::BleBroadcastInterval::Interval20ms);
 
                 let broadcast_enabled = if let Some(broadcast_value) = req.broadcast_enabled {
                     // Enabled broadcasts at the provided interval.
@@ -1053,22 +1058,21 @@ impl<'c> HapPeripheralContext<'c> {
                             );
                             return Err(HapBleStatusError::InvalidRequest.into());
                         }
+
+                        let _ = pair_support
+                            .set_ble_broadcast_configuration(req.char_id, interval)
+                            .await?;
                     }
 
-                    broadcast::configure_broadcast_notification(
-                        broadcast_value,
-                        interval,
-                        req.char_id,
-                    )?;
                     broadcast_value
                 } else {
-                    // Do nothing?
-
-                    broadcast::configure_broadcast_notification(
-                        false,
-                        Default::default(),
-                        req.char_id,
-                    )?;
+                    // Disable broadcasts.
+                    let _ = pair_support
+                        .set_ble_broadcast_configuration(
+                            req.char_id,
+                            pdu::BleBroadcastInterval::Disabled,
+                        )
+                        .await?;
                     false
                 };
                 // HAPBLECharacteristicGetConfigurationResponse
@@ -1562,9 +1566,18 @@ impl<'c> HapPeripheralContext<'c> {
                 let value: &[u8] = (accessory).read_characteristic(char_id).await?.into();
                 let len = value.len();
 
-                let len =
-                    broadcast::get_advertising_parameters(&mut payload.payload, value, support)?;
-                payload.len = len;
+                let len = broadcast::get_advertising_parameters(
+                    char_id,
+                    &mut payload.payload,
+                    value,
+                    support,
+                )
+                .await?;
+                if let Some(len) = len {
+                    payload.len = len;
+                } else {
+                    info!("Failed to create advertisement payload");
+                }
             }
         }
         Ok(())
