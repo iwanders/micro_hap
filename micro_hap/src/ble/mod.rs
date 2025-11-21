@@ -1564,12 +1564,15 @@ impl<'c> HapPeripheralContext<'c> {
                 let payload = self.broadcast_advertisement.get_mut();
                 payload.clear();
                 let value: &[u8] = (accessory).read_characteristic(char_id).await?.into();
-                let len = value.len();
+                // Value is always 8 bytes long
+                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L793-L798
+                let mut value_payload: [u8; 8] = [0u8; 8];
+                value_payload[0..value.len()].copy_from_slice(value);
 
                 let len = broadcast::get_advertising_parameters(
                     char_id,
                     &mut payload.payload,
-                    value,
+                    &value_payload,
                     support,
                 )
                 .await?;

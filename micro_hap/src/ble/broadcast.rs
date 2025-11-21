@@ -142,7 +142,7 @@ pub fn configure_broadcast_notzification(
 pub async fn get_advertising_parameters(
     char_id: CharId,
     data: &mut [u8],
-    value: &[u8],
+    value: &[u8; 8],
     support: &mut impl PlatformSupport,
 ) -> Result<Option<usize>, HapBleError> {
     let parameters = support.get_ble_broadcast_parameters().await?;
@@ -152,6 +152,7 @@ pub async fn get_advertising_parameters(
     }
     // Get the current gsn;
     let gsn = support.get_global_state_number().await?;
+    info!("gsn: {:?}", gsn);
 
     let interval = support.get_ble_broadcast_configuration(char_id).await?;
     // Advertisinginterval is u16?
@@ -161,23 +162,42 @@ pub async fn get_advertising_parameters(
     data[1] = 0x36; // STL
     // adv id
 
+    let mut p = 2;
     // Here, the adverising ID must exist.
     let advertising_id = parameters.advertising_id.unwrap(); // This is an assert in reference, so should be fine?
-    data[2..(2 + 6)].copy_from_slice(&advertising_id.0);
+    info!("Advertising id: {:?}", advertising_id);
+    data[p..(p + 6)].copy_from_slice(&advertising_id.0);
+    p += 6;
 
     // Now, encrypted bytes start?
     // encrypted = data[9..]
-    data[9..(9 + 2)].copy_from_slice(&gsn.as_bytes());
+    let encr = p;
+    data[p..(p + 2)].copy_from_slice(&gsn.as_bytes());
+    p += 2;
 
     // There's an iid here... what is it? :O  server->ble.adv.broadcastedEvent.iid
     // It is just the CharId?
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L993
-    data[11..(11 + 2)].copy_from_slice(&char_id.as_bytes());
+    data[p..(p + 2)].copy_from_slice(&char_id.as_bytes());
+    p += 2;
 
     // Then, the value.
-    data[13..(13 + value.len())].copy_from_slice(value);
+    data[p..(p + value.len())].copy_from_slice(value);
+    p += value.len();
+    info!("value: {:?}", value);
+    info!("data: {:?}", data);
+    // Next, we do an authenticated encrypted with authenticated data...
+    let buffer = &mut data[encr..p];
+    let assocated_data = &advertising_id.0;
+    let key = parameters.key.as_ref();
+    info!("key: {:?}", key);
+    let gsn_u64: u64 = gsn as u64;
+    let nonce = gsn_u64.as_bytes();
+    let tag = crate::crypto::aead::encrypt_aad(buffer, assocated_data, key, nonce).unwrap();
 
-    // Next, we do an authenticated encrypted with authenticated data... which we don't have yet.
+    // Next, we truncate the tag to the left most four bytes.
+    data[p..(p + 4)].copy_from_slice(&tag[0..4]);
+    p += 4;
 
-    todo!()
+    Ok(Some(p))
 }

@@ -1996,11 +1996,9 @@ async fn test_hap_worker(
             .characteristic_changed(CHAR_ID_LIGHTBULB_ON)
             .await;
 
-        // What do we do here? We derp around a bit.. we should wait until this event is processed by... the _other_
-        // thing.
-        //
+        support.set_global_state_number(3).await?;
 
-        let _outgoing_broadcast: &[u8] = &[
+        let outgoing_broadcast: &[u8] = &[
             0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7,
             0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd,
             0x02, 0xf5, 0xf4,
@@ -2012,10 +2010,74 @@ async fn test_hap_worker(
 
         assert_eq!(
             &obtained_payload.payload[0..obtained_payload.len],
-            _outgoing_broadcast
+            &outgoing_broadcast[7..]
         );
 
-        todo!();
+        /*
+         2025-11-21'T'00:54:03'Z'	Debug	[com.apple.mfi.HomeKit.Core:AccessoryServer] [0000000000000001 Acme Light Bulb] [0000000000000033 on] Marking characteristic as modified.
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] HAP BLE Regular Advertisement Format (Manufacturer Data).
+         -   LEN = 0x16
+         -   ADT = 0xFF
+         -  CoID = 0x004C
+         -    TY = 0x06
+         -   STL = 0x31
+         -    SF = 0x00
+         - DevID = 57:3B:20:A7:E7:C4
+         -  ACID = 5
+         -   GSN = 2
+         -    CN = 1
+         -    CV = 0x02
+         -    SH = 0x213F72A4
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] ADV data: Active = 1, Interval = 20.000 ms.
+             0000  02010616 ff4c0006 3100573b 20a7e7c4 05000200 0102213f 72a40408 41636d      .....L..1.W; .........!?r...Acm
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] SR data.
+             0000  10094163 6d65204c 69676874 2042756c 62                                     ..Acme Light Bulb
+         2025-11-21'T'00:54:03'Z'	Default	[com.apple.mfi.HomeKit.Platform:BLEPeripheralManager] HAPPlatformBLEPeripheralManagerStartAdvertising
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Platform:BLEPeripheralManager] advertising bytes: 31
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Platform:BLELinuxShared] hdump 0x02, 0x01, 0x06, 0x16, 0xff, 0x4c, 0x00, 0x06, 0x31, 0x00, 0x57, 0x3b, 0x20, 0xa7, 0xe7, 0xc4, 0x05, 0x00, 0x02, 0x00, 0x01, 0x02, 0x21, 0x3f, 0x72, 0xa4, 0x04, 0x08, 0x41, 0x63, 0x6d,
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:Characteristic] [0000000000000001 Acme Light Bulb] [0000000000000033 on] Calling read handler.
+         2025-11-21'T'00:54:03'Z'	Info	HandleLightBulbOnRead: false
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] New GSN: 3.
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] [0000000000000001 Acme Light Bulb] [0000000000000033 on] Broadcasted Event.
+         2025-11-21'T'00:54:03'Z'	Debug	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] BLE Broadcast Encryption Key (Expires after GSN 32767).
+             0000  172d945b e18efe3d b3ba9b97 ce1b48b4 71aba3cd ee11de7d 03c1b059 703ca04d    .-.[...=......H.q......}...Yp<.M
+         done init
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] HAP BLE Encrypted Notification Advertisement Format (Manufacturer Data).
+         -   LEN = 0x1B
+         -   ADT = 0xFF
+         -  CoID = 0x004C
+         -    TY = 0x11
+         -   STL = 0x36
+         - AdvID = 57:3B:20:A7:E7:C4
+         -    Ev = 0xB55CF268769700A25DD72D91
+                   -   GSN = 3
+                   -   IID = 0x0033
+                   - Value = 0x0000000000000000
+         -   Tag = 0xCD02F5F4
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Core:BLEAccessoryServer] ADV data: Active = 1, Interval = 20.000 ms.
+             0000  0201061b ff4c0011 36573b20 a7e7c4b5 5cf26876 9700a25d d72d91cd 02f5f4      .....L..6W; ....\.hv...].-.....
+         2025-11-21'T'00:54:03'Z'	Default	[com.apple.mfi.HomeKit.Platform:BLEPeripheralManager] HAPPlatformBLEPeripheralManagerStartAdvertising
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Platform:BLEPeripheralManager] advertising bytes: 31
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Platform:BLELinuxShared] hdump 0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7, 0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd, 0x02, 0xf5, 0xf4,
+
+         2025-11-21'T'00:54:03'Z'	Info	[com.apple.mfi.HomeKit.Platform:BLELinuxShared] hdump 0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7, 0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd, 0x02, 0xf5, 0xf4,
+          New advertising payload: 0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7, 0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd, 0x02, 0xf5, 0xf4,
+        */
+
+        // Notes:
+        //  our gsn is off by two...
+        //  advertisement id and iid are correct.
+        //  value is correct.
+        //  broadcast key is correct
+        // Issue is likely the gsn, since that is used as the nonce?
+        //
+        //
+        // gsn increment here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L970
+        // we're also doing value wrong, it must be 8 long.
+
+        todo!(
+            "remove the gsn = 3 call above, figure out where the state number actually advances in the test, then it will pass"
+        );
     }
 
     return Ok((control_channel, ctx));
