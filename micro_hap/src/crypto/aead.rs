@@ -5,6 +5,8 @@ use chacha20poly1305::{
     aead::{AeadCore, KeyInit},
 };
 
+// TODO: I think 'key' should be sized instead of a slice.
+
 pub fn decrypt<'a>(
     buffer: &'a mut [u8],
     key: &[u8],
@@ -34,6 +36,23 @@ pub fn encrypt<'a>(
     nonce: &[u8],
 ) -> Result<&'a [u8], chacha20poly1305::Error> {
     type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+
+    let tag = encrypt_aad(&mut buffer[0..payload_length], &[], key, nonce)?;
+    if buffer.len() < (payload_length + NonceSize::USIZE) {
+        Err(chacha20poly1305::Error)
+    } else {
+        buffer[payload_length..(payload_length + tag.len())].copy_from_slice(tag.as_slice());
+        Ok(&buffer[0..(payload_length + tag.len())])
+    }
+}
+
+pub fn encrypt_aad<'a>(
+    buffer: &'a mut [u8],
+    associated_data: &[u8],
+    key: &[u8],
+    nonce: &[u8],
+) -> Result<chacha20poly1305::Tag, chacha20poly1305::Error> {
+    type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
     // Unwrap is safe because the key has a constant length and is correctly sized.
     let cipher = ChaCha20Poly1305::new_from_slice(&key).map_err(|_| chacha20poly1305::Error)?;
 
@@ -43,11 +62,9 @@ pub fn encrypt<'a>(
     nonce_bytes[NonceSize::USIZE - nonce.len()..].copy_from_slice(nonce);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    // Decrypt.
-    let associated_data = &[];
-    let mut buffer = BufferSlice::partial(buffer, payload_length);
-    cipher.encrypt_in_place(&nonce, associated_data, &mut buffer)?;
-    Ok(buffer.into_buffer_ref())
+    // Encrypt.
+    let tag = cipher.encrypt_in_place_detached(&nonce, associated_data, buffer)?;
+    Ok(tag)
 }
 
 //  HAPSessionChannelState
@@ -225,5 +242,46 @@ mod test {
         let mut channel = ControlChannel { key, nonce: 0 };
         let encrypted = channel.encrypt(&mut buffer, payload_len).unwrap();
         assert_eq!(encrypted, &ciphertext);
+    }
+    #[test]
+    fn test_aead_aad() {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Tests/HAPCryptoTest.c#L102
+        //
+        let key: [u8; _] = [
+            0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d,
+            0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b,
+            0x9c, 0x9d, 0x9e, 0x9f,
+        ];
+        let nonce: [u8; _] = [
+            0x07, 0x00, 0x00, 0x00, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+        ];
+        let aad: [u8; _] = [
+            0x50, 0x51, 0x52, 0x53, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7,
+        ];
+        let plaintext: &[u8; _] =
+            b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+        let expected_tag: [u8; _] = [
+            0x1a, 0xe1, 0x0b, 0x59, 0x4f, 0x09, 0xe2, 0x6a, 0x7e, 0x90, 0x2e, 0xcb, 0xd0, 0x60,
+            0x06, 0x91,
+        ];
+        let expected_ciphertext: [u8; _] = [
+            0xd3, 0x1a, 0x8d, 0x34, 0x64, 0x8e, 0x60, 0xdb, 0x7b, 0x86, 0xaf, 0xbc, 0x53, 0xef,
+            0x7e, 0xc2, 0xa4, 0xad, 0xed, 0x51, 0x29, 0x6e, 0x08, 0xfe, 0xa9, 0xe2, 0xb5, 0xa7,
+            0x36, 0xee, 0x62, 0xd6, 0x3d, 0xbe, 0xa4, 0x5e, 0x8c, 0xa9, 0x67, 0x12, 0x82, 0xfa,
+            0xfb, 0x69, 0xda, 0x92, 0x72, 0x8b, 0x1a, 0x71, 0xde, 0x0a, 0x9e, 0x06, 0x0b, 0x29,
+            0x05, 0xd6, 0xa5, 0xb6, 0x7e, 0xcd, 0x3b, 0x36, 0x92, 0xdd, 0xbd, 0x7f, 0x2d, 0x77,
+            0x8b, 0x8c, 0x98, 0x03, 0xae, 0xe3, 0x28, 0x09, 0x1b, 0x58, 0xfa, 0xb3, 0x24, 0xe4,
+            0xfa, 0xd6, 0x75, 0x94, 0x55, 0x85, 0x80, 0x8b, 0x48, 0x31, 0xd7, 0xbc, 0x3f, 0xf4,
+            0xde, 0xf0, 0x8e, 0x4b, 0x7a, 0x9d, 0xe5, 0x76, 0xd2, 0x65, 0x86, 0xce, 0xc6, 0x4b,
+            0x61, 0x16,
+        ];
+
+        let mut ciphertext = *plaintext;
+
+        let tag = encrypt_aad(&mut ciphertext, &aad, &key, &nonce).unwrap();
+
+        let tag_slice = tag.as_slice();
+        assert_eq!(tag_slice, expected_tag);
+        assert_eq!(ciphertext, expected_ciphertext);
     }
 }
