@@ -7,7 +7,6 @@ pub mod fmt;
 #[cfg(test)]
 extern crate std;
 
-pub mod adv;
 pub mod characteristic;
 pub mod descriptor;
 pub mod service;

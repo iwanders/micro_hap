@@ -3,7 +3,7 @@ use zerocopy::IntoBytes;
 use crate::ble::HapBleError;
 use crate::crypto::hkdf_sha512;
 use crate::pairing::PairingError;
-use crate::{AccessoryContext, CharId, PlatformSupport};
+use crate::{AccessoryContext, CharId, InterfaceError, PlatformSupport};
 
 // Some helpers to handle the whole broadcast key and global state number stuff.
 
@@ -84,12 +84,9 @@ pub async fn get_advertising_parameters(
     data: &mut [u8],
     value: &[u8; 8],
     support: &mut impl PlatformSupport,
-) -> Result<Option<usize>, HapBleError> {
+) -> Result<usize, InterfaceError> {
     let parameters = support.get_ble_broadcast_parameters().await?;
 
-    if parameters.expiration_gsn == 0 {
-        return Ok(None);
-    }
     // Get the current gsn;
     let gsn = support.get_global_state_number().await?;
     info!("gsn: {:?}", gsn);
@@ -139,5 +136,5 @@ pub async fn get_advertising_parameters(
     data[p..(p + 4)].copy_from_slice(&tag[0..4]);
     p += 4;
 
-    Ok(Some(p))
+    Ok(p)
 }

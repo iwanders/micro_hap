@@ -2006,12 +2006,12 @@ async fn test_hap_worker(
 
         ctx.test_process_event(&mut accessory, &mut support).await?;
 
-        let obtained_payload = ctx.test_get_broadcast_payload();
+        let advertise_flow = ctx
+            .test_get_broadcast_payload(&mut accessory, &mut support)
+            .await
+            .unwrap();
 
-        assert_eq!(
-            &obtained_payload.payload[0..obtained_payload.len],
-            &outgoing_broadcast[7..]
-        );
+        assert_eq!(&advertise_flow.advertise_data, &outgoing_broadcast[7..]);
 
         /*
          2025-11-21'T'00:54:03'Z'	Debug	[com.apple.mfi.HomeKit.Core:AccessoryServer] [0000000000000001 Acme Light Bulb] [0000000000000033 on] Marking characteristic as modified.

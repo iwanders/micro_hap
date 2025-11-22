@@ -6,6 +6,7 @@ use crate::characteristic;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use trouble_host::prelude::*;
 
+pub mod advertisement;
 pub mod broadcast;
 mod pdu;
 use crate::{CharacteristicProperties, CharacteristicResponse, DataSource};
@@ -102,6 +103,10 @@ pub enum SimpleTroubleError {
     /// Some other trouble error that we type erased.
     #[error("catch all for trouble errors")]
     ErasedTroubleError,
+
+    /// Something went wrong while advertising.
+    #[error("a failure occured in the advertise call")]
+    FailureInAdvertise,
 }
 
 impl From<trouble_host::Error> for HapBleError {
@@ -276,8 +281,6 @@ pub struct HapPeripheralContext<'c> {
     timed_write_data: core::cell::RefCell<&'static mut [u8]>,
     timed_write: core::cell::RefCell<&'static mut [Option<TimedWrite>]>,
 
-    broadcast_advertisement: core::cell::RefCell<BroadCastAdvertisement>,
-
     prepared_reply: Option<Reply>,
     should_encrypt_reply: bool,
 
@@ -447,7 +450,7 @@ impl<'c> HapPeripheralContext<'c> {
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
-            broadcast_advertisement: Default::default(),
+
             advertise_manager: advertise_manager.into(),
             session_active: false.into(),
             control_receiver,
@@ -777,7 +780,7 @@ impl<'c> HapPeripheralContext<'c> {
             let len = reply.write_into_length(*buffer)?;
 
             let pair_ctx = self.pair_ctx.borrow();
-            let setup_hash = crate::adv::calculate_setup_hash(
+            let setup_hash = advertisement::calculate_setup_hash(
                 &pair_ctx.accessory.device_id,
                 &pair_ctx.accessory.setup_id,
             );
@@ -1546,66 +1549,107 @@ impl<'c> HapPeripheralContext<'c> {
         accessory: &mut impl crate::AccessoryInterface,
         support: &mut impl PlatformSupport,
         peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
-    ) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
+    ) -> Result<Connection<'values, DefaultPacketPool>, HapBleError> {
         let _ = accessory;
         let z = self.pair_ctx.borrow();
         let static_info = z.accessory;
-        let broadcast_params = support.get_ble_broadcast_parameters().await.unwrap();
-        let is_paired = support.is_paired().await.unwrap();
-
-        let adv_config = if is_paired {
-            crate::adv::AdvertisementConfig {
-                device_id: broadcast_params
-                    .advertising_id
-                    .unwrap_or(static_info.device_id),
-                setup_id: static_info.setup_id,
-                accessory_category: static_info.category,
-                global_state: support.get_global_state_number().await.unwrap(),
-                config_number: support.get_config_number().await.unwrap(),
-                is_paired,
-                ..Default::default()
-            }
-        } else {
-            info!("not paired adv  device_id {:?}", static_info.device_id);
-            info!("not paired adv setup_id {:?}", static_info.setup_id);
-            crate::adv::AdvertisementConfig {
-                device_id: static_info.device_id,
-                setup_id: static_info.setup_id,
-                accessory_category: static_info.category,
-                ..Default::default()
-            }
+        let info = advertise_manager::AdvertiseInfo {
+            device_id: &static_info.device_id,
+            setup_id: &static_info.setup_id,
+            name: &static_info.name,
+            category: &static_info.category,
         };
-        let hap_adv = adv_config.to_advertisement();
-        let adv = hap_adv.as_advertisement();
 
-        let mut advertiser_data = [0; 31];
-        let len = AdStructure::encode_slice(
-            &[
-                AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-                //AdStructure::ServiceUuids16(&[[0x0f, 0x18]]),
-                AdStructure::CompleteLocalName(&static_info.name.as_bytes()[0..1]),
-                adv,
-            ],
-            &mut advertiser_data[..],
-        )?;
-        let params = AdvertisementParameters {
-            interval_min: embassy_time::Duration::from_millis(100),
-            interval_max: embassy_time::Duration::from_millis(500),
-            ..Default::default()
-        };
-        let advertiser = peripheral
-            .advertise(
-                &params,
-                Advertisement::ConnectableScannableUndirected {
-                    adv_data: &advertiser_data[..len],
-                    scan_data: &[], // TODO can we put the longer name in here if it doesn't fit in the advertisement?
-                },
+        loop {
+            let flow = self
+                .advertise_manager
+                .borrow_mut()
+                .create_advertisement(&info, accessory, support)
+                .await?;
+
+            let mut advertiser_data = [0; 31];
+            let len = AdStructure::encode_slice(
+                &[
+                    AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                    // Lets just always shorten this to a single character, then the scan will just retrieve the full
+                    // name, and we don't have to do math.
+                    AdStructure::ShortenedLocalName(&static_info.name.as_bytes()[0..1]),
+                    AdStructure::ManufacturerSpecificData {
+                        company_identifier: advertisement::COMPANY_IDENTIFIER_CODE,
+                        payload: &flow.advertise_data,
+                    },
+                ],
+                &mut advertiser_data[..],
             )
-            .await?;
-        info!("[adv] advertising");
-        let conn = advertiser.accept().await?;
-        info!("[adv] connection established");
-        Ok(conn)
+            .map_err(|_e| HapBleError::BufferOverrun)?;
+
+            let mut scan_data = [0; 31];
+            let fitting_name = &static_info.name.as_bytes()
+                [0..scan_data.len().min(static_info.name.as_bytes().len())];
+            let scan_len = AdStructure::encode_slice(
+                &[AdStructure::CompleteLocalName(fitting_name)],
+                &mut scan_data[..],
+            )
+            .map_err(|_e| HapBleError::BufferOverrun)?;
+
+            let interval_min = embassy_time::Duration::from_millis(flow.advertise_interval_ms);
+            // Not sure if it matters that min == max, perhaps it doesn't send if the channel is occupied?, lets add 20%?
+            let interval_max = embassy_time::Duration::from_millis(
+                flow.advertise_interval_ms + flow.advertise_interval_ms / 5,
+            );
+            let params = AdvertisementParameters {
+                interval_min,
+                interval_max,
+                // tx_power: trouble_host::advertise::TxPower::Plus20dBm, // lets send with oomph.
+                // max_events: Some(5),
+                ..Default::default()
+            };
+            let advertiser = peripheral
+                .advertise(
+                    &params,
+                    Advertisement::ConnectableScannableUndirected {
+                        adv_data: &advertiser_data[..len],
+                        scan_data: &scan_data[..scan_len], // TODO can we put the longer name in here if it doesn't fit in the advertisement?
+                    },
+                )
+                .await
+                .map_err(|e| HapBleError::TroubleError(SimpleTroubleError::FailureInAdvertise))?;
+            info!("[adv] advertising");
+            info!("[adv] advertising with {:?}", flow);
+
+            // TODO:: There's something funky going on here... if this delay is too long, we never exit the select.
+            // Too long is like... 3 seconds :/
+            const USE_PROPER_TIMES: bool = false;
+            let re_consider_timer = if USE_PROPER_TIMES {
+                if let Some(t) = flow.until.as_ref() {
+                    embassy_time::Timer::at(*t)
+                } else {
+                    // embassy_time::Instant::MAX ideally.
+                    embassy_time::Timer::at(embassy_time::Instant::MAX)
+                }
+            } else {
+                // Workaround, just delay for 1 second, then reconsider.
+                embassy_time::Timer::after_secs(1)
+            };
+
+            let v = select(advertiser.accept(), re_consider_timer).await;
+
+            match v {
+                embassy_futures::select::Either::First(accept_res) => {
+                    info!("[adv] connection established");
+                    match accept_res {
+                        Ok(c) => {
+                            return Ok(c);
+                        }
+                        Err(_) => continue, // This is a timeout event.
+                    }
+                }
+                embassy_futures::select::Either::Second(_) => {
+                    info!("[adv] reconsidering our duration.");
+                    continue;
+                }
+            }
+        }
     }
 
     async fn handle_hap_event_unconnected(
@@ -1635,29 +1679,6 @@ impl<'c> HapPeripheralContext<'c> {
                     );
                     return Ok(());
                 }
-
-                // We support broadcast events, so lets go build our broadcast advertisement.
-                // Get the value.
-                let payload = self.broadcast_advertisement.get_mut();
-                payload.clear();
-                let value: &[u8] = (accessory).read_characteristic(char_id).await?.into();
-                // Value is always 8 bytes long
-                // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L793-L798
-                let mut value_payload: [u8; 8] = [0u8; 8];
-                value_payload[0..value.len()].copy_from_slice(value);
-
-                let len = broadcast::get_advertising_parameters(
-                    char_id,
-                    &mut payload.payload,
-                    &value_payload,
-                    support,
-                )
-                .await?;
-                if let Some(len) = len {
-                    payload.len = len;
-                } else {
-                    info!("Failed to create advertisement payload");
-                }
             }
         }
         Ok(())
@@ -1684,10 +1705,26 @@ impl<'c> HapPeripheralContext<'c> {
         }
     }
     #[cfg(test)]
-    fn test_get_broadcast_payload(&self) -> BroadCastAdvertisement {
-        *self.broadcast_advertisement.borrow()
-    }
+    async fn test_get_broadcast_payload(
+        &self,
+        accessory: &mut impl crate::AccessoryInterface,
+        support: &mut impl PlatformSupport,
+    ) -> Result<advertise_manager::AdvertiseFlow, InterfaceError> {
+        let _ = accessory;
+        let z = self.pair_ctx.borrow();
+        let static_info = z.accessory;
+        let info = advertise_manager::AdvertiseInfo {
+            device_id: &static_info.device_id,
+            setup_id: &static_info.setup_id,
+            name: &static_info.name,
+            category: &static_info.category,
+        };
 
+        self.advertise_manager
+            .borrow_mut()
+            .create_advertisement(&info, accessory, support)
+            .await
+    }
     pub async fn service<
         'values,
         'peripheral,

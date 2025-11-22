@@ -1,4 +1,4 @@
-const COMPANY_IDENTIFIER_CODE: u16 = 0x004c;
+pub const COMPANY_IDENTIFIER_CODE: u16 = 0x004c;
 use sha2::{Digest, Sha512};
 use trouble_host::prelude::AdStructure;
 
@@ -41,7 +41,7 @@ impl Default for AdvertisementConfig {
 
 pub struct HapAdvertisement {
     // Trouble adds the LEN, ADT and CoID bytes.
-    data: [u8; 23 - 1 - 1 - 2],
+    data: [u8; 23 - 1 - 1 - 2], // 19
 }
 
 pub fn calculate_setup_hash(device_id: &DeviceId, setup_id: &SetupId) -> [u8; 4] {
@@ -95,6 +95,9 @@ impl HapAdvertisement {
             company_identifier: COMPANY_IDENTIFIER_CODE,
             payload: &self.data,
         }
+    }
+    pub fn as_array(&self) -> [u8; 19] {
+        self.data
     }
 }
 
