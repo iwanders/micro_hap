@@ -882,7 +882,7 @@ impl<'c> HapPeripheralContext<'c> {
         }
 
         if have_advertising_id {
-            // NONCOMPLIANCE when is this true?
+            // NONCOMPLIANCE when is this true, did not encounter a single request with this true.
             todo!();
         }
         if generate_key {

@@ -27,7 +27,8 @@ pub async fn broadcast_generate_key(
 
     parameters.expiration_gsn = gsn.wrapping_add(32767 - 1);
 
-    // NONCOMPLIANCE: setting the advertising id to the device id here.
+    // NONCOMPLIANCE: setting the advertising id to the device id here, this function could get a advertising id passed
+    // in, but we never see that being passed.
     parameters.advertising_id = Some(ctx.accessory.device_id);
 
     // Fetch controller's public key.
