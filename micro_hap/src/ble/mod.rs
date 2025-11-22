@@ -291,7 +291,12 @@ pub struct HapPeripheralContext<'c> {
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.h#L20-L26
     // Gsn can only advance ONCE per connected session.
-    advanced_gsn: bool,
+    // But also only once during a disconnected period from the looks of it.
+    advanced_gsn: core::cell::Cell<bool>,
+
+    /// Track if the HAP session went active, this mirrors the session's security_active boolean, but is used for the handling
+    /// of state.
+    session_active: core::cell::Cell<bool>,
 }
 impl<'c> HapPeripheralContext<'c> {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
@@ -429,7 +434,8 @@ impl<'c> HapPeripheralContext<'c> {
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
             broadcast_advertisement: Default::default(),
-            advanced_gsn: false,
+            advanced_gsn: false.into(),
+            session_active: false.into(),
             control_receiver,
         })
     }
@@ -582,7 +588,6 @@ impl<'c> HapPeripheralContext<'c> {
         let halfway = buffer.len() / 2;
         let (left_buffer, outgoing) = buffer.split_at_mut(halfway);
         let body_length = parsed.copy_body(left_buffer)?;
-        let mut pair_ctx = self.pair_ctx.borrow_mut();
 
         // So now we craft the reply, technically this could happen on the read... should it happen on the read?
         let char_id = req.header.char_id;
@@ -593,6 +598,7 @@ impl<'c> HapPeripheralContext<'c> {
         let is_pair_pairings = chr.uuid == characteristic::PAIRING_PAIRINGS.into();
         let incoming_data = &left_buffer[0..body_length];
         if is_pair_setup {
+            let mut pair_ctx = self.pair_ctx.borrow_mut();
             info!("pair setup at incoming");
             crate::pairing::pair_setup::pair_setup_handle_incoming(
                 &mut **pair_ctx,
@@ -622,7 +628,12 @@ impl<'c> HapPeripheralContext<'c> {
             info!("Done, len: {}", len);
             Ok(BufferResponse(len))
         } else if is_pair_verify {
-            pair_ctx.reset_secure_session();
+            {
+                let mut pair_ctx = self.pair_ctx.borrow_mut();
+                pair_ctx.reset_secure_session();
+            }
+            self.check_session_state().await; // Check at the start, because the session may be dropped.
+            let mut pair_ctx = self.pair_ctx.borrow_mut();
             self.should_encrypt_reply = false;
             // NONCOMPLIANCE this seems to reset the secure session, which we currently don't do?
             crate::pairing::pair_verify::handle_incoming(
@@ -647,8 +658,13 @@ impl<'c> HapPeripheralContext<'c> {
                 .add_value(&outgoing[0..outgoing_len])
                 .end();
 
+            // And at the end, the session may be started now.
+            drop(pair_ctx);
+            self.check_session_state().await;
+
             Ok(BufferResponse(len))
         } else if is_pair_pairings {
+            let mut pair_ctx = self.pair_ctx.borrow_mut();
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairings.c#L351
             info!("pairing_pairing incoming");
             let _ = crate::pairing::pair_pairing::pairing_pairing_handle_incoming(
@@ -701,8 +717,7 @@ impl<'c> HapPeripheralContext<'c> {
                     let len = reply.write_into_length(left_buffer)?;
                     if characteristic_written {
                         drop(buffer);
-                        drop(pair_ctx);
-                        let _ = self.handle_characteristic_written(pair_support).await?;
+                        let _ = self.handle_characteristic_changed(pair_support).await?;
                     }
 
                     Ok(BufferResponse(len))
@@ -1269,26 +1284,42 @@ impl<'c> HapPeripheralContext<'c> {
         let mut l = self.pair_ctx.borrow_mut();
         l.reset_secure_session();
         l.disconnect();
-        self.advanced_gsn = false;
+        self.advanced_gsn.set(false);
     }
 
-    /// A characteristic changed because it was written to, gsn can only increment once.
-    async fn handle_characteristic_written(
-        &mut self,
-        pair_support: &mut impl PlatformSupport,
-    ) -> Result<(), InternalError> {
-        if !self.advanced_gsn {
-            let _ = pair_support.advance_global_state_number().await?;
-            self.advanced_gsn = true;
+    /// May not be called while the pair_ctx is borrowed!
+    async fn check_session_state(&self) {
+        let ctx_session_active = self.pair_ctx.borrow_mut().session.security_active;
+        let session_active = self.session_active.get();
+        if session_active != ctx_session_active {
+            if ctx_session_active {
+                self.handle_session_start().await;
+            } else {
+                self.handle_session_stop().await;
+            }
         }
-        Ok(())
+        self.session_active.set(ctx_session_active);
     }
 
-    async fn handle_characteristic_changed_unconnected(
+    async fn handle_session_start(&self) {
+        self.advanced_gsn.set(false);
+        info!("HAP secure session started");
+    }
+    async fn handle_session_stop(&self) {
+        self.advanced_gsn.set(false);
+        info!("HAP secure session stopped");
+    }
+
+    /// A characteristic changed because it was written to, gsn can only increment once per connected or disconnected
+    /// period.
+    async fn handle_characteristic_changed(
         &mut self,
         pair_support: &mut impl PlatformSupport,
     ) -> Result<(), InterfaceError> {
-        let _ = pair_support.advance_global_state_number().await?;
+        if !self.advanced_gsn.get() {
+            let _ = pair_support.advance_global_state_number().await?;
+            self.advanced_gsn.set(true);
+        }
         Ok(())
     }
 
@@ -1374,20 +1405,24 @@ impl<'c> HapPeripheralContext<'c> {
             match v {
                 embassy_futures::select::Either::First(event) => match event {
                     crate::HapEvent::CharacteristicChanged(char_id) => {
-                        let x = self.get_attribute_by_char(char_id).map_err(|_e| {
+                        let attr = self.get_attribute_by_char(char_id).map_err(|_e| {
                             HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
                                 char_id,
                             ))
                         })?;
-                        x.ble
-                            .as_ref()
-                            .unwrap()
-                            .characteristic
-                            .as_ref()
-                            .ok_or(InterfaceError::CharacteristicObjectNotProvided(char_id))?
-                            .indicate(conn, &[])
-                            .await
-                            .map_err(|_e| InterfaceError::CharacteristicNoIndicate(char_id))?
+
+                        // Iff we support event notification, sent one out.
+                        if attr.properties.supports_event_notification() {
+                            attr.ble
+                                .as_ref()
+                                .unwrap()
+                                .characteristic
+                                .as_ref()
+                                .ok_or(InterfaceError::CharacteristicObjectNotProvided(char_id))?
+                                .indicate(conn, &[])
+                                .await
+                                .map_err(|_e| InterfaceError::CharacteristicNoIndicate(char_id))?
+                        }
                     }
                 },
                 embassy_futures::select::Either::Second(event) => {
@@ -1581,9 +1616,8 @@ impl<'c> HapPeripheralContext<'c> {
             HapEvent::CharacteristicChanged(char_id) => {
                 info!("updating broadcast payload for {:?}", char_id);
 
-                let _ = self
-                    .handle_characteristic_changed_unconnected(support)
-                    .await?;
+                // Increment the GSN, this happens whether or not broadcast notifications are supported.
+                let _ = self.handle_characteristic_changed(support).await?;
 
                 // Check that this characteristic supports broadcast advertisements.
                 let attr = self
@@ -1597,6 +1631,7 @@ impl<'c> HapPeripheralContext<'c> {
                     return Ok(());
                 }
 
+                // We support broadcast events, so lets go build our broadcast advertisement.
                 // Get the value.
                 let payload = self.broadcast_advertisement.get_mut();
                 payload.clear();
