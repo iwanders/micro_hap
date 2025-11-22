@@ -1606,7 +1606,7 @@ impl<'c> HapPeripheralContext<'c> {
                     },
                 )
                 .await
-                .map_err(|e| HapBleError::TroubleError(SimpleTroubleError::FailureInAdvertise))?;
+                .map_err(|_e| HapBleError::TroubleError(SimpleTroubleError::FailureInAdvertise))?;
             // info!("[adv] advertising");
             // info!("[adv] advertising with {:?}", flow);
 

@@ -146,10 +146,12 @@ impl AdvertiseManager {
         support: &mut impl PlatformSupport,
     ) -> Result<AdvertiseFlow, InterfaceError> {
         let is_paired = support.is_paired().await.unwrap();
-        let broadcast_params = support.get_ble_broadcast_parameters().await.unwrap();
+        // let broadcast_params = support.get_ble_broadcast_parameters().await.unwrap();
         let adv_config = if is_paired {
             super::advertisement::AdvertisementConfig {
-                device_id: broadcast_params.advertising_id.unwrap_or(*info.device_id),
+                // device_id: broadcast_params.advertising_id.unwrap_or(*info.device_id),
+                //  This used to be the broadcast advertising id, but that made us lose the accessory on reboot.
+                device_id: *info.device_id,
                 setup_id: *info.setup_id,
                 accessory_category: *info.category,
                 global_state: support.get_global_state_number().await.unwrap(),
@@ -282,6 +284,7 @@ impl AdvertiseManager {
                 )
                 .unwrap();
                 advertise_data.truncate(len);
+
                 let interval = support.get_ble_broadcast_configuration(*char).await?;
                 let advertise_interval_ms = interval
                     .unwrap_or(crate::BleBroadcastInterval::Disabled)
@@ -293,7 +296,7 @@ impl AdvertiseManager {
                         // we clearly don't want advertisements.
                         return Self::crate_general_advertisement(info, support).await;
                     };
-
+                info!("finished creating broadcast advertise data");
                 Ok(AdvertiseFlow {
                     advertise_data,
                     scan_data: Default::default(),
@@ -356,6 +359,7 @@ impl AdvertiseManager {
                 // Value is always 8 bytes long
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L793-L798
                 value[0..read_value.len()].copy_from_slice(read_value);
+                info!("Entering broadcast stage.");
                 self.mode = AdvertisementMode::Broadcast {
                     char: properties.iid,
                     value,

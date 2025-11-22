@@ -54,6 +54,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.~
 - ~Add periodic 'service' method to handle global state counter, advertisement and  expiring timed writes to free slots.~
 - ~How do the advertisements actually work?~
+- Broadcasts still result in a reconnect and `CharacteristicConfigurationRequest`, why?
 - ~And what about notify while a connection is active?~ Send indicate over BLE
 - ~Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.~ Can pair numerous times now.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.

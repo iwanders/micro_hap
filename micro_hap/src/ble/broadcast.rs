@@ -91,8 +91,6 @@ pub async fn get_advertising_parameters(
     let gsn = support.get_global_state_number().await?;
     // info!("gsn: {:?}", gsn);
 
-    let interval = support.get_ble_broadcast_configuration(char_id).await?;
-    // Advertisinginterval is u16?
     //
     // Similar to to_advertisement from AdvertisementConfig we start at the section after the company identifier.
     data[0] = 0x11; // TY
