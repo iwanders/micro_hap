@@ -50,8 +50,8 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Any errors currently drop the request instead of returning the correct HAP error code.~
 - ~Figure out when `MaxProcedures` should be returned..~ Looks like a sentinel?
 - Figure out how values that proactively change work (like temperature sensor), how to notify?
-- When the state on the accessory changes, it is supposed to increment the global state number.
-- The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.
+- ~When the state on the accessory changes, it is supposed to increment the global state number.~
+- ~The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.~
 - Add periodic 'service' method to handle global state counter, advertisement and expiring timed writes to free slots.
 - How do the advertisements actually work?
 - ~And what about notify while a connection is active?~ Send indicate over BLE
@@ -72,7 +72,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.
-- To notify, we need the handle of the characteristic, which we currently don't have. File PR into trouble.
+- File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indiate` functionality, because `notify != indicate`.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

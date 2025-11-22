@@ -1293,21 +1293,24 @@ impl<'c> HapPeripheralContext<'c> {
         let session_active = self.session_active.get();
         if session_active != ctx_session_active {
             if ctx_session_active {
-                self.handle_session_start().await;
+                self.handle_session_start();
             } else {
-                self.handle_session_stop().await;
+                self.handle_session_stop();
             }
         }
         self.session_active.set(ctx_session_active);
     }
 
-    async fn handle_session_start(&self) {
+    fn handle_session_start(&self) {
         self.advanced_gsn.set(false);
         info!("HAP secure session started");
     }
-    async fn handle_session_stop(&self) {
+    fn handle_session_stop(&self) {
         self.advanced_gsn.set(false);
         info!("HAP secure session stopped");
+    }
+    fn is_session_active(&self) -> bool {
+        self.session_active.get()
     }
 
     /// A characteristic changed because it was written to, gsn can only increment once per connected or disconnected
@@ -1405,6 +1408,15 @@ impl<'c> HapPeripheralContext<'c> {
             match v {
                 embassy_futures::select::Either::First(event) => match event {
                     crate::HapEvent::CharacteristicChanged(char_id) => {
+                        // TODO / NOTE: Is this a bug in my implementation or in the reference?
+                        // This here will notify over the bluetooth connection even if the connectee is not yet engaged
+                        // in an active HAP session, and this would inhibit the broadcast of the value.
+                        // It DOES result in a GSN increase, so the proper iOS controller will still retrieve the
+                        // correct values later on.
+
+                        // This changed modification should technically happen after the get attribute, but that's a
+                        // borrow.
+                        let _ = self.handle_characteristic_changed(support).await?;
                         let attr = self.get_attribute_by_char(char_id).map_err(|_e| {
                             HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
                                 char_id,
