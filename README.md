@@ -22,9 +22,7 @@ This data was captured using  [this repo](https://github.com/iwanders/HomeKitADK
 Actions in this main test are; pair, toggle a few times, disable & enable bluetooth, toggle a few more times.
 
 ## Architecture
-Many parts were only tackled when I encountered a new concept in building out the logic against the recording. It could
-do with a cleanup, but I'm not sure if I get to that before I have to step away from this for a while, so here's a dump
-of information for myself, and others that may interact with this:
+Many parts were only tackled when I encountered a new concept in building out the logic against the recording.
 
 To help people understand the code and the concepts, here's an information dump:
 - An accessory is comprised of Services, the `accessory_information`, `protocol` and `pairing` services are required.
@@ -33,7 +31,7 @@ To help people understand the code and the concepts, here's an information dump:
 - On the BLE level, all characteristics are read/write without a secure BLE session.
 - Attributes are interacted with through a BLE write AND read, together they form a request.
 - For example, toggling the lightbulb performs a BLE write on the `On` attribute of the `Lightbulb` Service, the response of this request is verified with a BLE Read on the same characteristic.
-- The HAP protocol is merely transported over the BLE write/reads.
+- The HAP protocol is merely transported over the BLE gatt write/reads.
 - The Trouble GATT server is merely a facade to provide the correct characteristics & services.
 - The `HapPeripheralContext::gatt_events_task` is the entry point for the bluetooth transport.
 - The `PlatformSupport` is the platform interface / key-value store and auxiliary function support like random bytes.
@@ -43,6 +41,8 @@ To help people understand the code and the concepts, here's an information dump:
 - On error handling. The pairing handling returns `PairingError` which provide relevant information what went wrong.
   The `ble` layer changes this into appropriate `ble::pdu::HapBleStatusError` errors that are responded to the client,
   only real trouble errors are bubbled up to the calling code.
+- The `InternalError` is internal, some of its values end up being HAP protocol status results, others end up bubbling
+  through to the user application like `InterfaceError`.
 
 ## Todo
 - ~Clean up error handling.n (snafu / thiserror?)~
@@ -73,6 +73,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.
 - File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indiate` functionality, because `notify != indicate`.
+- Go through all the log / defmt prints and ensure the level makes sense.
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.

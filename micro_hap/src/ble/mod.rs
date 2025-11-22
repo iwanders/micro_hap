@@ -46,7 +46,7 @@ pub mod services;
 pub mod sig;
 pub use services::*;
 use thiserror::Error;
-
+mod advertise_manager;
 use pdu::{BleTLVType, BodyBuilder, ParsePdu, WriteIntoLength};
 
 #[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
@@ -289,14 +289,11 @@ pub struct HapPeripheralContext<'c> {
 
     control_receiver: crate::HapInterfaceReceiver<'c>,
 
-    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.h#L20-L26
-    // Gsn can only advance ONCE per connected session.
-    // But also only once during a disconnected period from the looks of it.
-    advanced_gsn: core::cell::Cell<bool>,
-
     /// Track if the HAP session went active, this mirrors the session's security_active boolean, but is used for the handling
-    /// of state.
+    /// of state and resetting the advanced_gsn flag.
     session_active: core::cell::Cell<bool>,
+
+    advertise_manager: core::cell::RefCell<advertise_manager::AdvertiseManager>,
 }
 impl<'c> HapPeripheralContext<'c> {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
@@ -436,6 +433,7 @@ impl<'c> HapPeripheralContext<'c> {
         control_receiver: crate::HapInterfaceReceiver<'c>,
     ) -> Result<Self, HapBleError> {
         let timed_write_slot_buffer = timed_write_data.len() / timed_write.len();
+        let advertise_manager = advertise_manager::AdvertiseManager::startup();
         Ok(Self {
             //protocol_service_properties: Default::default(),
             buffer: buffer.into(),
@@ -450,7 +448,7 @@ impl<'c> HapPeripheralContext<'c> {
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
             broadcast_advertisement: Default::default(),
-            advanced_gsn: false.into(),
+            advertise_manager: advertise_manager.into(),
             session_active: false.into(),
             control_receiver,
         })
@@ -715,7 +713,8 @@ impl<'c> HapPeripheralContext<'c> {
 
             Ok(BufferResponse(len))
         } else if is_pair_features {
-            todo!("this should return 0u8, but it is never actually read?");
+            unreachable!();
+            // This is handled by the Pairing Feature having a DataSource::Constant value.
         } else {
             match chr.data_source {
                 DataSource::Nop => {
@@ -743,7 +742,10 @@ impl<'c> HapPeripheralContext<'c> {
                     let len = reply.write_into_length(left_buffer)?;
                     if characteristic_written {
                         drop(buffer);
-                        let _ = self.handle_characteristic_changed(pair_support).await?;
+                        self.advertise_manager
+                            .borrow_mut()
+                            .characteristic_changed(chr, accessory, pair_support)
+                            .await?;
                     }
 
                     Ok(BufferResponse(len))
@@ -1310,7 +1312,7 @@ impl<'c> HapPeripheralContext<'c> {
         let mut l = self.pair_ctx.borrow_mut();
         l.reset_secure_session();
         l.disconnect();
-        self.advanced_gsn.set(false);
+        self.handle_session_stop();
     }
 
     /// May not be called while the pair_ctx is borrowed!
@@ -1328,25 +1330,12 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     fn handle_session_start(&self) {
-        self.advanced_gsn.set(false);
         info!("HAP secure session started");
+        self.advertise_manager.borrow_mut().state_connected(true);
     }
     fn handle_session_stop(&self) {
-        self.advanced_gsn.set(false);
         info!("HAP secure session stopped");
-    }
-
-    /// A characteristic changed because it was written to, gsn can only increment once per connected or disconnected
-    /// period.
-    async fn handle_characteristic_changed(
-        &mut self,
-        pair_support: &mut impl PlatformSupport,
-    ) -> Result<(), InterfaceError> {
-        if !self.advanced_gsn.get() {
-            let _ = pair_support.advance_global_state_number().await?;
-            self.advanced_gsn.set(true);
-        }
-        Ok(())
+        self.advertise_manager.borrow_mut().state_connected(false);
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
@@ -1356,8 +1345,6 @@ impl<'c> HapPeripheralContext<'c> {
         accessory: &mut impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
     ) -> Result<Option<trouble_host::gatt::GattEvent<'stack, 'server, P>>, HapBleError> {
-        // we seem to miss 'read by type' requests on handlex 0x0010 - 0x0012
-
         match event {
             GattEvent::Read(event) => {
                 let outgoing = self.handle_read_outgoing(event.handle()).await;
@@ -1423,7 +1410,7 @@ impl<'c> HapPeripheralContext<'c> {
         hap_services: &HapServices<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), HapBleError> {
-        const SUPER_VERBOSE: bool = true;
+        const SUPER_VERBOSE: bool = false;
 
         let reason = loop {
             let v = select(self.control_receiver.get_event(), conn.next()).await;
@@ -1439,12 +1426,16 @@ impl<'c> HapPeripheralContext<'c> {
 
                         // This changed modification should technically happen after the get attribute, but that's a
                         // borrow.
-                        let _ = self.handle_characteristic_changed(support).await?;
+
                         let attr = self.get_attribute_by_char(char_id).map_err(|_e| {
                             HapBleError::InterfaceError(InterfaceError::CharacteristicUnknown(
                                 char_id,
                             ))
                         })?;
+                        self.advertise_manager
+                            .borrow_mut()
+                            .characteristic_changed(attr, accessory, support)
+                            .await?;
 
                         // Iff we support event notification, sent one out.
                         if attr.properties.supports_event_notification() {
@@ -1454,7 +1445,7 @@ impl<'c> HapPeripheralContext<'c> {
                                 .characteristic
                                 .as_ref()
                                 .ok_or(InterfaceError::CharacteristicObjectNotProvided(char_id))?
-                                .indicate(conn, &[])
+                                .indicate(conn, &[]) // Indicate with empty payload, iOS will retrieve.
                                 .await
                                 .map_err(|_e| InterfaceError::CharacteristicNoIndicate(char_id))?
                         }
@@ -1629,13 +1620,14 @@ impl<'c> HapPeripheralContext<'c> {
             HapEvent::CharacteristicChanged(char_id) => {
                 info!("updating broadcast payload for {:?}", char_id);
 
-                // Increment the GSN, this happens whether or not broadcast notifications are supported.
-                let _ = self.handle_characteristic_changed(support).await?;
-
                 // Check that this characteristic supports broadcast advertisements.
                 let attr = self
                     .get_attribute_by_char(char_id)
                     .map_err(|e| e.invalid_iid_to_hap_ble_error())?;
+                self.advertise_manager
+                    .borrow_mut()
+                    .characteristic_changed(attr, accessory, support)
+                    .await?;
                 if !attr.properties.supports_broadcast_notification() {
                     info!(
                         "Not doing anything with characteristic changed, no broadcast notify char: {:?}",
@@ -1723,6 +1715,8 @@ impl<'c> HapPeripheralContext<'c> {
         async {
             loop {
                 info!("Falling into advertise & receive event");
+
+                // Does this actually work? Technically we should keep advertising while handling the event...
                 let v = select(
                     self.advertise(accessory, support, peripheral),
                     self.control_receiver.get_event(),
