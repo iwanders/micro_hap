@@ -1998,8 +1998,6 @@ async fn test_hap_worker(
             .characteristic_changed(CHAR_ID_LIGHTBULB_ON)
             .await;
 
-        support.set_global_state_number(3).await?;
-
         let outgoing_broadcast: &[u8] = &[
             0x02, 0x01, 0x06, 0x1b, 0xff, 0x4c, 0x00, 0x11, 0x36, 0x57, 0x3b, 0x20, 0xa7, 0xe7,
             0xc4, 0xb5, 0x5c, 0xf2, 0x68, 0x76, 0x97, 0x00, 0xa2, 0x5d, 0xd7, 0x2d, 0x91, 0xcd,
@@ -2076,10 +2074,6 @@ async fn test_hap_worker(
         //
         // gsn increment here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L970
         // we're also doing value wrong, it must be 8 long.
-
-        todo!(
-            "remove the gsn = 3 call above, figure out where the state number actually advances in the test, then it will pass"
-        );
     }
 
     return Ok((control_channel, ctx));

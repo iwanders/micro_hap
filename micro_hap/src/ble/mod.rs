@@ -1272,6 +1272,7 @@ impl<'c> HapPeripheralContext<'c> {
         self.advanced_gsn = false;
     }
 
+    /// A characteristic changed because it was written to, gsn can only increment once.
     async fn handle_characteristic_written(
         &mut self,
         pair_support: &mut impl PlatformSupport,
@@ -1280,6 +1281,14 @@ impl<'c> HapPeripheralContext<'c> {
             let _ = pair_support.advance_global_state_number().await?;
             self.advanced_gsn = true;
         }
+        Ok(())
+    }
+
+    async fn handle_characteristic_changed_unconnected(
+        &mut self,
+        pair_support: &mut impl PlatformSupport,
+    ) -> Result<(), InterfaceError> {
+        let _ = pair_support.advance_global_state_number().await?;
         Ok(())
     }
 
@@ -1571,6 +1580,11 @@ impl<'c> HapPeripheralContext<'c> {
         match event {
             HapEvent::CharacteristicChanged(char_id) => {
                 info!("updating broadcast payload for {:?}", char_id);
+
+                let _ = self
+                    .handle_characteristic_changed_unconnected(support)
+                    .await?;
+
                 // Check that this characteristic supports broadcast advertisements.
                 let attr = self
                     .get_attribute_by_char(char_id)
