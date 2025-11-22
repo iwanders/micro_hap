@@ -374,6 +374,22 @@ impl<'c> HapPeripheralContext<'c> {
         None
     }
 
+    fn should_reply_to_ble_handle(&self, handle: u16) -> bool {
+        for s in self.services() {
+            if Some(handle) == s.ble_handle {
+                return true;
+            }
+            for c in s.characteristics.iter() {
+                if let Some(prop) = c.ble.as_ref() {
+                    if prop.handle == handle {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     fn get_timed_write_slot_index(&self, key: Option<CharId>) -> Option<TimedWriteSlot> {
         let v = self.timed_write.borrow();
         v.iter()
@@ -1319,9 +1335,6 @@ impl<'c> HapPeripheralContext<'c> {
         self.advanced_gsn.set(false);
         info!("HAP secure session stopped");
     }
-    fn is_session_active(&self) -> bool {
-        self.session_active.get()
-    }
 
     /// A characteristic changed because it was written to, gsn can only increment once per connected or disconnected
     /// period.
@@ -1459,30 +1472,8 @@ impl<'c> HapPeripheralContext<'c> {
                             let mut should_skip = false;
 
                             let h = event.payload().handle();
-                            if h == Some(75) || h == Some(91) {
-                                // TODO: THis is super hardcoded on the lightbulb thing right now.
-                                //panic!("got something on the CCCD table");
-                                /*
-                                 * thread 'main' panicked at /home/ivor/Documents/Code/rust/rpi_pico2w_imu_project/micro_hap/micro_hap/src/ble/mod.rs:1317:25:
-                                 got something on the CCCD table
-                                 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
-
-                                     Write req cmd 91, data: [2, 0]
-                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server] Writing attribute data! 0, data [2, 0]
-                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute_server]
-
-                                     Setting notify Identity { bd_addr: BdAddr([211, 87, 131, 116, 80, 67]) }, 91, false
-                                 [2025-11-15T01:27:32Z TRACE trouble_host::attribute_server] [cccd] set_notify(91) = false
-                                 [2025-11-15T01:27:32Z INFO  trouble_host::attribute]
-
-                                     set notify to false
-                                 [2025-11-15T01:27:32Z TRACE trouble_host::gatt] [gatt 24] disconnecting from server
-
-                                 Ah...  indicate is not implemented; https://github.com/embassy-rs/trouble/blob/53e34022ca3a561f53c6cccea67c6dbc8b69528d/host/src/attribute_server.rs#L370
-                                */
-                                info!("\n\n\n Somrething on CCCD");
-                                should_skip = true;
+                            if let Some(h) = h {
+                                should_skip = !self.should_reply_to_ble_handle(h);
                             }
                             match &event {
                                 GattEvent::Read(event) => {
