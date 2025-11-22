@@ -28,6 +28,8 @@ use crypto::aead::ControlChannel;
 use core::future::Future;
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Channel};
 
+pub use ble::BleBroadcastInterval;
+
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
 //

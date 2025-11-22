@@ -47,22 +47,29 @@ Following the path of a accesory notifying the HAP Server.
             Also something with times here https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L246
 
 
-So 759eaca1278b99e82029785f79e56a27262421e2 added a great hack to explore notifications.
+    So 759eaca1278b99e82029785f79e56a27262421e2 added a great hack to explore notifications.
 
-The problem is that iOS doesn't actually subscribe to my notifications, force sending it does work.
+    The problem is that iOS doesn't actually subscribe to my notifications, force sending it does work.
 
-What's more, the one single characteristic that has indicate, loses the indicate flag if we read it from NRF Connect.
-This does NOT happen if we modify the bas peripheral; https://github.com/embassy-rs/trouble/blob/bb61f8a0b8e84b4afa175674a56c91b6e545acd3/examples/apps/src/ble_bas_peripheral.rs#L24
-to have indicate, in that case a read does NOT make the indicate attribute go away.
+    What's more, the one single characteristic that has indicate, loses the indicate flag if we read it from NRF Connect.
+    This does NOT happen if we modify the bas peripheral; https://github.com/embassy-rs/trouble/blob/bb61f8a0b8e84b4afa175674a56c91b6e545acd3/examples/apps/src/ble_bas_peripheral.rs#L24
+    to have indicate, in that case a read does NOT make the indicate attribute go away.
 
-Are we replying incorrectly? Okay, probably not, the problem was that one ON characteristic had indicate, but the other didn't, because of that we lost it.
+    Are we replying incorrectly? Okay, probably not, the problem was that one ON characteristic had indicate, but the other didn't, because of that we lost it.
 
-Still doesn't make iOS properly register though.
+    Still doesn't make iOS properly register though.
 
-Separate issue...
-    The second lightbulb services has no characteristics, this is despite the characteristics being correctly responded with?
-    Is this an NRF connect display issue, or an actual problem?
-    Lets assume it is not a problem for now, we should try with a single bulb, see if iOS then subscribes to the notify.
+    Separate issue...
+        The second lightbulb services has no characteristics, this is despite the characteristics being correctly responded with?
+        Is this an NRF connect display issue, or an actual problem?
+        Lets assume it is not a problem for now, we should try with a single bulb, see if iOS then subscribes to the notify.
+
+    On timing; https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L246-L253
+        Normal advertise:
+            - 20ms for 30s after boot.
+            - 20ms for 3s after disconnect.
+            - Regular interval, whatever that is otherwise.
+
  */
 
 // Some helpers to handle the whole broadcast key and global state number stuff.

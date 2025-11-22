@@ -596,9 +596,22 @@ impl<'c> HapPeripheralContext<'c> {
         let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
         let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
         let is_pair_pairings = chr.uuid == characteristic::PAIRING_PAIRINGS.into();
+        let is_pair_features = chr.uuid == characteristic::PAIRING_FEATURES.into();
         let incoming_data = &left_buffer[0..body_length];
+
+        // Pair setup, pair verify and pairing features drop the session.
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic.c#L21-L23
+        if is_pair_setup || is_pair_verify || is_pair_features {
+            {
+                let mut pair_ctx = self.pair_ctx.borrow_mut();
+                pair_ctx.reset_secure_session();
+            }
+            self.check_session_state().await; // Check at the start, because the session may be dropped.
+        }
+
         if is_pair_setup {
             let mut pair_ctx = self.pair_ctx.borrow_mut();
+
             info!("pair setup at incoming");
             crate::pairing::pair_setup::pair_setup_handle_incoming(
                 &mut **pair_ctx,
@@ -628,11 +641,6 @@ impl<'c> HapPeripheralContext<'c> {
             info!("Done, len: {}", len);
             Ok(BufferResponse(len))
         } else if is_pair_verify {
-            {
-                let mut pair_ctx = self.pair_ctx.borrow_mut();
-                pair_ctx.reset_secure_session();
-            }
-            self.check_session_state().await; // Check at the start, because the session may be dropped.
             let mut pair_ctx = self.pair_ctx.borrow_mut();
             self.should_encrypt_reply = false;
             // NONCOMPLIANCE this seems to reset the secure session, which we currently don't do?
@@ -658,7 +666,7 @@ impl<'c> HapPeripheralContext<'c> {
                 .add_value(&outgoing[0..outgoing_len])
                 .end();
 
-            // And at the end, the session may be started now.
+            // Check session state here, this is where it is first enabled.
             drop(pair_ctx);
             self.check_session_state().await;
 
@@ -690,6 +698,8 @@ impl<'c> HapPeripheralContext<'c> {
                 .end();
 
             Ok(BufferResponse(len))
+        } else if is_pair_features {
+            todo!("this should return 0u8, but it is never actually read?");
         } else {
             match chr.data_source {
                 DataSource::Nop => {

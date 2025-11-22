@@ -619,6 +619,7 @@ pub enum BleBroadcastTLV {
 }
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L17
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
