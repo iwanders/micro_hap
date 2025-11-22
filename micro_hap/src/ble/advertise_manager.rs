@@ -85,7 +85,7 @@ pub struct AdvertiseInfo<'a> {
 }
 
 const ADVERTISE_HIGH_RATE: u64 = 20;
-const ADVERTISE_REGULAR_RATE: u64 = 500;
+const ADVERTISE_REGULAR_RATE: u64 = 100;
 /*
  * Mode is used to govern the statemachine, all paths lead to General.
  * After the connection disconnects we go to GeneralHighRate
@@ -185,9 +185,20 @@ impl AdvertiseManager {
         .unwrap();
         advertise_data.truncate(len);
 
+        let mut scan_data = heapless::Vec::<u8, 31>::new();
+        scan_data.resize(31, 0).unwrap();
+        let fitting_name =
+            &info.name.as_bytes()[0..(scan_data.len() - 3).min(info.name.as_bytes().len())];
+        let scan_len = AdStructure::encode_slice(
+            &[AdStructure::CompleteLocalName(fitting_name)],
+            &mut scan_data[..],
+        )
+        .unwrap();
+        scan_data.truncate(scan_len);
+
         Ok(AdvertiseFlow {
             advertise_data,
-            scan_data: [].into(),
+            scan_data,
             advertise_interval_ms: ADVERTISE_REGULAR_RATE,
             until: None,
         })
@@ -271,11 +282,22 @@ impl AdvertiseManager {
                 )
                 .unwrap();
                 advertise_data.truncate(len);
+                let interval = support.get_ble_broadcast_configuration(*char).await?;
+                let advertise_interval_ms = interval
+                    .unwrap_or(crate::BleBroadcastInterval::Disabled)
+                    .to_ms();
+                let advertise_interval_ms =
+                    if let Some(advertise_interval_ms) = advertise_interval_ms {
+                        advertise_interval_ms
+                    } else {
+                        // we clearly don't want advertisements.
+                        return Self::crate_general_advertisement(info, support).await;
+                    };
 
                 Ok(AdvertiseFlow {
                     advertise_data,
                     scan_data: Default::default(),
-                    advertise_interval_ms: ADVERTISE_HIGH_RATE,
+                    advertise_interval_ms,
                     until: Some(*until),
                 })
             }
@@ -299,8 +321,6 @@ impl AdvertiseManager {
         accessory: &mut impl crate::AccessoryInterface,
         support: &mut impl PlatformSupport,
     ) -> Result<(), InterfaceError> {
-        info!("things");
-
         if self.is_connected {
             // While connected, we only ever advance the global state once.
             // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.h#L20-L26

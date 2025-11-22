@@ -210,10 +210,6 @@ impl PlatformSupport for ActualPairSupport {
     async fn get_ble_broadcast_parameters(
         &self,
     ) -> Result<micro_hap::ble::broadcast::BleBroadcastParameters, InterfaceError> {
-        error!(
-            "get_ble_broadcast_parameters {:?}",
-            self.broadcast_parameters
-        );
         Ok(self.broadcast_parameters)
     }
     async fn set_ble_broadcast_parameters(

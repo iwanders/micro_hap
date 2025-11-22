@@ -280,7 +280,7 @@ mod hap_temp_accessory {
             controller: &micro_hap::HapInterfaceSender<'_>,
         ) {
             loop {
-                embassy_time::Timer::after_secs(5).await;
+                embassy_time::Timer::after_secs(15).await;
                 let mut value = f32_ptr.lock().unwrap();
                 *value += 1.0; // Increment the temperature.
                 info!(

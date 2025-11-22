@@ -629,6 +629,16 @@ pub enum BleBroadcastInterval {
     Interval1280ms = 0x02,
     Interval2560ms = 0x03,
 }
+impl BleBroadcastInterval {
+    pub fn to_ms(&self) -> Option<u64> {
+        match self {
+            BleBroadcastInterval::Disabled => None,
+            BleBroadcastInterval::Interval20ms => Some(20),
+            BleBroadcastInterval::Interval1280ms => Some(1280),
+            BleBroadcastInterval::Interval2560ms => Some(2560),
+        }
+    }
+}
 
 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L37
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

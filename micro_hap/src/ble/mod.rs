@@ -1569,15 +1569,6 @@ impl<'c> HapPeripheralContext<'c> {
             info!("at  {:?}", flow);
             info!("at {:?}:{:?}", file!(), line!());
 
-            let mut scan_data = [0; 31];
-            let fitting_name = &static_info.name.as_bytes()
-                [0..scan_data.len().min(static_info.name.as_bytes().len())];
-            let scan_len = AdStructure::encode_slice(
-                &[AdStructure::CompleteLocalName(fitting_name)],
-                &mut scan_data[..],
-            )
-            .map_err(|_e| HapBleError::BufferOverrun)?;
-
             let interval_min = embassy_time::Duration::from_millis(flow.advertise_interval_ms);
             // Not sure if it matters that min == max, perhaps it doesn't send if the channel is occupied?, lets add 20%?
             let interval_max = embassy_time::Duration::from_millis(
@@ -1595,7 +1586,7 @@ impl<'c> HapPeripheralContext<'c> {
                     &params,
                     Advertisement::ConnectableScannableUndirected {
                         adv_data: &flow.advertise_data,
-                        scan_data: &scan_data[..scan_len], // TODO can we put the longer name in here if it doesn't fit in the advertisement?
+                        scan_data: &flow.scan_data,
                     },
                 )
                 .await
@@ -1764,7 +1755,7 @@ impl<'c> HapPeripheralContext<'c> {
                                 // run until any task ends (usually because the connection has been closed),
                                 // then return to advertising state.
                                 if let Err(e) = a.await {
-                                    log::error!("Error occured in processing: {e:?}");
+                                    error!("Error occured in processing: {e:?}");
                                 }
                             }
                             Err(e) => {

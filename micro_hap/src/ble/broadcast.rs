@@ -89,7 +89,7 @@ pub async fn get_advertising_parameters(
 
     // Get the current gsn;
     let gsn = support.get_global_state_number().await?;
-    info!("gsn: {:?}", gsn);
+    // info!("gsn: {:?}", gsn);
 
     let interval = support.get_ble_broadcast_configuration(char_id).await?;
     // Advertisinginterval is u16?
@@ -102,7 +102,7 @@ pub async fn get_advertising_parameters(
     let mut p = 2;
     // Here, the adverising ID must exist.
     let advertising_id = parameters.advertising_id.unwrap(); // This is an assert in reference, so should be fine?
-    info!("Advertising id: {:?}", advertising_id);
+    // info!("Advertising id: {:?}", advertising_id);
     data[p..(p + 6)].copy_from_slice(&advertising_id.0);
     p += 6;
 
@@ -121,13 +121,13 @@ pub async fn get_advertising_parameters(
     // Then, the value.
     data[p..(p + value.len())].copy_from_slice(value);
     p += value.len();
-    info!("value: {:?}", value);
-    info!("data: {:?}", data);
+    // info!("value: {:?}", value);
+    // info!("data: {:?}", data);
     // Next, we do an authenticated encrypted with authenticated data...
     let buffer = &mut data[encr..p];
     let assocated_data = &advertising_id.0;
     let key = parameters.key.as_ref();
-    info!("key: {:?}", key);
+    // info!("key: {:?}", key);
     let gsn_u64: u64 = gsn as u64;
     let nonce = gsn_u64.as_bytes();
     let tag = crate::crypto::aead::encrypt_aad(buffer, assocated_data, key, nonce).unwrap();
