@@ -12,7 +12,7 @@ There are many HAP implementations available, a few implement the logic needed t
 - Enumeration of the device works.
 - Read and Writes over the HAP session work.
 - Services & Characeristics can be defined out-of-crate.
-- Still missing; Characteristic changes via broadcasts & status number broadcasts.
+- Status number updates and adveritising.
 
 ## Testing
 The main test for the BLE transport right now is in [./micro_hap/src/ble/test.rs](./micro_hap/src/ble/test.rs).
@@ -54,7 +54,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.~
 - ~Add periodic 'service' method to handle global state counter, advertisement and  expiring timed writes to free slots.~
 - ~How do the advertisements actually work?~
-- Broadcasts of changed values still result in a reconnect, with `GenerateBroadcastEncryptionKey` and `CharacteristicConfigurationRequest`, why? Checked the program flow, seems to match. This also updates the GSN expiry counter and sets up a new key, is this just intentional if you don't have a `Home Hub`? Or perhaps the intent is that the controller reconnects to the accessory after a broadcast because other characteristics may have also changed?
+- ~Broadcasts of changed values still result in a reconnect, with `GenerateBroadcastEncryptionKey` and `CharacteristicConfigurationRequest`, why? Checked the program flow, seems to match. This also updates the GSN expiry counter and sets up a new key, is this just intentional if you don't have a `Home Hub`? Or perhaps the intent is that the controller reconnects to the accessory after a broadcast because other characteristics may have also changed?~ Yes: [Disconnected events should only be used to reflect important changes in the accessory](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475), and [when the characteristic changes while no controllers are connected, will reconnect](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L461-L463).
 - ~And what about notify while a connection is active?~ Send indicate over BLE
 - ~Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.~ Can pair numerous times now.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.

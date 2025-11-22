@@ -6,8 +6,13 @@ use bt_hci_linux::Transport;
 // This contains one service that's a temperature sensor.
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.h#L194
-// paired read, notify
-// 0 to 100, steps of 0.1? can't be negative?! But it's also a float, probably ignores the range
+//
+// This is the wrong way to do this:
+// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475
+//
+// * - Disconnected events should only be used to reflect important state changes in the accessory.
+// *   For example, contact sensor state changes or current door state changes should use this property.
+// *   On the other hand, a temperature sensor must not use this property for changes in temperature readings.
 
 mod hap_temp_sensor {
     use micro_hap::{
