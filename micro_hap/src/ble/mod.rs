@@ -60,8 +60,8 @@ pub struct TId(pub u8);
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Ttl(u8);
 impl Ttl {
-    pub fn to_millis(&self) -> u16 {
-        self.0 as u16 * 100
+    pub fn to_millis(&self) -> u64 {
+        self.0 as u64 * 100
     }
 }
 
@@ -260,17 +260,6 @@ pub struct TimedWrite {
 #[derive(Debug, Copy, Clone)]
 struct TimedWriteSlot(usize);
 
-#[derive(Debug, Copy, Clone, Default)]
-struct BroadCastAdvertisement {
-    payload: [u8; 31],
-    len: usize,
-}
-impl BroadCastAdvertisement {
-    fn clear(&mut self) {
-        *self = Default::default();
-    }
-}
-
 #[derive(Debug)]
 pub struct HapPeripheralContext<'c> {
     //protocol_service_properties: ServiceProperties,
@@ -423,6 +412,30 @@ impl<'c> HapPeripheralContext<'c> {
         core::cell::RefMut::<'_, &'static mut [u8]>::map(self.timed_write_data.borrow_mut(), |z| {
             &mut z[start..end]
         })
+    }
+    fn timed_write_prune(&self, current_time: embassy_time::Instant) {
+        let mut prune_index = None;
+        loop {
+            for (i, v) in self.timed_write.borrow().iter().enumerate() {
+                if let Some(v) = v {
+                    let expire_time =
+                        v.time_start + embassy_time::Duration::from_millis(v.ttl.to_millis());
+                    if current_time > expire_time {
+                        prune_index = Some(i)
+                    }
+                }
+            }
+
+            if let Some(to_remove) = prune_index.take() {
+                for (i, v) in self.timed_write.borrow_mut().iter_mut().enumerate() {
+                    if to_remove == i {
+                        *v = None;
+                    }
+                }
+            }
+
+            break;
+        }
     }
 
     pub fn new(
@@ -1159,6 +1172,9 @@ impl<'c> HapPeripheralContext<'c> {
                 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L683
                 // Check if this characteristic requires security.
                 // NONCOMPLIANCE checks if the bleProcedure is None.
+                //
+                let t = pair_support.get_time();
+                self.timed_write_prune(t);
                 let parsed_header = pdu::CharacteristicWriteRequestHeader::parse_pdu(data)?;
                 warn!("timed write, h; {:?}", parsed_header);
                 let chr = self.get_attribute_by_char(parsed_header.char_id)?;
