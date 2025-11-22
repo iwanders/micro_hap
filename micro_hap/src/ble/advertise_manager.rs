@@ -64,6 +64,8 @@ Following the path of a accesory notifying the HAP Server.
             - Only one advance ever.
  */
 
+use trouble_host::prelude::{AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE};
+
 use crate::{CharId, Characteristic, DeviceId, InterfaceError, PlatformSupport, SetupId};
 
 #[derive(Debug, Clone)]
@@ -156,8 +158,6 @@ impl AdvertiseManager {
                 ..Default::default()
             }
         } else {
-            info!("not paired adv  device_id {:?}", info.device_id);
-            info!("not paired adv setup_id {:?}", info.setup_id);
             super::advertisement::AdvertisementConfig {
                 device_id: *info.device_id,
                 setup_id: *info.setup_id,
@@ -167,8 +167,26 @@ impl AdvertiseManager {
         };
         let hap_adv = adv_config.to_advertisement();
 
+        let mut advertise_data = heapless::Vec::<u8, 31>::new();
+        advertise_data.resize(31, 0).unwrap();
+        let len = AdStructure::encode_slice(
+            &[
+                AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                // Lets just always shorten this to a single character, then the scan will just retrieve the full
+                // name, and we don't have to do math.
+                AdStructure::ShortenedLocalName(&info.name.as_bytes()[0..1]),
+                AdStructure::ManufacturerSpecificData {
+                    company_identifier: super::advertisement::COMPANY_IDENTIFIER_CODE,
+                    payload: &hap_adv.as_array(),
+                },
+            ],
+            &mut advertise_data[..],
+        )
+        .unwrap();
+        advertise_data.truncate(len);
+
         Ok(AdvertiseFlow {
-            advertise_data: hap_adv.as_array().into(),
+            advertise_data,
             scan_data: [].into(),
             advertise_interval_ms: ADVERTISE_REGULAR_RATE,
             until: None,
@@ -226,18 +244,34 @@ impl AdvertiseManager {
         // Then create the new advertisement.
         match &self.mode {
             AdvertisementMode::Broadcast { char, value, until } => {
-                let mut advertise_data = heapless::Vec::<u8, 31>::new();
-                let _ = advertise_data.resize(31, 0).unwrap();
+                let mut broadcast_data = heapless::Vec::<u8, 31>::new();
+                let _ = broadcast_data.resize(31, 0).unwrap();
 
                 let len = super::broadcast::get_advertising_parameters(
                     *char,
-                    &mut advertise_data,
+                    &mut broadcast_data,
                     &value,
                     support,
                 )
                 .await?;
+                broadcast_data.truncate(len);
 
+                // And encode it into the actual advertisement.
+                let mut advertise_data = heapless::Vec::<u8, 31>::new();
+                advertise_data.resize(31, 0).unwrap();
+                let len = AdStructure::encode_slice(
+                    &[
+                        AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                        AdStructure::ManufacturerSpecificData {
+                            company_identifier: super::advertisement::COMPANY_IDENTIFIER_CODE,
+                            payload: &broadcast_data,
+                        },
+                    ],
+                    &mut advertise_data[..],
+                )
+                .unwrap();
                 advertise_data.truncate(len);
+
                 Ok(AdvertiseFlow {
                     advertise_data,
                     scan_data: Default::default(),
@@ -286,6 +320,13 @@ impl AdvertiseManager {
                 // We do a broadcast, this always advances the global state.
                 let _ = support.advance_global_state_number().await?;
 
+                // Enssure we can actually broadcast, a broadcast may be requested by a characteristic getting changed
+                // before the actual broadcast configuration is setup (or the device is paired).
+                let parameters = support.get_ble_broadcast_parameters().await?;
+                if parameters.advertising_id.is_none() {
+                    info!("Skipping broadcast stage, no broadcast configuration yet");
+                    return Ok(());
+                }
                 // Then, collect the information necessary to create the broadcast advertisement.
                 let mut value = [0u8; 8];
                 let read_value: &[u8] = (accessory)

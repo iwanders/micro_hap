@@ -235,6 +235,7 @@ impl PlatformSupport for ActualPairSupport {
         } else {
             self.ble_broadcast_config.insert(char_id, configuration);
         }
+        self.save()?;
         Ok(())
     }
     /// Get the broadcast configuration for a characteristic.

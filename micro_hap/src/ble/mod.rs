@@ -1566,22 +1566,8 @@ impl<'c> HapPeripheralContext<'c> {
                 .borrow_mut()
                 .create_advertisement(&info, accessory, support)
                 .await?;
-
-            let mut advertiser_data = [0; 31];
-            let len = AdStructure::encode_slice(
-                &[
-                    AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-                    // Lets just always shorten this to a single character, then the scan will just retrieve the full
-                    // name, and we don't have to do math.
-                    AdStructure::ShortenedLocalName(&static_info.name.as_bytes()[0..1]),
-                    AdStructure::ManufacturerSpecificData {
-                        company_identifier: advertisement::COMPANY_IDENTIFIER_CODE,
-                        payload: &flow.advertise_data,
-                    },
-                ],
-                &mut advertiser_data[..],
-            )
-            .map_err(|_e| HapBleError::BufferOverrun)?;
+            info!("at  {:?}", flow);
+            info!("at {:?}:{:?}", file!(), line!());
 
             let mut scan_data = [0; 31];
             let fitting_name = &static_info.name.as_bytes()
@@ -1608,14 +1594,14 @@ impl<'c> HapPeripheralContext<'c> {
                 .advertise(
                     &params,
                     Advertisement::ConnectableScannableUndirected {
-                        adv_data: &advertiser_data[..len],
+                        adv_data: &flow.advertise_data,
                         scan_data: &scan_data[..scan_len], // TODO can we put the longer name in here if it doesn't fit in the advertisement?
                     },
                 )
                 .await
                 .map_err(|e| HapBleError::TroubleError(SimpleTroubleError::FailureInAdvertise))?;
-            info!("[adv] advertising");
-            info!("[adv] advertising with {:?}", flow);
+            // info!("[adv] advertising");
+            // info!("[adv] advertising with {:?}", flow);
 
             // TODO:: There's something funky going on here... if this delay is too long, we never exit the select.
             // Too long is like... 3 seconds :/
@@ -1645,7 +1631,7 @@ impl<'c> HapPeripheralContext<'c> {
                     }
                 }
                 embassy_futures::select::Either::Second(_) => {
-                    info!("[adv] reconsidering our duration.");
+                    // info!("[adv] reconsidering our duration.");
                     continue;
                 }
             }

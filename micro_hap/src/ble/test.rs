@@ -2011,7 +2011,7 @@ async fn test_hap_worker(
             .await
             .unwrap();
 
-        assert_eq!(&advertise_flow.advertise_data, &outgoing_broadcast[7..]);
+        assert_eq!(&advertise_flow.advertise_data, &outgoing_broadcast);
 
         /*
          2025-11-21'T'00:54:03'Z'	Debug	[com.apple.mfi.HomeKit.Core:AccessoryServer] [0000000000000001 Acme Light Bulb] [0000000000000033 on] Marking characteristic as modified.

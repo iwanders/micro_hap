@@ -40,11 +40,29 @@ mod hap_temp_sensor {
         pub service_signature: FacadeDummyType,
 
         #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_SENSOR_VALUE.0.to_le_bytes())]
-        #[characteristic(uuid=CHARACTERISTIC_CURRENT_TEMPERATURE, read, write )]
+        #[characteristic(uuid=CHARACTERISTIC_CURRENT_TEMPERATURE, read, write, indicate)]
         pub value: FacadeDummyType,
     }
-    impl HapBleService for TemperatureSensorService {
-        fn populate_support(&self) -> Result<Service, HapBleError> {
+    use embassy_sync::blocking_mutex::raw::RawMutex;
+    impl TemperatureSensorService {
+        pub fn create_hap_service<
+            'server,
+            'values,
+            M: RawMutex,
+            const ATT_MAX: usize,
+            const CCCD_MAX: usize,
+            const CONN_MAX: usize,
+        >(
+            &self,
+            server: &'server AttributeServer<
+                'values,
+                M,
+                DefaultPacketPool,
+                ATT_MAX,
+                CCCD_MAX,
+                CONN_MAX,
+            >,
+        ) -> Result<Service, HapBleError> {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: SERVICE_TEMPERATURE_SENSOR.into(),
@@ -91,7 +109,13 @@ mod hap_temp_sensor {
                     .with_ble_properties(
                         BleProperties::from_handle(self.value.handle)
                             .with_format(sig::Format::F32)
-                            .with_unit(sig::Unit::Celsius),
+                            .with_unit(sig::Unit::Celsius)
+                            .with_characteristic(
+                                server
+                                    .table()
+                                    .find_characteristic_by_value_handle(self.value.handle)
+                                    .unwrap(),
+                            ),
                     )
                     .with_data(DataSource::AccessoryInterface),
                 )
@@ -119,10 +143,13 @@ mod hap_temp_accessory {
         ble::TimedWrite,
     };
 
+    // Put the value in a mutexed arc, that way we can modify it freely.
+    type SharedF32 = std::sync::Arc<std::sync::Mutex<f32>>;
+
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     #[repr(C)]
     struct TemperatureAccessory {
-        temperature_value: f32,
+        temperature_value: SharedF32,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -131,8 +158,22 @@ mod hap_temp_accessory {
             &self,
             char_id: CharId,
         ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            info!("read on {:?}", char_id);
+            info!(
+                "hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {:?}",
+                hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE
+            );
             if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
-                Ok(self.temperature_value.as_bytes())
+                let value = *self.temperature_value.lock().unwrap();
+                // TODO: Ugh this returns a borrow but I don't have a value to borrow out now that it's behind a mutex.
+                // And this interface is not &mut, so I can also not retrieve it and write it to the local state.
+                // Does this need to be a read into a byte slice..? or do we need to start returning heapless::Vec?
+                // For now, lets just leak it such that I can make this example that increments the temperature
+                // to test the broadcast notifications.
+                let value_array = value.to_bits().to_le_bytes();
+                let boxed_array = Box::new(value_array);
+                let leaked = Box::leak(boxed_array);
+                Ok(&leaked[0..4])
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -186,7 +227,7 @@ mod hap_temp_accessory {
         info!("Our address = {:?}", address);
 
         // Create the gatt server.
-        let name = "Z"; // There's _very_ few bytes left in the advertisement
+        let name = "ThisIsALongName"; // There's _very_ few bytes left in the advertisement
         info!("Starting advertising and GATT service");
         let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
@@ -211,12 +252,19 @@ mod hap_temp_accessory {
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
+        let f32ptr: SharedF32 = Default::default();
+        let accessory_ptr = f32ptr.clone();
         let mut accessory = TemperatureAccessory {
-            temperature_value: -6.0,
+            temperature_value: accessory_ptr,
         };
         // hap_context.add_service(&server.lightbulb).unwrap();
         hap_context
-            .add_service(server.temp_sensor.populate_support().unwrap())
+            .add_service(
+                server
+                    .temp_sensor
+                    .create_hap_service(&server.server)
+                    .unwrap(),
+            )
             .unwrap();
 
         let category = 10; // sensors
@@ -224,14 +272,40 @@ mod hap_temp_accessory {
 
         println!("support: {support:?}");
 
-        let _ = example_std::example_hap_loop(
-            address,
-            controller,
-            &mut hap_context,
-            &mut accessory,
-            &mut support,
-            &server,
-            &server.as_hap(),
+        // a function that increments the temperature, and sends an control_sender event.
+        /// This is a background task that is required to run forever alongside any other BLE tasks.
+        async fn temperature_modification_task(
+            temp_charid: CharId,
+            f32_ptr: SharedF32,
+            controller: &micro_hap::HapInterfaceSender<'_>,
+        ) {
+            loop {
+                embassy_time::Timer::after_secs(5).await;
+                let mut value = f32_ptr.lock().unwrap();
+                *value += 1.0; // Increment the temperature.
+                info!(
+                    ">>>>>>>>>   Incrementing the temperature by 1, new value is {value}    <<<<<<<<"
+                );
+                controller.characteristic_changed(temp_charid).await; // send the notification.
+            }
+        }
+
+        use embassy_futures::join::join;
+        let _ = join(
+            example_std::example_hap_loop(
+                address,
+                controller,
+                &mut hap_context,
+                &mut accessory,
+                &mut support,
+                &server,
+                &server.as_hap(),
+            ),
+            temperature_modification_task(
+                hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE,
+                f32ptr,
+                &control_sender,
+            ),
         )
         .await;
     }
