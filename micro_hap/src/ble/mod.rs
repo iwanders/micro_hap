@@ -288,6 +288,10 @@ pub struct HapPeripheralContext<'c> {
     user_services: heapless::Vec<crate::Service, 8>,
 
     control_receiver: crate::HapInterfaceReceiver<'c>,
+
+    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.h#L20-L26
+    // Gsn can only advance ONCE per connected session.
+    advanced_gsn: bool,
 }
 impl<'c> HapPeripheralContext<'c> {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
@@ -425,6 +429,7 @@ impl<'c> HapPeripheralContext<'c> {
             pairing_service: pairing_service.populate_support()?,
             user_services: Default::default(),
             broadcast_advertisement: Default::default(),
+            advanced_gsn: false,
             control_receiver,
         })
     }
@@ -681,19 +686,25 @@ impl<'c> HapPeripheralContext<'c> {
                         .write_characteristic(char_id, incoming_data)
                         .await?;
 
-                    match r {
+                    let characteristic_written = match r {
                         CharacteristicResponse::Modified => {
                             // Do things to this characteristic to mark it dirty.
                             error!(
                                 "Should mark the characteristic dirty and advance the global state number, and notify!"
                             );
-                            // let _ = pair_support.advance_global_state_number().await?;
+                            true
                         }
-                        CharacteristicResponse::Unmodified => {}
-                    }
+                        CharacteristicResponse::Unmodified => false,
+                    };
 
                     let reply = parsed.header.header.to_success();
                     let len = reply.write_into_length(left_buffer)?;
+                    if characteristic_written {
+                        drop(buffer);
+                        drop(pair_ctx);
+                        let _ = self.handle_characteristic_written(pair_support).await?;
+                    }
+
                     Ok(BufferResponse(len))
                 }
                 DataSource::Constant(_data) => {
@@ -1258,6 +1269,18 @@ impl<'c> HapPeripheralContext<'c> {
         let mut l = self.pair_ctx.borrow_mut();
         l.reset_secure_session();
         l.disconnect();
+        self.advanced_gsn = false;
+    }
+
+    async fn handle_characteristic_written(
+        &mut self,
+        pair_support: &mut impl PlatformSupport,
+    ) -> Result<(), InternalError> {
+        if !self.advanced_gsn {
+            let _ = pair_support.advance_global_state_number().await?;
+            self.advanced_gsn = true;
+        }
+        Ok(())
     }
 
     pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(

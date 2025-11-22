@@ -353,6 +353,7 @@ async fn test_hap_worker(
     // we need the PDU types, and interpret based on that.
     let _ = resp;
 
+    assert_eq!(support.global_state_number, 1);
     // Test service signature response ------------
     {
         let incoming_data: &[u8] = &[0x00, 0x06, 0x0d, 0x10, 0x00];
@@ -1679,8 +1680,8 @@ async fn test_hap_worker(
         let resp_buffer = resp.expect("expecting a outgoing response");
         info!("outgoing: {:02x?}", &*resp_buffer);
         assert_eq!(&*resp_buffer, outgoing);
-        // Deliberately disabled, this is an explicit write, so doesn't increase the state number.
-        //assert_eq!(support.global_state_number, 2);
+        // This GSN advance here matches with the replay from the homekitble program.
+        assert_eq!(support.global_state_number, 2);
     }
 
     {
@@ -1704,8 +1705,9 @@ async fn test_hap_worker(
         let resp_buffer = resp.expect("expecting a outgoing response");
         info!("outgoing: {:02x?}", &*resp_buffer);
         assert_eq!(&*resp_buffer, outgoing);
-        // Deliberately disabled, this is an explicit write, so doesn't increase the state number.
-        // assert_eq!(support.global_state_number, 3);
+        // Here, the replay states
+        // Skipping: GSN already incremented.
+        assert_eq!(support.global_state_number, 2);
     }
 
     // This TimedWrite payload is from 2025_08_22_1430_homekitadk_pair_disconnect_connect_toggle.txt
