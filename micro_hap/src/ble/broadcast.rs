@@ -69,6 +69,21 @@ Following the path of a accesory notifying the HAP Server.
             - 20ms for 30s after boot.
             - 20ms for 3s after disconnect.
             - Regular interval, whatever that is otherwise.
+        Broadcast advertise:
+            - 3s period with broadcast interval. https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L775-L780
+
+    On GSN:
+        For characteristics that have supportsBroadcastNotification:
+            - GSN Advance occurs for any characteristic that does broadcasts? https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L969
+            - Shall advertise for 3s, see above. If change during interval, increment again and reset time, send new value.
+        For characteristic that have supportsDisconnectedNotification:
+            - GSN Advances once for the connected/disconnected state. https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L1036-L1044
+        While connected:
+            - Only one advance ever.
+
+
+
+
 
  */
 

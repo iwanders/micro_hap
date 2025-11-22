@@ -65,6 +65,7 @@ impl AdvertisementConfig {
     pub fn to_advertisement(&self) -> HapAdvertisement {
         let config = &self;
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L284
+        // TODO: if name doesn't fit, put full name in scan data.
         let mut data = [0u8; 23 - 1 - 1 - 2];
         data[0] = 0x06; // type, set to 0x06
         // subtype and length, 0x31?
