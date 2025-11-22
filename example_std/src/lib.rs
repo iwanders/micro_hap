@@ -3,7 +3,8 @@ use embassy_futures::join::join;
 use log::{error, info, warn};
 use micro_hap::PairCode;
 use micro_hap::{
-    DeviceId, InterfaceError, PlatformSupport, SetupId, ble::broadcast::BleBroadcastParameters,
+    BleBroadcastInterval, CharId, DeviceId, InterfaceError, PlatformSupport, SetupId,
+    ble::broadcast::BleBroadcastParameters,
 };
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,9 @@ pub struct ActualPairSupport {
 
     /// The setup id, constant across factory reset.
     pub setup_id: SetupId,
+
+    /// The ble broadcast configuration
+    pub ble_broadcast_config: std::collections::HashMap<CharId, BleBroadcastInterval>,
 }
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -139,6 +143,7 @@ impl Default for ActualPairSupport {
             global_state_number: 1,
             config_number: 1,
             broadcast_parameters: Default::default(),
+            ble_broadcast_config: Default::default(),
             device_id,
             setup_id,
         }
@@ -219,6 +224,25 @@ impl PlatformSupport for ActualPairSupport {
         self.broadcast_parameters = *params;
         self.save()?;
         Ok(())
+    }
+    async fn set_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+        configuration: BleBroadcastInterval,
+    ) -> Result<(), InterfaceError> {
+        if configuration == BleBroadcastInterval::Disabled {
+            self.ble_broadcast_config.remove(&char_id);
+        } else {
+            self.ble_broadcast_config.insert(char_id, configuration);
+        }
+        Ok(())
+    }
+    /// Get the broadcast configuration for a characteristic.
+    async fn get_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+    ) -> Result<Option<BleBroadcastInterval>, InterfaceError> {
+        Ok(self.ble_broadcast_config.get(&char_id).copied())
     }
 }
 
