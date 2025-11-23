@@ -47,17 +47,23 @@ impl Format {
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(u16)]
 pub enum Unit {
+    /// HAP Unit None
     UnitLess = 0x2700,
     Meter = 0x2701,
     Kilogram = 0x2702,
+    /// HAP Unit seconds
     Second = 0x2703,
     Kelvin = 0x2705,
+    /// HAP Unit celsius
     Celsius = 0x272f,
     PressurePascal = 0x2724,
+    /// HAP Unit Lux
+    Lux = 0x2731,
+    /// HAP Unit percentage
     Percentage = 0x27AD,
     Decibel = 0x27C3,
     PressureBar = 0x2780,
-    /// Plane angle.
+    /// HAP Unit arcdegrees; Plane angle in SIG
     ArcDegrees = 0x2763,
     Other(u16),
 }
@@ -72,6 +78,7 @@ impl Unit {
             Unit::Kelvin => 0x2705u16.as_bytes(),
             Unit::Celsius => 0x272fu16.as_bytes(),
             Unit::PressurePascal => 0x2724u16.as_bytes(),
+            Unit::Lux => 0x2731u16.as_bytes(),
             Unit::Percentage => 0x27ADu16.as_bytes(),
             Unit::Decibel => 0x27C3u16.as_bytes(),
             Unit::PressureBar => 0x2780u16.as_bytes(),

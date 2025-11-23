@@ -986,4 +986,19 @@ mod test {
             "X-HM://0075O5L7HNYVW"
         );
     }
+
+    #[test]
+    fn test_characteristic_properties() {
+        //https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
+        let n = CharacteristicProperties::new();
+        assert_eq!(n.with_supports_event_notification(true).0, 0x0080);
+        assert_eq!(n.with_supports_disconnect_notification(true).0, 0x0100);
+        assert_eq!(n.with_supports_broadcast_notification(true).0, 0x0200);
+        assert_eq!(
+            n.with_supports_broadcast_notification(true)
+                .with_supports_disconnect_notification(true)
+                .0,
+            0x0300
+        );
+    }
 }

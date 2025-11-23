@@ -102,7 +102,7 @@ mod hap_temp_sensor {
                         CharacteristicProperties::new()
                             .with_rw(true)
                             .with_supports_event_notification(true)
-                            .with_supports_disconnect_notification(true)
+                            .with_supports_disconnect_notification(true) // Without this, it doesn't show up as a value.
                             .with_supports_broadcast_notification(true),
                     )
                     .with_range(micro_hap::VariableRange {
