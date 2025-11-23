@@ -3,6 +3,7 @@
 pub mod defmt_serial;
 
 pub mod hap;
+pub mod hap_temp_sensor;
 
 pub mod rp2350_util;
 
