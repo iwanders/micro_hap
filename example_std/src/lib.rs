@@ -307,9 +307,13 @@ pub fn example_context_factory(
     pair_ctx.info.assign_from(rand::random(), pair_code);
 
     // Create the buffer for hap messages in the gatt server.
-    let buffer: &mut [u8] = {
+    let out_buffer: &mut [u8] = {
         static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
         STATE.init([0u8; 2048])
+    };
+    let in_buffer: &mut [u8] = {
+        static STATE: StaticCell<[u8; 1024]> = StaticCell::new();
+        STATE.init([0u8; 1024])
     };
 
     const TIMED_WRITE_SLOTS: usize = 8;
@@ -344,7 +348,8 @@ pub fn example_context_factory(
     let control_sender: micro_hap::HapInterfaceSender<'_> = control_channel.get_sender();
     // Then finally we can create the hap peripheral context.
     let mut ctx = micro_hap::ble::HapPeripheralContext::new(
-        buffer,
+        out_buffer,
+        in_buffer,
         pair_ctx,
         timed_write_data,
         timed_write,

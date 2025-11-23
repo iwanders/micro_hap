@@ -76,9 +76,13 @@ fn crate_hap_context(
         ..Default::default()
     };
 
-    let buffer: &mut [u8] = {
+    let out_buffer: &mut [u8] = {
         static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
         STATE.init([0u8; 2048])
+    };
+    let in_buffer: &mut [u8] = {
+        static STATE: StaticCell<[u8; 1024]> = StaticCell::new();
+        STATE.init([0u8; 1024])
     };
 
     let ctx = {
@@ -145,7 +149,8 @@ fn crate_hap_context(
     // let control_sender: crate::HapInterfaceSender<'_> = control_channel.get_sender();
 
     let mut ctx = HapPeripheralContext::new(
-        buffer,
+        out_buffer,
+        in_buffer,
         ctx,
         timed_write_data,
         timed_writes,

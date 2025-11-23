@@ -347,9 +347,13 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
         0xd0, 0x97, 0x13, 0x49, 0xd7, 0xe7, 0xbe, 0xf1, 0x8f,
     ];
 
-    let buffer: &mut [u8] = {
+    let out_buffer: &mut [u8] = {
         static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
         STATE.init([0u8; 2048])
+    };
+    let in_buffer: &mut [u8] = {
+        static STATE: StaticCell<[u8; 1024]> = StaticCell::new();
+        STATE.init([0u8; 1024])
     };
 
     const TIMED_WRITE_SLOTS: usize = 8;
@@ -379,7 +383,8 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
 
     // This is also pretty big on the stack :/
     let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
-        buffer,
+        out_buffer,
+        in_buffer,
         pair_ctx,
         timed_write_data,
         timed_write,

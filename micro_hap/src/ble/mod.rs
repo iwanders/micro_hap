@@ -263,7 +263,8 @@ struct TimedWriteSlot(usize);
 #[derive(Debug)]
 pub struct HapPeripheralContext<'c> {
     //protocol_service_properties: ServiceProperties,
-    buffer: core::cell::RefCell<&'static mut [u8]>,
+    out_buffer: core::cell::RefCell<&'static mut [u8]>,
+    in_buffer: core::cell::RefCell<&'static mut [u8]>,
     pair_ctx: core::cell::RefCell<&'static mut AccessoryContext>,
 
     timed_write_slot_buffer: usize,
@@ -271,7 +272,7 @@ pub struct HapPeripheralContext<'c> {
     timed_write: core::cell::RefCell<&'static mut [Option<TimedWrite>]>,
 
     prepared_reply: Option<Reply>,
-    should_encrypt_reply: bool,
+    should_encrypt_reply: core::cell::Cell<bool>,
 
     information_service: crate::Service,
     protocol_service: crate::Service,
@@ -439,7 +440,8 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     pub fn new(
-        buffer: &'static mut [u8],
+        out_buffer: &'static mut [u8],
+        in_buffer: &'static mut [u8],
         pair_ctx: &'static mut AccessoryContext,
         timed_write_data: &'static mut [u8],
         timed_write: &'static mut [Option<TimedWrite>],
@@ -452,13 +454,14 @@ impl<'c> HapPeripheralContext<'c> {
         let advertise_manager = advertise_manager::AdvertiseManager::startup();
         Ok(Self {
             //protocol_service_properties: Default::default(),
-            buffer: buffer.into(),
+            out_buffer: out_buffer.into(),
+            in_buffer: in_buffer.into(),
             pair_ctx: pair_ctx.into(),
             timed_write_slot_buffer,
             timed_write_data: timed_write_data.into(),
             timed_write: timed_write.into(),
             prepared_reply: None,
-            should_encrypt_reply: false,
+            should_encrypt_reply: false.into(),
             information_service: information_service.populate_support()?,
             protocol_service: protocol_service.populate_support()?,
             pairing_service: pairing_service.populate_support()?,
@@ -516,7 +519,7 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     async fn service_signature_request(
-        &mut self,
+        &self,
         req: &pdu::ServiceSignatureReadRequest,
     ) -> Result<BufferResponse, InternalError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L249
@@ -526,7 +529,7 @@ impl<'c> HapPeripheralContext<'c> {
 
         let req_svc = req.svc_id;
 
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.out_buffer.borrow_mut();
 
         let len = resp.write_into_length(*buffer)?;
 
@@ -540,13 +543,13 @@ impl<'c> HapPeripheralContext<'c> {
         Ok(BufferResponse(len))
     }
     async fn characteristic_signature_request(
-        &mut self,
+        &self,
         req: &pdu::CharacteristicSignatureReadRequest,
     ) -> Result<BufferResponse, InternalError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEProcedure.c#L289
         let chr = self.get_attribute_by_char(req.char_id)?;
 
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.out_buffer.borrow_mut();
         // NONCOMPLIANCE: should drop connection when requesting characteristics on the pairing characteristics.
         let srv = self.get_service_by_char(req.char_id).unwrap();
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLECharacteristic%2BSignature.c#L10
@@ -570,7 +573,7 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     async fn characteristic_read_request(
-        &mut self,
+        &self,
         accessory: &impl crate::AccessoryInterface,
         req: &pdu::CharacteristicReadRequest,
     ) -> Result<BufferResponse, InternalError> {
@@ -587,7 +590,7 @@ impl<'c> HapPeripheralContext<'c> {
             DataSource::AccessoryInterface => {
                 // This is a bit wasteful, splitting the entire buffer, for a payload that's likely 8 bytes.
                 // Maybe we should just do two calls, one to get the length, then another one to do the split?
-                let mut buffer = self.buffer.borrow_mut();
+                let mut buffer = self.out_buffer.borrow_mut();
                 let len = buffer.len();
                 let (mut left, mut right) = buffer.split_at_mut(len / 2);
                 let data = accessory.read_characteristic(char_id, &mut right).await?;
@@ -599,7 +602,7 @@ impl<'c> HapPeripheralContext<'c> {
                 Ok(BufferResponse(len))
             }
             DataSource::Constant(data) => {
-                let mut buffer = self.buffer.borrow_mut();
+                let mut buffer = self.out_buffer.borrow_mut();
                 let reply = req.header.to_success();
                 let len = reply.write_into_length(*buffer)?;
                 let len = BodyBuilder::new_at(*buffer, len).add_value(data).end();
@@ -609,14 +612,14 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     async fn characteristic_write_request(
-        &mut self,
+        &self,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         req: &pdu::CharacteristicWriteRequest<'_>,
     ) -> Result<BufferResponse, InternalError> {
         let parsed = req;
         // Write the body to our internal buffer here.
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.out_buffer.borrow_mut();
         buffer.fill(0);
 
         let halfway = buffer.len() / 2;
@@ -676,7 +679,7 @@ impl<'c> HapPeripheralContext<'c> {
             Ok(BufferResponse(len))
         } else if is_pair_verify {
             let mut pair_ctx = self.pair_ctx.borrow_mut();
-            self.should_encrypt_reply = false;
+            self.should_encrypt_reply.set(false);
             crate::pairing::pair_verify::handle_incoming(
                 &mut **pair_ctx,
                 pair_support,
@@ -777,10 +780,7 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     #[allow(unreachable_code)]
-    async fn info_request(
-        &mut self,
-        req: &pdu::InfoRequest,
-    ) -> Result<BufferResponse, InternalError> {
+    async fn info_request(&self, req: &pdu::InfoRequest) -> Result<BufferResponse, InternalError> {
         let _ = req;
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessory%2BInfo.c#L71
         // This is a blind attempt at implementing this request based on the reference.
@@ -791,7 +791,7 @@ impl<'c> HapPeripheralContext<'c> {
         let chr = self.get_attribute_by_char(char_id)?;
 
         if chr.uuid == crate::characteristic::SERVICE_SIGNATURE.into() {
-            let mut buffer = self.buffer.borrow_mut();
+            let mut buffer = self.out_buffer.borrow_mut();
             let reply = req.header.to_success();
             let len = reply.write_into_length(*buffer)?;
 
@@ -844,7 +844,7 @@ impl<'c> HapPeripheralContext<'c> {
 
     // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLEProtocol%2BConfiguration.c#L29
     async fn protocol_configure_request(
-        &mut self,
+        &self,
         pair_support: &mut impl PlatformSupport,
         req: &pdu::ProtocolConfigurationRequestHeader,
         payload: &[u8],
@@ -857,7 +857,7 @@ impl<'c> HapPeripheralContext<'c> {
             //return Err(HapBleError::UnexpectedRequest.into());
         }
 
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.out_buffer.borrow_mut();
         let reply = req.header.to_success();
         let len = reply.write_into_length(*buffer)?;
 
@@ -945,18 +945,18 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     fn get_response(&self, reply: BufferResponse) -> core::cell::Ref<'_, [u8]> {
-        core::cell::Ref::<'_, &'static mut [u8]>::map(self.buffer.borrow(), |z| &z[0..reply.0])
+        core::cell::Ref::<'_, &'static mut [u8]>::map(self.out_buffer.borrow(), |z| &z[0..reply.0])
     }
 
     pub fn encrypted_reply(
         &mut self,
         value: BufferResponse,
     ) -> Result<BufferResponse, HapBleError> {
-        let should_encrypt = self.should_encrypt_reply;
+        let should_encrypt = self.should_encrypt_reply.get();
         if should_encrypt {
             // Perform the encryption, then respond with the buffer that is encrypted.
             let mut ctx = self.pair_ctx.borrow_mut();
-            let mut buff = self.buffer.borrow_mut();
+            let mut buff = self.out_buffer.borrow_mut();
             info!("Encrypting reply: {:?}", &buff[0..value.0]);
 
             // This encrypt can ONLY fail if there's a buffer overrun.
@@ -973,7 +973,7 @@ impl<'c> HapPeripheralContext<'c> {
                 }
             }
         } else {
-            let buff = self.buffer.borrow();
+            let buff = self.out_buffer.borrow();
             info!("Plaintext reply: {:?}", &buff[0..value.0]);
             Ok(value)
         }
@@ -994,7 +994,7 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     async fn handle_write_incoming<'hap, 'support>(
-        &mut self,
+        &self,
         hap: &HapServices<'hap>,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
@@ -1002,12 +1002,12 @@ impl<'c> HapPeripheralContext<'c> {
         handle: u16,
     ) -> Result<Option<BufferResponse>, InternalError> {
         let security_active = self.pair_ctx.borrow().session.security_active;
-        self.should_encrypt_reply = security_active;
-        let mut tmp_buffer = [0u8; 1024]; // TODO, not have this on the stack.
+        self.should_encrypt_reply.set(security_active);
+        let mut tmp_buffer = self.in_buffer.borrow_mut();
         let data = if security_active {
             if handle == hap.pairing.pair_verify.handle {
                 // pair verify is always plaintext!
-                self.should_encrypt_reply = false;
+                self.should_encrypt_reply.set(false);
                 data
             } else {
                 trace!("handle_write_incoming raw {:?}", data);
@@ -1152,7 +1152,7 @@ impl<'c> HapPeripheralContext<'c> {
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L172C10-L172C54
                 let _attr = self.get_attribute_by_char(req.char_id)?;
 
-                let mut buffer = self.buffer.borrow_mut();
+                let mut buffer = self.out_buffer.borrow_mut();
                 let reply = req.header.to_success();
                 let len = reply.write_into_length(*buffer)?;
 
@@ -1209,7 +1209,7 @@ impl<'c> HapPeripheralContext<'c> {
                 slot_data[0..data.len()].copy_from_slice(data);
 
                 // Write the success statement.
-                let mut buffer = self.buffer.borrow_mut();
+                let mut buffer = self.out_buffer.borrow_mut();
                 let reply = header.to_success();
                 let len = reply.write_into_length(*buffer)?;
                 BufferResponse(len)
@@ -1294,7 +1294,7 @@ impl<'c> HapPeripheralContext<'c> {
                         let status_error = other.to_status_error();
                         // Write the appropriate response.
                         let reply = pdu::ResponseHeader::from_header(data, status_error.into());
-                        let mut buffer = self.buffer.borrow_mut();
+                        let mut buffer = self.out_buffer.borrow_mut();
                         let len = reply.write_into_length(*buffer)?;
 
                         return Ok(Some(BufferResponse(len)));

@@ -143,7 +143,11 @@ mod hap_lightbulb {
         pair_ctx.info.assign_from(rand::random(), pair_code);
 
         // Create the buffer for hap messages in the gatt server.
-        let buffer: &mut [u8] = {
+        let out_buffer: &mut [u8] = {
+            static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
+            STATE.init([0u8; 2048])
+        };
+        let in_buffer: &mut [u8] = {
             static STATE: StaticCell<[u8; 2048]> = StaticCell::new();
             STATE.init([0u8; 2048])
         };
@@ -190,7 +194,8 @@ mod hap_lightbulb {
 
         // Then finally we can create the hap peripheral context.
         let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
-            buffer,
+            out_buffer,
+            in_buffer,
             pair_ctx,
             timed_write_data,
             timed_write,
