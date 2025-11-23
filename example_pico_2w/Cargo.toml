@@ -14,7 +14,8 @@ embassy-sync = { version = "0.7.2", features = ["defmt"] }
 embassy-time = { version = "0.5", features = [
     "defmt",
     "defmt-timestamp-uptime",
-] }
+] , default-features=false}
+#embassy-time = { version = "0.5.0", path = "../../embassy/embassy-time"}
 embassy-usb = { version = "0.5.0", features = ["defmt"] }
 
 # For the sd card.
@@ -22,11 +23,11 @@ embedded-sdmmc = "0.7.0"
 embedded-hal-bus = { version = "0.1", features = ["async"] }
 
 # wifi/bluetooth chip.
-cyw43 = { version = "0.5.0", features = [
+cyw43 = { features = [
     "defmt",
     "firmware-logs",
     "bluetooth",
-] }
+], path="../../embassy/cyw43/" } #version = "0.5.0",  but with bt-hci at 0.6
 
 # Misc stuff to make board work.
 critical-section = "1.2.0"
@@ -68,7 +69,7 @@ trouble-host = { features = [
 # All actual hardware dependencies that don't compile on x86 go here.
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
-embassy-executor = { version = "0.9.0", features = [
+embassy-executor = { version = "0.9.1", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
@@ -88,7 +89,7 @@ embassy-rp = { version = "0.8.0", features = [
     "boot2-ram-memcpy",
     "run-from-ram",
 ] }
-cyw43-pio = { version = "0.8.0", features = ["defmt"] }
+cyw43-pio = {   features = ["defmt"], path="../../embassy/cyw43-pio/" }
 embassy-futures = "0.1.2"
 
 
@@ -99,3 +100,7 @@ smol = "2.0.2"
 [features]
 # We use this feature here, that's set to opt into the host binaries.
 std = []
+
+
+[patch.crates-io]
+bt-hci = {  git = 'https://github.com/embassy-rs/bt-hci.git', package="bt-hci" }

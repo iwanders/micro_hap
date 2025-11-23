@@ -11,7 +11,7 @@ use static_cell::StaticCell;
 use embassy_futures::{join::join, select::select};
 use embassy_time::Timer;
 use trouble_host::prelude::*;
-
+use micro_hap::IntoBytesForAccessoryInterface;
 use zerocopy::IntoBytes;
 
 use micro_hap::{
@@ -24,14 +24,15 @@ struct LightBulbAccessory<'a> {
     bulb_control: cyw43::Control<'a>,
 }
 impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
-    async fn read_characteristic(
+    async fn read_characteristic<'b>(
         &self,
         char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, InterfaceError> {
+        output: &'b mut [u8],
+    ) -> Result<&'b [u8], InterfaceError> {
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-            Ok(self.name.as_bytes())
+            self.name.read_characteristic_into(char_id, output)
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-            Ok(self.bulb_on_state.as_bytes())
+            self.bulb_on_state.read_characteristic_into(char_id, output)
         } else {
             Err(InterfaceError::CharacteristicUnknown(char_id))
         }
@@ -92,7 +93,7 @@ impl Server<'_> {
         }
     }
 }
-
+use micro_hap::{BleBroadcastInterval,  };
 use micro_hap::pairing::{Pairing, PairingId, ED25519_LTSK};
 #[derive(Debug, Clone)]
 pub struct ActualPairSupport {
@@ -107,6 +108,7 @@ pub struct ActualPairSupport {
     pub broadcast_parameters: BleBroadcastParameters,
     pub random_bytes: &'static [u8],
     pub random_byte_index: usize,
+    pub ble_broadcast_config: heapless::index_map::FnvIndexMap<CharId, BleBroadcastInterval, 16>,
 }
 impl Default for ActualPairSupport {
     fn default() -> Self {
@@ -119,6 +121,7 @@ impl Default for ActualPairSupport {
             global_state_number: 1,
             config_number: 1,
             broadcast_parameters: Default::default(),
+            ble_broadcast_config: Default::default(),
             // [random.randrange(0,255) for i in range(512)]
             random_byte_index: 0,
             random_bytes: &[
@@ -216,6 +219,25 @@ impl PlatformSupport for ActualPairSupport {
     ) -> Result<(), InterfaceError> {
         self.broadcast_parameters = *params;
         Ok(())
+    }
+    async fn set_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+        configuration: BleBroadcastInterval,
+    ) -> Result<(), InterfaceError> {
+        if configuration == BleBroadcastInterval::Disabled {
+            self.ble_broadcast_config.remove(&char_id);
+        } else {
+            self.ble_broadcast_config.insert(char_id, configuration);
+        }
+        Ok(())
+    }
+    /// Get the broadcast configuration for a characteristic.
+    async fn get_ble_broadcast_configuration(
+        &mut self,
+        char_id: CharId,
+    ) -> Result<Option<BleBroadcastInterval>, InterfaceError> {
+        Ok(self.ble_broadcast_config.get(&char_id).copied())
     }
 }
 
@@ -380,11 +402,13 @@ where
         STATE.init(ActualPairSupport::default())
     };
 
-    // _benchmark_srp().await;
 
     let _ = join(ble_task(runner), async {
         loop {
-            match advertise(name, &mut peripheral, &server, &static_information).await {
+            match hap_context
+                .advertise(&mut accessory,  support, &mut peripheral)
+                .await
+            {
                 Ok(conn) => {
                     // Increase the data length to 251 bytes per package, default is like 27.
                     // conn.update_data_length(&stack, 251, 2120)
@@ -394,28 +418,21 @@ where
                         .with_attribute_server(&server)
                         .expect("Failed to create attribute server");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                    let mut hap_services = server.as_hap();
+                    let hap_services = server.as_hap();
                     let a = hap_context.gatt_events_task(
                         &mut accessory,
-                        support,
-                        &mut hap_services,
+                         support,
+                        &hap_services,
                         &conn,
                     );
-                    let b = custom_task(&server, &conn, &stack);
+
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
-                    let x = select(a, b).await;
-                    match x {
-                        embassy_futures::select::Either::First(a) => {
-                            if let Err(e) = a {
-                                error!("Error occured in processing: {:?}", e);
-                            }
-                        }
-                        embassy_futures::select::Either::Second(_) => {}
+                    if let Err(e) = a.await {
+                         error!("Error occured in processing: {:?}", e);
                     }
                 }
                 Err(e) => {
-                    let e = defmt::Debug2Format(&e);
                     panic!("[adv] error: {:?}", e);
                 }
             }
@@ -446,54 +463,6 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
             panic!("[ble_task] error: {:?}", e);
         }
     }
-}
-
-/// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
-async fn advertise<'values, 'server, C: Controller>(
-    name: &'values str,
-    peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
-    server: &'server Server<'values>,
-    static_info: &micro_hap::AccessoryInformationStatic,
-) -> Result<Connection<'values, DefaultPacketPool>, BleHostError<C::Error>> {
-    // ) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
-    let _ = server;
-    let adv_config = micro_hap::adv::AdvertisementConfig {
-        device_id: static_info.device_id,
-        setup_id: static_info.setup_id,
-        accessory_category: static_info.category,
-        ..Default::default()
-    };
-    let hap_adv = adv_config.to_advertisement();
-    let adv = hap_adv.as_advertisement();
-
-    let mut advertiser_data = [0; 31];
-    let len = AdStructure::encode_slice(
-        &[
-            AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            //AdStructure::ServiceUuids16(&[[0x0f, 0x18]]),
-            AdStructure::CompleteLocalName(name.as_bytes()),
-            adv,
-        ],
-        &mut advertiser_data[..],
-    )?;
-    let params = AdvertisementParameters {
-        interval_min: embassy_time::Duration::from_millis(100),
-        interval_max: embassy_time::Duration::from_millis(500),
-        ..Default::default()
-    };
-    let advertiser = peripheral
-        .advertise(
-            &params,
-            Advertisement::ConnectableScannableUndirected {
-                adv_data: &advertiser_data[..len],
-                scan_data: &[],
-            },
-        )
-        .await?;
-    info!("[adv] advertising");
-    let conn = advertiser.accept().await?;
-    info!("[adv] connection established");
-    Ok(conn)
 }
 
 /// Example task to use the BLE notifier interface.

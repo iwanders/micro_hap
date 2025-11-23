@@ -33,6 +33,7 @@ const PANIC_HANDLER_FILE_LIST: &[&str] = &[
     "usb_picotool_reset.rs",
     "hw_test.rs",
     "lsm6dsv320x.rs",
+    "hap.rs",
 ];
 
 // Program metadata for `picotool info`.
