@@ -173,11 +173,11 @@ mod hap_lightbulb {
     use example_std::{ActualPairSupport, AddressType, make_address};
 
     use log::info;
+    use micro_hap::IntoBytesForAccessoryInterface;
     use micro_hap::ble::FacadeDummyType;
     use micro_hap::ble::HapBleService;
     use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
     use trouble_host::prelude::*;
-    use zerocopy::IntoBytes;
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory<'c> {
         name_a: HeaplessString<32>,
@@ -192,20 +192,21 @@ mod hap_lightbulb {
 
     /// Implement the accessory interface for the lightbulb.
     impl<'c> AccessoryInterface for LightBulbAccessory<'c> {
-        async fn read_characteristic(
+        async fn read_characteristic<'a>(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            output: &'a mut [u8],
+        ) -> Result<&'a [u8], InterfaceError> {
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-                Ok(self.name_a.as_bytes())
+                self.name_a.read_characteristic_into(char_id, output)
             } else if char_id == super::services::CHAR_ID_LIGHTBULB_NAME {
-                Ok(self.name_b.as_bytes())
+                self.name_b.read_characteristic_into(char_id, output)
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                Ok(self.bulb_state_a.as_bytes())
+                self.bulb_state_a.read_characteristic_into(char_id, output)
             } else if char_id == super::services::CHAR_ID_LIGHTBULB_ON {
-                Ok(self.bulb_state_b.as_bytes())
+                self.bulb_state_b.read_characteristic_into(char_id, output)
             } else if char_id == super::services::CHAR_ID_LIGHBULB_LOW_BATTERY {
-                Ok(self.low_battery.as_bytes())
+                self.low_battery.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }

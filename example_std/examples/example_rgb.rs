@@ -332,6 +332,7 @@ mod hap_rgb {
     use example_std::{ActualPairSupport, AddressType, RuntimeConfig, make_address};
 
     use log::info;
+    use micro_hap::IntoBytesForAccessoryInterface;
     use micro_hap::ble::HapBleService;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
@@ -354,26 +355,30 @@ mod hap_rgb {
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(
+        async fn read_characteristic<'a>(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            output: &'a mut [u8],
+        ) -> Result<&'a [u8], InterfaceError> {
             if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_NAME {
-                Ok("warm_temperature_bulb".as_bytes())
+                "warm_temperature_bulb".read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_ON {
-                Ok(self.temp_on_state.as_bytes())
+                self.temp_on_state.read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_TEMP_BULB_COLOR {
-                Ok(self.temp_color_temperature_state.as_bytes())
+                self.temp_color_temperature_state
+                    .read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_NAME {
-                Ok("hsb_superbulb".as_bytes())
+                "hsb_superbulb".read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_ON {
-                Ok(self.hsb_on_state.as_bytes())
+                self.hsb_on_state.read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_HUE {
-                Ok(self.hsb_hue.as_bytes())
+                self.hsb_hue.read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_SATURATION {
-                Ok(self.hsb_saturation.as_bytes())
+                self.hsb_saturation
+                    .read_characteristic_into(char_id, output)
             } else if char_id == hap_rgb_bulb::CHAR_ID_HSB_BULB_BRIGHTNESS {
-                Ok(self.hsb_brightness.as_bytes())
+                self.hsb_brightness
+                    .read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }

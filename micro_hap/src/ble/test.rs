@@ -238,14 +238,16 @@ async fn test_hap_worker(
         bulb_on_state: bool,
     }
     impl crate::AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(
+        async fn read_characteristic<'a>(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            output: &'a mut [u8],
+        ) -> Result<&'a [u8], InterfaceError> {
+            use crate::IntoBytesForAccessoryInterface;
             if char_id == CHAR_ID_LIGHTBULB_NAME {
-                Ok(self.name.as_bytes())
+                self.name.read_characteristic_into(char_id, output)
             } else if char_id == CHAR_ID_LIGHTBULB_ON {
-                Ok(self.bulb_on_state.as_bytes())
+                self.bulb_on_state.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }

@@ -585,11 +585,15 @@ impl<'c> HapPeripheralContext<'c> {
                 Ok(BufferResponse(0))
             }
             DataSource::AccessoryInterface => {
-                let data = accessory.read_characteristic(char_id).await?;
+                // This is a bit wasteful, splitting the entire buffer, for a payload that's likely 8 bytes.
+                // Maybe we should just do two calls, one to get the length, then another one to do the split?
                 let mut buffer = self.buffer.borrow_mut();
+                let len = buffer.len();
+                let (mut left, mut right) = buffer.split_at_mut(len / 2);
+                let data = accessory.read_characteristic(char_id, &mut right).await?;
                 let reply = req.header.to_success();
-                let len = reply.write_into_length(*buffer)?;
-                let len = BodyBuilder::new_at(*buffer, len)
+                let len = reply.write_into_length(&mut left)?;
+                let len = BodyBuilder::new_at(&mut left, len)
                     .add_value(data.into())
                     .end();
                 Ok(BufferResponse(len))

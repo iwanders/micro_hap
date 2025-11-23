@@ -205,7 +205,10 @@ mod hap_temp_accessory {
     use log::info;
     use trouble_host::prelude::*;
 
-    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
+    use micro_hap::{
+        AccessoryInterface, CharId, CharacteristicResponse, InterfaceError,
+        IntoBytesForAccessoryInterface, PairCode,
+    };
 
     // Put the value in a mutexed arc, that way we can modify it freely.
     type SharedF32 = std::sync::Arc<std::sync::Mutex<f32>>;
@@ -219,10 +222,11 @@ mod hap_temp_accessory {
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for TemperatureAccessory {
-        async fn read_characteristic(
+        async fn read_characteristic<'a>(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            output: &'a mut [u8],
+        ) -> Result<&'a [u8], InterfaceError> {
             info!("read on {:?}", char_id);
             info!(
                 "hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {:?}",
@@ -230,17 +234,10 @@ mod hap_temp_accessory {
             );
             if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
                 let value = *self.temperature_value.lock().unwrap();
-                // TODO: Ugh this returns a borrow but I don't have a value to borrow out now that it's behind a mutex.
-                // And this interface is not &mut, so I can also not retrieve it and write it to the local state.
-                // Does this need to be a read into a byte slice..? or do we need to start returning heapless::Vec?
-                // For now, lets just leak it such that I can make this example that increments the temperature
-                // to test the broadcast notifications.
-                let value_array = value.to_bits().to_le_bytes();
-                let boxed_array = Box::new(value_array);
-                let leaked = Box::leak(boxed_array);
-                Ok(&leaked[0..4])
+
+                value.read_characteristic_into(char_id, output)
             } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
-                Ok(&self.low_battery.as_bytes())
+                self.low_battery.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -282,7 +279,6 @@ mod hap_temp_accessory {
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
-    use zerocopy::IntoBytes;
     /// Run the BLE stack.
     pub async fn run<C>(controller: C, runtime_config: RuntimeConfig)
     where

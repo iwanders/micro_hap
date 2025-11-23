@@ -350,9 +350,10 @@ impl AdvertiseManager {
                     return Ok(());
                 }
                 // Then, collect the information necessary to create the broadcast advertisement.
+                let mut temp_buffer = [0u8; 8];
                 let mut value = [0u8; 8];
                 let read_value: &[u8] = (accessory)
-                    .read_characteristic(properties.iid)
+                    .read_characteristic(properties.iid, &mut temp_buffer)
                     .await?
                     .into();
                 // Value is always 8 bytes long

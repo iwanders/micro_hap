@@ -54,11 +54,11 @@ To help people understand the code and the concepts, here's an information dump:
 - ~The global state number is in the advertisement, this is how iOS knows it should connect to retrieve the state.~
 - ~Add periodic 'service' method to handle global state counter, advertisement and  expiring timed writes to free slots.~
 - ~How do the advertisements actually work?~
-- ~Broadcasts of changed values still result in a reconnect, with `GenerateBroadcastEncryptionKey` and `CharacteristicConfigurationRequest`, why? Checked the program flow, seems to match. This also updates the GSN expiry counter and sets up a new key, is this just intentional if you don't have a `Home Hub`? Or perhaps the intent is that the controller reconnects to the accessory after a broadcast because other characteristics may have also changed?~ Yes: [Disconnected events should only be used to reflect important changes in the accessory](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475), and [when the characteristic changes while no controllers are connected, will reconnect](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L461-L463).
+- ~Broadcasts of changed values still result in a reconnect, with `GenerateBroadcastEncryptionKey` and `CharacteristicConfigurationRequest`, why? Checked the program flow, seems to match. This also updates the GSN expiry counter and sets up a new key, is this just intentional if you don't have a `Home Hub`? Or perhaps the intent is that the controller reconnects to the accessory after a broadcast because other characteristics may have also changed?~ Yes: [Disconnected events should only be used to reflect important changes in the accessory](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475), and [when the characteristic changes while no controllers are connected, will reconnect](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L461-L463), see extensive comment in `example_temp_sensor`.
 - ~And what about notify while a connection is active?~ Send indicate over BLE
 - ~Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.~ Can pair numerous times now.
 - Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
-- How much is shared between BLE & IP? Can we implement IP as well with minimal work?
+- ~How much is shared between BLE & IP? Can we implement IP as well with minimal work? It's not a trivial amount of work.~
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
 - ~Modify/add second example to show how to add a service, ensure common stuff is shared.~
 - Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
@@ -66,7 +66,7 @@ To help people understand the code and the concepts, here's an information dump:
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~
 - ~Verify pair resume actually works, keep a list of sessions...~
-- ~Make `pairing` and `pair_verify` modules crate-private?~ They are now, and refactored, error is still public.
+- ~Make `pairing` and `pair_verify` modules crate-private? They are now, and refactored, error is still public.~
 - ~Implement TimedWrite request.~
 - ~Implement `CharacteristicExecuteWrite`.~
 - ~Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).~

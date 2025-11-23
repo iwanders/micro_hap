@@ -9,10 +9,10 @@ mod hap_lightbulb {
 
     use embassy_futures::join::join;
     use log::info;
+    use micro_hap::IntoBytesForAccessoryInterface;
     use micro_hap::ble::HapBleService;
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
-    use zerocopy::IntoBytes;
 
     use micro_hap::{
         AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
@@ -27,14 +27,15 @@ mod hap_lightbulb {
 
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
-        async fn read_characteristic(
+        async fn read_characteristic<'a>(
             &self,
             char_id: CharId,
-        ) -> Result<impl Into<&[u8]>, InterfaceError> {
+            output: &'a mut [u8],
+        ) -> Result<&'a [u8], InterfaceError> {
             if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
-                Ok(self.name.as_bytes())
+                self.name.read_characteristic_into(char_id, output)
             } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                Ok(self.bulb_on_state.as_bytes())
+                self.bulb_on_state.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }

@@ -654,19 +654,35 @@ pub enum InterfaceError {
     /// An indication was performed on a characteristic for which the characteristic gatt server object was not provided.
     #[error("characteristic gatt server object not provided {0:?}")]
     CharacteristicObjectNotProvided(CharId),
+
+    /// A characteristic was read but the output buffer was not of sufficient size.
+    #[error(
+        "the provided buffer is not sufficient to hold the characteristic value char_id {char_id:?} of length {required_length}"
+    )]
+    CharacteristicBufferOverrun {
+        char_id: CharId,
+        required_length: usize,
+    },
 }
 
 /// Interface through which characteristics / micro_hap interacts with the accessory.
 pub trait AccessoryInterface {
     /// Read the characteristic value.
     ///
-    /// Note I got <https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait> on this method.
-    /// can we just ignore that for now? Does this need to be send?
+    /// This writes to the output buffer and returns the slice of appropriate length that now holds the value.
+    ///
+    /// There's a helper below [IntoBytesForAccessoryInterface] to eliminate boilerplate and write into it with correct
+    /// error handling in one call.
+    ///
+    // Note I got <https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#async-fn-in-trait> on this method.
+    // can we just ignore that for now? Does this need to be send?
     #[allow(async_fn_in_trait)]
-    async fn read_characteristic(
+    async fn read_characteristic<'a>(
         &self,
         char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, InterfaceError>;
+        output: &'a mut [u8],
+    ) -> Result<&'a [u8], InterfaceError>;
+
     #[allow(async_fn_in_trait)]
     async fn write_characteristic(
         &mut self,
@@ -674,6 +690,26 @@ pub trait AccessoryInterface {
         data: &[u8],
     ) -> Result<CharacteristicResponse, InterfaceError>;
 }
+
+pub trait IntoBytesForAccessoryInterface: zerocopy::IntoBytes + zerocopy::Immutable {
+    fn read_characteristic_into<'a>(
+        &self,
+        char_id: CharId,
+        output: &'a mut [u8],
+    ) -> Result<&'a [u8], InterfaceError> {
+        let payload = self.as_bytes();
+        let required_length = payload.len();
+        if output.len() < required_length {
+            return Err(InterfaceError::CharacteristicBufferOverrun {
+                char_id,
+                required_length,
+            });
+        }
+        output[0..payload.len()].copy_from_slice(&payload);
+        Ok(&output[0..payload.len()])
+    }
+}
+impl<T: zerocopy::IntoBytes + zerocopy::Immutable + ?Sized> IntoBytesForAccessoryInterface for T {}
 
 /// Enum that specifies whether a characteristic was changed.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -741,13 +777,14 @@ impl<M: RawMutex, const N: usize> HapControlChannel<M, N> {
 #[derive(Debug, Copy, Clone)]
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
-    async fn read_characteristic(
+    async fn read_characteristic<'a>(
         &self,
         char_id: CharId,
-    ) -> Result<impl Into<&[u8]>, InterfaceError> {
+        output: &'a mut [u8],
+    ) -> Result<&'a [u8], InterfaceError> {
+        output.fill(0);
         let _ = char_id;
-        const DUMMY: &[u8] = &[];
-        Ok(DUMMY)
+        Ok(&output[0..0])
     }
     async fn write_characteristic(
         &mut self,
