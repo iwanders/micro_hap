@@ -208,6 +208,7 @@ pub struct ProtocolInformationService {
 }
 impl HapBleService for ProtocolInformationService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L3200
         let mut service = crate::Service {
             ble_handle: Some(self.handle),
             uuid: service::PROTOCOL_INFORMATION.into(),

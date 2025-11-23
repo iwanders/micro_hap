@@ -30,6 +30,9 @@ pub const SERIAL_NUMBER: HomekitUuid16 = HomekitUuid16::new(0x0030);
 /// Version string
 pub const VERSION: HomekitUuid16 = HomekitUuid16::new(0x0037);
 
+/// Low battery indication
+pub const CHARACTERISTIC_LOW_BATTERY: HomekitUuid16 = HomekitUuid16::new(0x0079);
+
 // For the pairing service.
 
 /// Pair setup characteristic.

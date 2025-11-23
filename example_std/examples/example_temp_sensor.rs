@@ -13,6 +13,33 @@ use bt_hci_linux::Transport;
 // * - Disconnected events should only be used to reflect important state changes in the accessory.
 // *   For example, contact sensor state changes or current door state changes should use this property.
 // *   On the other hand, a temperature sensor must not use this property for changes in temperature readings.
+//
+// Disabling disconnected_events however, ~makes the sensor disappear~ show up as '--' in the room view
+// from the apple home application, and it also does not register for broadcasts, is that expected behaviour because
+// my phone isn't a home hub, which would (probably) fulfill the role of listening to broadcasts normally?
+//
+// Weirdly enough, even it doesn't show up, I can ask Siri for the temperature in my living room (the room of the sensor)
+// and when asked, it does actually connect immediately, retrieves the temperature value and reports the correct value.
+//
+// Long pressing on the sensor shows 'This accessory requires an update before it can be used in the Home App, Try updating
+// it using the manufacturer's app.'
+//
+// Wonder if this is https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L470C14-L471
+//
+// * - This property must be set on at least one characteristic of an accessory to work around an issue
+// *   in certain versions of the Home app that would otherwise claim that Additional Setup is required.
+//
+// Let's try adding a low battery characteristic that will have the disconnected events enabled. This ONLY works if you
+// give it a range & step, but this can now actually show 'low battery' for the accessory.
+//  Probably because min<max validation here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryValidation.c#L534
+//
+//
+// Nope, that doesn't help, the moment I remove disconnected_events from anything it gives the warning that it needs
+// an update..
+//
+// THere's a LOT of validation here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryValidation.c#L321
+// But it's basically Disconnected > Broadcast > Event Notification
+// So it doesn't rule out disabling disconnected events.
 
 mod hap_temp_sensor {
     use micro_hap::{
@@ -28,6 +55,7 @@ mod hap_temp_sensor {
     pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x40);
     pub const CHAR_ID_TEMP_SENSOR_SIGNATURE: CharId = CharId(0x41);
     pub const CHAR_ID_TEMP_SENSOR_VALUE: CharId = CharId(0x42);
+    pub const CHAR_ID_TEMP_LOW_BATTERY: CharId = CharId(0x43);
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.c#L23
     pub const CHARACTERISTIC_CURRENT_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x0011);
@@ -47,6 +75,10 @@ mod hap_temp_sensor {
         #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_SENSOR_VALUE.0.to_le_bytes())]
         #[characteristic(uuid=CHARACTERISTIC_CURRENT_TEMPERATURE, read, write, indicate)]
         pub value: FacadeDummyType,
+
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_LOW_BATTERY.0.to_le_bytes())]
+        #[characteristic(uuid=characteristic::CHARACTERISTIC_LOW_BATTERY, read, write, indicate)]
+        pub low_battery: FacadeDummyType,
     }
     use embassy_sync::blocking_mutex::raw::RawMutex;
     impl TemperatureSensorService {
@@ -73,7 +105,7 @@ mod hap_temp_sensor {
                 uuid: SERVICE_TEMPERATURE_SENSOR.into(),
                 iid: SERVICE_ID_TEMP_SENSOR,
                 characteristics: Default::default(),
-                properties: ServiceProperties::new().with_primary(false),
+                properties: ServiceProperties::new().with_primary(true),
             };
 
             service
@@ -100,9 +132,9 @@ mod hap_temp_sensor {
                     )
                     .with_properties(
                         CharacteristicProperties::new()
-                            .with_rw(true)
+                            .with_read(true)
                             .with_supports_event_notification(true)
-                            .with_supports_disconnect_notification(true) // Without this, it doesn't show up as a value.
+                            .with_supports_disconnect_notification(true)
                             .with_supports_broadcast_notification(true),
                     )
                     .with_range(micro_hap::VariableRange {
@@ -119,6 +151,40 @@ mod hap_temp_sensor {
                                 server
                                     .table()
                                     .find_characteristic_by_value_handle(self.value.handle)
+                                    .unwrap(),
+                            ),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        characteristic::CHARACTERISTIC_LOW_BATTERY.into(),
+                        CHAR_ID_TEMP_LOW_BATTERY,
+                    )
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_read(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
+                    .with_range(micro_hap::VariableRange {
+                        start: micro_hap::VariableUnion::U8(0),
+                        end: micro_hap::VariableUnion::U8(1),
+                        inclusive: true,
+                    })
+                    .with_step(micro_hap::VariableUnion::U8(1))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.low_battery.handle)
+                            .with_format(sig::Format::U8)
+                            .with_characteristic(
+                                server
+                                    .table()
+                                    .find_characteristic_by_value_handle(self.low_battery.handle)
                                     .unwrap(),
                             ),
                     )
@@ -148,6 +214,7 @@ mod hap_temp_accessory {
     #[repr(C)]
     struct TemperatureAccessory {
         temperature_value: SharedF32,
+        low_battery: u8,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -172,6 +239,8 @@ mod hap_temp_accessory {
                 let boxed_array = Box::new(value_array);
                 let leaked = Box::leak(boxed_array);
                 Ok(&leaked[0..4])
+            } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
+                Ok(&self.low_battery.as_bytes())
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -213,6 +282,7 @@ mod hap_temp_accessory {
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
+    use zerocopy::IntoBytes;
     /// Run the BLE stack.
     pub async fn run<C>(controller: C, runtime_config: RuntimeConfig)
     where
@@ -254,6 +324,7 @@ mod hap_temp_accessory {
         let accessory_ptr = f32ptr.clone();
         let mut accessory = TemperatureAccessory {
             temperature_value: accessory_ptr,
+            low_battery: 0,
         };
         // hap_context.add_service(&server.lightbulb).unwrap();
         hap_context

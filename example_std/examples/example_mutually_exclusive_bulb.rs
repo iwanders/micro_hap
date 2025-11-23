@@ -17,6 +17,7 @@ mod services {
     const ID_OFFSET: u16 = 0x10;
     pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32 + ID_OFFSET);
     pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33 + ID_OFFSET);
+    pub const CHAR_ID_LIGHBULB_LOW_BATTERY: CharId = CharId(0x34 + ID_OFFSET);
     pub const TSTDFDS: micro_hap::uuid::HomekitUuid16 = micro_hap::uuid::HomekitUuid16::new(0x1043);
     #[gatt_service(uuid =  service::LIGHTBULB)]
     // #[gatt_service(uuid =  TSTDFDS)]
@@ -38,6 +39,10 @@ mod services {
         #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=(CHAR_ID_LIGHTBULB_ON.0 ).to_le_bytes())]
         #[characteristic(uuid=characteristic::ON, read, write, indicate )]
         pub on: FacadeDummyType,
+
+        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_LIGHBULB_LOW_BATTERY.0.to_le_bytes())]
+        #[characteristic(uuid=characteristic::CHARACTERISTIC_LOW_BATTERY, read, write, indicate)]
+        pub low_battery: FacadeDummyType,
     }
     //
     //
@@ -124,6 +129,40 @@ mod services {
                 )
                 .map_err(|_| HapBleError::AllocationOverrun)?;
 
+            service
+                .characteristics
+                .push(
+                    Characteristic::new(
+                        characteristic::CHARACTERISTIC_LOW_BATTERY.into(),
+                        CharId(0x34u16 + ID_OFFSET),
+                    )
+                    .with_properties(
+                        CharacteristicProperties::new()
+                            .with_rw(true)
+                            .with_supports_event_notification(true)
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
+                    )
+                    .with_range(micro_hap::VariableRange {
+                        start: micro_hap::VariableUnion::U8(0),
+                        end: micro_hap::VariableUnion::U8(1),
+                        inclusive: true,
+                    })
+                    .with_step(micro_hap::VariableUnion::U8(1))
+                    .with_ble_properties(
+                        BleProperties::from_handle(self.low_battery.handle)
+                            .with_format(sig::Format::U8)
+                            .with_characteristic(
+                                server
+                                    .table()
+                                    .find_characteristic_by_value_handle(self.low_battery.handle)
+                                    .unwrap(),
+                            ),
+                    )
+                    .with_data(DataSource::AccessoryInterface),
+                )
+                .map_err(|_| HapBleError::AllocationOverrun)?;
+
             Ok(service)
         }
     }
@@ -148,6 +187,7 @@ mod hap_lightbulb {
         characteristic_a: trouble_host::attribute::Characteristic<FacadeDummyType>,
         characteristic_b: trouble_host::attribute::Characteristic<FacadeDummyType>,
         control_sender: micro_hap::HapInterfaceSender<'c>,
+        low_battery: u8,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -164,6 +204,8 @@ mod hap_lightbulb {
                 Ok(self.bulb_state_a.as_bytes())
             } else if char_id == super::services::CHAR_ID_LIGHTBULB_ON {
                 Ok(self.bulb_state_b.as_bytes())
+            } else if char_id == super::services::CHAR_ID_LIGHBULB_LOW_BATTERY {
+                Ok(self.low_battery.as_bytes())
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -325,6 +367,7 @@ mod hap_lightbulb {
                 .find_characteristic_by_value_handle(server.lightbulb_b.on.handle)
                 .unwrap(),
             control_sender,
+            low_battery: 0, // toggle to 1 to raise the low battery indicator.
         };
 
         hap_context.ugly_todo_inject_trouble_characteristic(
