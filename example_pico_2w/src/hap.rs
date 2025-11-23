@@ -10,8 +10,8 @@ use static_cell::StaticCell;
 
 use embassy_futures::{join::join, select::select};
 use embassy_time::Timer;
-use trouble_host::prelude::*;
 use micro_hap::IntoBytesForAccessoryInterface;
+use trouble_host::prelude::*;
 use zerocopy::IntoBytes;
 
 use micro_hap::{
@@ -93,10 +93,10 @@ impl Server<'_> {
         }
     }
 }
-use micro_hap::{BleBroadcastInterval,  };
 use micro_hap::pairing::{Pairing, PairingId, ED25519_LTSK};
-#[derive(Debug, Clone)]
-pub struct ActualPairSupport {
+use micro_hap::BleBroadcastInterval;
+
+pub struct ActualPairSupport<'a, R: embassy_rp::trng::Instance> {
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
     pub pairings: heapless::index_map::FnvIndexMap<
         micro_hap::pairing::PairingId,
@@ -106,12 +106,14 @@ pub struct ActualPairSupport {
     pub global_state_number: u16,
     pub config_number: u8,
     pub broadcast_parameters: BleBroadcastParameters,
+    pub rng: embassy_rp::trng::Trng<'a, R>,
     pub random_bytes: &'static [u8],
     pub random_byte_index: usize,
     pub ble_broadcast_config: heapless::index_map::FnvIndexMap<CharId, BleBroadcastInterval, 16>,
 }
-impl Default for ActualPairSupport {
-    fn default() -> Self {
+
+impl<'a, R: embassy_rp::trng::Instance> ActualPairSupport<'a, R> {
+    fn new(rng: embassy_rp::trng::Trng<'a, R>) -> Self {
         Self {
             ed_ltsk: [
                 182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235, 192, 207, 15,
@@ -155,10 +157,11 @@ impl Default for ActualPairSupport {
                 39, 49, 237, 61, 146, 85, 218, 188, 78, 191, 156, 83, 197, 130, 115, 109, 26, 154,
                 215, 213, 159, 46, 86, 186,
             ],
+            rng,
         }
     }
 }
-impl PlatformSupport for ActualPairSupport {
+impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a, R> {
     fn get_time(&self) -> embassy_time::Instant {
         embassy_time::Instant::now()
     }
@@ -168,9 +171,11 @@ impl PlatformSupport for ActualPairSupport {
     }
 
     async fn fill_random(&mut self, buffer: &mut [u8]) -> () {
-        buffer.copy_from_slice(&self.random_bytes[self.random_byte_index..buffer.len()]);
+        // buffer.copy_from_slice(&self.random_bytes[self.random_byte_index..buffer.len()]);
 
-        self.random_byte_index += buffer.len();
+        // self.random_byte_index += buffer.len();
+        //
+        self.rng.fill_bytes(buffer).await;
     }
 
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
@@ -246,8 +251,11 @@ impl PlatformSupport for ActualPairSupport {
 // use bt_hci::controller::ControllerCmdSync;
 const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1a, 0x07, 0xe4, 0xff];
 /// Run the BLE stack.
-pub async fn run<'p, 'cyw, C>(controller: C, bulb_control: cyw43::Control<'_>)
-where
+pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
+    controller: C,
+    bulb_control: cyw43::Control<'_>,
+    rng: embassy_rp::trng::Trng<'_, R>,
+) where
     C: Controller, // + ControllerCmdSync<LeReadLocalSupportedFeatures>
                    // + ControllerCmdSync<LeSetDataLength>,
 {
@@ -397,16 +405,19 @@ where
     // Put this in static memory instead of the stack, we got some very short messages without this, did we corrupt the
     // stack? How can we detect that?
     // Still getting connection termination.
-    let support = {
-        static STATE: StaticCell<ActualPairSupport> = StaticCell::new();
-        STATE.init(ActualPairSupport::default())
-    };
-
+    // let support = {
+    //     static STATE: StaticCell<
+    //         ActualPairSupport<embassy_rp::trng::Trng<'_, embassy_rp::trng::Instance>>,
+    //     > = StaticCell::new();
+    //     STATE.init)
+    // };
+    let mut support = ActualPairSupport::new(rng);
+    let support = &mut support;
 
     let _ = join(ble_task(runner), async {
         loop {
             match hap_context
-                .advertise(&mut accessory,  support, &mut peripheral)
+                .advertise(&mut accessory, support, &mut peripheral)
                 .await
             {
                 Ok(conn) => {
@@ -419,17 +430,13 @@ where
                         .expect("Failed to create attribute server");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let hap_services = server.as_hap();
-                    let a = hap_context.gatt_events_task(
-                        &mut accessory,
-                         support,
-                        &hap_services,
-                        &conn,
-                    );
+                    let a =
+                        hap_context.gatt_events_task(&mut accessory, support, &hap_services, &conn);
 
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
                     if let Err(e) = a.await {
-                         error!("Error occured in processing: {:?}", e);
+                        error!("Error occured in processing: {:?}", e);
                     }
                 }
                 Err(e) => {
@@ -498,9 +505,11 @@ use trouble_host::prelude::ExternalController;
 //use {defmt_rtt as _, panic_probe as _};
 
 use embassy_rp::peripherals::PIO2;
+use embassy_rp::peripherals::TRNG;
 use embassy_rp::pio::InterruptHandler as PioInterruptHandler;
 bind_interrupts!(struct Irqs {
     PIO2_IRQ_0 => PioInterruptHandler<PIO2>;
+    TRNG_IRQ => embassy_rp::trng::InterruptHandler<TRNG>;
 });
 
 #[embassy_executor::task]
@@ -543,8 +552,9 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
         cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
     unwrap!(spawner.spawn(cyw43_task(runner)));
     control.init(clm).await;
-
     let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
+
+    let mut trng = embassy_rp::trng::Trng::new(p.TRNG, Irqs, embassy_rp::trng::Config::default());
 
     // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
 
@@ -554,5 +564,5 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     //     bulb_pin.set_level(if state { Level::High } else { Level::Low });
     // };
 
-    run(controller, control).await;
+    run(controller, control, trng).await;
 }

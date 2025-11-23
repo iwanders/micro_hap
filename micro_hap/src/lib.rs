@@ -804,49 +804,47 @@ impl AccessoryInterface for NopAccessory {
 /// Trait for functionality the platform should provide.
 ///
 /// These methods provide things like random number generation and key value storage.
-pub trait PlatformSupport: Send {
+pub trait PlatformSupport {
     /// Return the time of this platform
     fn get_time(&self) -> embassy_time::Instant;
 
     /// Retrieve the long term secret key.
-    fn get_ltsk(&self) -> impl Future<Output = [u8; ED25519_LTSK]> + Send;
+    fn get_ltsk(&self) -> impl Future<Output = [u8; ED25519_LTSK]>;
 
     /// Fill the specified buffer with random bytes from a cryptographically secure source.
-    fn fill_random(&mut self, buffer: &mut [u8]) -> impl Future<Output = ()> + Send;
+    fn fill_random(&mut self, buffer: &mut [u8]) -> impl Future<Output = ()>;
 
     /// Store a new pairing.
     fn store_pairing(
         &mut self,
         pairing: &Pairing,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>>;
 
     /// Retrieve a pairing, or None if it doesn't exist.
     fn get_pairing(
         &mut self,
         id: &PairingId,
-    ) -> impl Future<Output = Result<Option<Pairing>, InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<Option<Pairing>, InterfaceError>>;
 
     /// Remove a pairing id.
     fn remove_pairing(
         &mut self,
         id: &PairingId,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>>;
 
     /// Return a boolean indicating there is at least one pairing.
-    fn is_paired(&mut self) -> impl Future<Output = Result<bool, InterfaceError>> + Send;
+    fn is_paired(&mut self) -> impl Future<Output = Result<bool, InterfaceError>>;
 
     /// Retrieve the global state number, this is used by the BLE transport.
-    fn get_global_state_number(&self) -> impl Future<Output = Result<u16, InterfaceError>> + Send;
+    fn get_global_state_number(&self) -> impl Future<Output = Result<u16, InterfaceError>>;
     /// Set the global state number, this is used by the BLE transport.
     fn set_global_state_number(
         &mut self,
         value: u16,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>>;
 
     /// Advance the global state number by one, write the new value and return it.
-    fn advance_global_state_number(
-        &mut self,
-    ) -> impl Future<Output = Result<u16, InterfaceError>> + Send {
+    fn advance_global_state_number(&mut self) -> impl Future<Output = Result<u16, InterfaceError>> {
         async move {
             let old = self.get_global_state_number().await?;
             let new = old.wrapping_add(1);
@@ -856,21 +854,18 @@ pub trait PlatformSupport: Send {
         }
     }
 
-    fn get_config_number(&self) -> impl Future<Output = Result<u8, InterfaceError>> + Send;
-    fn set_config_number(
-        &mut self,
-        value: u8,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    fn get_config_number(&self) -> impl Future<Output = Result<u8, InterfaceError>>;
+    fn set_config_number(&mut self, value: u8) -> impl Future<Output = Result<(), InterfaceError>>;
 
     /// Retrieve the BLE broadcast parameters
     fn get_ble_broadcast_parameters(
         &self,
-    ) -> impl Future<Output = Result<crate::ble::broadcast::BleBroadcastParameters, InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<crate::ble::broadcast::BleBroadcastParameters, InterfaceError>>;
     /// Set the BLE broadcast parameters
     fn set_ble_broadcast_parameters(
         &mut self,
         params: &crate::ble::broadcast::BleBroadcastParameters,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>>;
 
     /// Set the broadcast configuration for a characteristic.
     // The reference just stores this into a single byte array by accessory id (always 1), and then (cid, v) where
@@ -879,12 +874,12 @@ pub trait PlatformSupport: Send {
         &mut self,
         char_id: CharId,
         configuration: ble::BleBroadcastInterval,
-    ) -> impl Future<Output = Result<(), InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<(), InterfaceError>>;
     /// Get the broadcast configuration for a characteristic.
     fn get_ble_broadcast_configuration(
         &mut self,
         char_id: CharId,
-    ) -> impl Future<Output = Result<Option<ble::BleBroadcastInterval>, InterfaceError>> + Send;
+    ) -> impl Future<Output = Result<Option<ble::BleBroadcastInterval>, InterfaceError>>;
 }
 
 #[derive(Debug)]
