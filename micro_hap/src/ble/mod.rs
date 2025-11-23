@@ -1010,7 +1010,7 @@ impl<'c> HapPeripheralContext<'c> {
                 self.should_encrypt_reply = false;
                 data
             } else {
-                warn!("handle_write_incoming raw {:?}", data);
+                trace!("handle_write_incoming raw {:?}", data);
                 // Raw write data [49, f0, c7, b1, 91, d4, d9, f9, 44, b9, 50, f0, c4, 67, a6, 6, c8, 6d, f9, fe, dc]
                 // Raw write data [ed, 4c, 8a, f4, 7e, ca, bf, 1a, 1, 9, 55, 6e, 95, 24, dc, a, 7a, 7d, 83, 3d, 30]
                 // Yes, these are encrypted.
@@ -1033,10 +1033,10 @@ impl<'c> HapPeripheralContext<'c> {
         } else {
             data
         };
-        warn!("handle_write_incoming {:?}", data);
+        trace!("handle_write_incoming {:?}", data);
 
         let header = pdu::RequestHeader::parse_pdu(data)?;
-        warn!("Write header {:?}", header);
+        info!("Write header {:?}", header);
 
         #[allow(unreachable_code)]
         let resp = match header.opcode {

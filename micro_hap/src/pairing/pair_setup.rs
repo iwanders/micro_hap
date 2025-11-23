@@ -318,12 +318,12 @@ pub async fn pair_setup_process_get_m2(
 
     // fill b with random;
     support.fill_random(&mut ctx.server.pair_setup.b).await;
-    info!("random b: {:?}", &ctx.server.pair_setup.b);
+    trace!("random b: {:?}", &ctx.server.pair_setup.b);
     // Then, we derive the public key B.
 
     let server = homekit_srp_server();
 
-    info!("Going into public ephemeral");
+    trace!("Going into public ephemeral");
     // Calculate the public ephemeral data.
     server.compute_public_ephemeral(
         &ctx.server.pair_setup.b,
@@ -337,17 +337,17 @@ pub async fn pair_setup_process_get_m2(
 
     let mut writer = TLVWriter::new(data);
 
-    info!(
+    trace!(
         "writing setup state: {:?}",
         &ctx.server.pair_setup.setup.state
     );
     writer = writer.add_entry(TLVType::State, &ctx.server.pair_setup.setup.state)?;
 
     // NONCOMPLIANCE: They skip leading zeros, do we need that? Sounds like a minor improvement?
-    info!("writing B: ");
+    trace!("writing B: ");
     writer = writer.add_slice(TLVType::PublicKey, &ctx.server.pair_setup.B)?;
 
-    info!("writing salt: {:?}", &ctx.info.salt);
+    trace!("writing salt: {:?}", &ctx.info.salt);
     writer = writer.add_slice(TLVType::Salt, &ctx.info.salt)?;
 
     // Make flags, we only needed this during the software authentication approach from the start.
@@ -359,7 +359,6 @@ pub async fn pair_setup_process_get_m2(
     writer = writer.add_entry(TLVType::Flags, &flags)?;
     */
 
-    info!("returning");
     Ok(writer.end())
 }
 
@@ -385,12 +384,12 @@ pub fn pair_setup_process_get_m4(
         .compute_shared_secret(public_b, b, v, public_a, &mut premaster)
         .map_err(|_| PairingError::BadPublicKey)?;
 
-    info!("premaster: {:02?}", &premaster);
+    trace!("premaster: {:02?}", &premaster);
 
     server.session_key(&premaster, &mut ctx.server.pair_setup.K);
 
     // What's the difference between K and S? First 64 bytes of S seems to be K?
-    info!("Calculated K: {:02?}", ctx.server.pair_setup.K);
+    trace!("Calculated K: {:02?}", ctx.server.pair_setup.K);
 
     // we also have to check m1 :(
     let mut calculated_m1 = [0u8; SRP_PROOF_BYTES];
@@ -405,8 +404,8 @@ pub fn pair_setup_process_get_m4(
         &mut calculated_m1,
     );
 
-    info!("got_m1: {:02?}", ctx.server.pair_setup.m1);
-    info!("calculated_m1: {:02?}", calculated_m1);
+    trace!("got_m1: {:02?}", ctx.server.pair_setup.m1);
+    trace!("calculated_m1: {:02?}", calculated_m1);
     if &ctx.server.pair_setup.m1 != &calculated_m1 {
         // NONCOMPLIANCE: Do something with counters to keep track of unsuccessful attempts.
         return Err(PairingError::BadProof);
@@ -419,7 +418,7 @@ pub fn pair_setup_process_get_m4(
         client_proof_m1,
         &mut ctx.server.pair_setup.m2,
     );
-    info!("calculated_m2: {:02?}", ctx.server.pair_setup.m2);
+    trace!("calculated_m2: {:02?}", ctx.server.pair_setup.m2);
 
     // oh, now we need something with hkdf_sha512...
 
@@ -429,7 +428,7 @@ pub fn pair_setup_process_get_m4(
         PAIR_SETUP_ENCRYPT_INFO.as_bytes(),
         &mut ctx.server.pair_setup.session_key,
     )?;
-    info!(
+    trace!(
         "ctx.server.pair_setup.session_key: {:02?}",
         ctx.server.pair_setup.session_key
     );

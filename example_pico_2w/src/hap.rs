@@ -249,7 +249,7 @@ impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a
 // use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
 // use bt_hci::cmd::le::LeSetDataLength;
 // use bt_hci::controller::ControllerCmdSync;
-const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1a, 0x07, 0xe4, 0xff];
+const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1a, 0x02, 0xe4, 0xff];
 /// Run the BLE stack.
 pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
     controller: C,
