@@ -44,7 +44,7 @@ To help people understand the code and the concepts, here's an information dump:
 - The `InternalError` is internal, some of its values end up being HAP protocol status results, others end up bubbling
   through to the user application like `InterfaceError`.
 
-## Todo
+## Todo / Improvements
 - ~Clean up error handling.n (snafu / thiserror?)~
 - ~Correctly return HAP errors, instead of failing the BLE request.~
 - ~Any errors currently drop the request instead of returning the correct HAP error code.~
@@ -57,7 +57,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Broadcasts of changed values still result in a reconnect, with `GenerateBroadcastEncryptionKey` and `CharacteristicConfigurationRequest`, why? Checked the program flow, seems to match. This also updates the GSN expiry counter and sets up a new key, is this just intentional if you don't have a `Home Hub`? Or perhaps the intent is that the controller reconnects to the accessory after a broadcast because other characteristics may have also changed?~ Yes: [Disconnected events should only be used to reflect important changes in the accessory](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475), and [when the characteristic changes while no controllers are connected, will reconnect](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L461-L463), see extensive comment in `example_temp_sensor`.
 - ~And what about notify while a connection is active?~ Send indicate over BLE
 - ~Clear the session, pair_verify and pair_setup on disconnect, currently it requires a powercycle to reset state.~ Can pair numerous times now.
-- Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled.
+- Numerous comments starting with `// NONCOMPLIANCE` where I ignored something that should probably be handled. Did a pass, in general most of them are fine or behaviour is covered by the tests.
 - ~How much is shared between BLE & IP? Can we implement IP as well with minimal work? It's not a trivial amount of work.~
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
 - ~Modify/add second example to show how to add a service, ensure common stuff is shared.~

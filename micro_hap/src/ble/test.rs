@@ -20,6 +20,9 @@ fn test_characteristics() {
     // b0 03
     let z = CharacteristicProperties::from_bits(u16::from_le_bytes([0xb0, 0x03]));
     info!("[0xb0, 0x03]: {:#?}", z);
+
+    let broadcast_enabled: bool = true;
+    assert_eq!((broadcast_enabled as u16), 0x0001);
 }
 
 #[gatt_server]
@@ -57,10 +60,7 @@ type Control = crate::HapControlChannel<Mutex, CONTROL_CHANNEL_N>;
 
 fn crate_hap_context(
     server: &Server<'static>,
-) -> (
-    &'static crate::HapControlChannel<Mutex, CONTROL_CHANNEL_N>,
-    HapPeripheralContext<'static>,
-) {
+) -> (&'static Control, HapPeripheralContext<'static>) {
     let name = "Acme Light Bulb";
     // Setup the accessory information.
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/App.c#L124
@@ -230,7 +230,6 @@ async fn test_hap_worker(
 > {
     let (control_channel, mut ctx) = values;
     reset_context(&mut ctx).await;
-    let name = "Acme Light Bulb";
     let hap = server.as_hap();
 
     struct LightBulbAccessory {

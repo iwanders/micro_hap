@@ -53,28 +53,6 @@ pub async fn broadcast_generate_key(
     Ok(())
 }
 
-// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L208
-// https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L317
-// Combination of HAPBLECharacteristicEnableBroadcastNotifications and HAPBLECharacteristicDisableBroadcastNotifications
-//
-// also an hint is https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BBroadcast.c#L135
-/*
-pub fn configure_broadcast_notzification(
-    broadcast_enabled: bool,
-    interval: super::pdu::BleBroadcastInterval,
-    char_id: CharId,
-) -> Result<(), super::HapBleError> {
-    let _ = (broadcast_enabled, interval);
-    // How does this work is it just 3 bytes ( bool | interval[0,1] )
-
-    // NONCOMPLIANCE: Completely ignoring this whole broadcast thing.
-    error!(
-        "skipping broadcast configuration for char id 0x{:02?}",
-        char_id
-    );
-    Ok(())
-}*/
-
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEAccessoryServer%2BAdvertising.c#L85
 //
 // They have some calls to HAPBLEAdvertisingIntervalCreateFromMilliseconds but I think that's handled at another layer for us?

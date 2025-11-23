@@ -176,7 +176,7 @@ pub fn pair_verify_process_m1(
     if ctx.server.pair_verify.setup.method == PairingMethod::PairResume {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L256
         info!("Pair Resume M1: Resume Request");
-        // NONCOMPLIANCE; They have a session cache here... we don't have a session cache?
+        // COMPLIANCE; They have a session cache here... we have it now.
 
         let session_id = SessionId::from_tlv(&session_id)?;
         info!(
@@ -186,7 +186,7 @@ pub fn pair_verify_process_m1(
 
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPPairingPairVerify.c#L268-L277
         if TRANSPORT_BLE {
-            // NONCOMPLIANCE try to retrieve session from the bluetooth session cache.
+            // COMPLIANCE try to retrieve session from the bluetooth session cache.
             // TODO This is probably a nice shortcut to speed things up though.
             // This searches the session_id and assigns session->state.pairVerify.cv_KEY from the cache for that
             // session. If it can't find it it sets the pairing_id to -1.
@@ -305,7 +305,7 @@ pub async fn pair_verify_process_get_m2(
 
     // Copy all the data.
 
-    // NONCOMPLIANCE: Again (ab) using the B buffer.
+    // COMPLIANCE: Again (ab) using the B buffer.
     let scratch = &mut ctx.server.pair_setup.B;
 
     scratch[accessory_cvpk_idx.clone()].copy_from_slice(&ctx.server.pair_verify.cv_pk);

@@ -294,7 +294,7 @@ impl PairCode {
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Pairing {
     pub id: PairingId,
-    // NONCOMPLIANCE; Why do we have a numIdentifierBytes here if it is constant?
+    // Original implementation has a numIdentifierBytes field, but it is also a constant value.
     pub public_key: PairingPublicKey,
     pub permissions: u8,
 }

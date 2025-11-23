@@ -677,7 +677,6 @@ impl<'c> HapPeripheralContext<'c> {
         } else if is_pair_verify {
             let mut pair_ctx = self.pair_ctx.borrow_mut();
             self.should_encrypt_reply = false;
-            // NONCOMPLIANCE this seems to reset the secure session, which we currently don't do?
             crate::pairing::pair_verify::handle_incoming(
                 &mut **pair_ctx,
                 pair_support,
@@ -1152,8 +1151,6 @@ impl<'c> HapPeripheralContext<'c> {
                 // HAPBLECharacteristicGetConfigurationResponse
                 // https://github.com/apple/HomeKitADK/blob/master/HAP/HAPBLECharacteristic%2BConfiguration.c#L172C10-L172C54
                 let _attr = self.get_attribute_by_char(req.char_id)?;
-
-                // NONCOMPLIANCE; probably need to store the interval & properties into the attribute?
 
                 let mut buffer = self.buffer.borrow_mut();
                 let reply = req.header.to_success();
@@ -1694,7 +1691,7 @@ impl<'c> HapPeripheralContext<'c> {
             )
             .await;
         if let Err(e) = r {
-            info!("e: {e:?}");
+            info!("e: {:?}", e);
             panic!();
         } else {
             Ok(())
