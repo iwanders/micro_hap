@@ -10,8 +10,8 @@ resolver = "2"
 trouble-host = { features = [
     "peripheral",
     "default-packet-pool-mtu-1024",
-  #  ], git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b" }
-], path = "../../trouble/host" }
+    ], git = "https://github.com/embassy-rs/trouble", rev = "51cf300cb4951370ce043ffe5f67594a420cfd3e" }
+#], path = "../../trouble/host" }
 # ble deps
 # trouble-host = { path="../../, features = [
 #     "peripheral",

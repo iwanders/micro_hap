@@ -73,7 +73,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.
-- File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indiate` functionality, because `notify != indicate`.
+- ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indiate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
 - Go through all the log / defmt prints and ensure the level makes sense.
 
 ## example_std
@@ -85,6 +85,8 @@ It also requires freeing that interface, usually by disabling your bluetooth ser
 This contains multiple examples:
 - `example_lightbulb` The default lightbulb example with just an on-off toggle.
 - `example_rgb` This contains two lightbulbs, one that allows modifying the color temperature, and one that facilitates hue, staturation and brightness configuration.
+- `example_temp_sensor`: This fakes a temperature sensor and broadcasts its value.
+- `example_mutually_exclusive`: This contains two lightbulbs, which uses indicate to disable the other lightbulb if you try to switch both on.
 
 ## example_pico_2w
 This example is a gutted version of the project I'm originally developing this for.

@@ -1468,6 +1468,7 @@ dependencies = [
 [[package]]
 name = "trouble-host"
 version = "0.5.0"
+source = "git+https://github.com/embassy-rs/trouble?rev=51cf300cb4951370ce043ffe5f67594a420cfd3e#51cf300cb4951370ce043ffe5f67594a420cfd3e"
 dependencies = [
  "bt-hci",
  "defmt 1.0.1",
@@ -1487,6 +1488,7 @@ dependencies = [
 [[package]]
 name = "trouble-host-macros"
 version = "0.3.0"
+source = "git+https://github.com/embassy-rs/trouble?rev=51cf300cb4951370ce043ffe5f67594a420cfd3e#51cf300cb4951370ce043ffe5f67594a420cfd3e"
 dependencies = [
  "convert_case",
  "darling",
