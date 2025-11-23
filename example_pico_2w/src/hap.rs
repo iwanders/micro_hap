@@ -1,5 +1,5 @@
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
-use defmt::{error, info, unwrap, warn};
+use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
@@ -8,11 +8,9 @@ use embassy_rp::peripherals::DMA_CH0;
 use embassy_rp::pio::Pio;
 use static_cell::StaticCell;
 
-use embassy_futures::{join::join, select::select};
-use embassy_time::Timer;
+use embassy_futures::join::join;
 use micro_hap::IntoBytesForAccessoryInterface;
 use trouble_host::prelude::*;
-use zerocopy::IntoBytes;
 
 use micro_hap::{
     ble::broadcast::BleBroadcastParameters, ble::HapBleService, ble::TimedWrite,
@@ -233,7 +231,7 @@ impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a
         if configuration == BleBroadcastInterval::Disabled {
             self.ble_broadcast_config.remove(&char_id);
         } else {
-            self.ble_broadcast_config.insert(char_id, configuration);
+            let _ = self.ble_broadcast_config.insert(char_id, configuration);
         }
         Ok(())
     }
@@ -380,6 +378,7 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
     };
     let control_receiver = control_channel.get_receiver();
     let control_sender: micro_hap::HapInterfaceSender<'_> = control_channel.get_sender();
+    let _ = &control_sender;
 
     // This is also pretty big on the stack :/
     let mut hap_context = micro_hap::ble::HapPeripheralContext::new(
@@ -477,35 +476,6 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     }
 }
 
-/// Example task to use the BLE notifier interface.
-/// This task will notify the connected central of a counter value every 2 seconds.
-/// It will also read the RSSI value every 2 seconds.
-/// and will stop when the connection is closed by the central or an error occurs.
-async fn custom_task<C: Controller, P: PacketPool>(
-    server: &Server<'_>,
-    conn: &GattConnection<'_, '_, P>,
-    stack: &Stack<'_, C, P>,
-) {
-    let _ = server;
-    let mut tick: u8 = 0;
-    // let level = server.battery_service.level;
-    loop {
-        tick = tick.wrapping_add(1);
-        info!("[custom_task] notifying connection of tick {}", tick);
-        /*if level.notify(conn, &tick).await.is_err() {
-            info!("[custom_task] error notifying connection");
-            break;
-        };*/
-        // read RSSI (Received Signal Strength Indicator) of the connection.
-        if let Ok(rssi) = conn.raw().rssi(stack).await {
-            info!("[custom_task] RSSI: {:?}", rssi);
-        } else {
-            info!("[custom_task] error getting RSSI");
-            break;
-        };
-        Timer::after_secs(2).await;
-    }
-}
 use trouble_host::prelude::ExternalController;
 //use {defmt_rtt as _, panic_probe as _};
 
@@ -559,7 +529,7 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     control.init(clm).await;
     let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
 
-    let mut trng = embassy_rp::trng::Trng::new(p.TRNG, Irqs, embassy_rp::trng::Config::default());
+    let trng = embassy_rp::trng::Trng::new(p.TRNG, Irqs, embassy_rp::trng::Config::default());
 
     // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
 

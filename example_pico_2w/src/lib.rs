@@ -11,7 +11,6 @@ pub mod usb_picotool_reset;
 use embassy_executor::Spawner;
 
 use defmt::{error, info, unwrap};
-use embassy_rp::gpio::{Level, Output};
 
 use embassy_rp::bind_interrupts;
 use embassy_time::{Duration, Timer};
@@ -136,7 +135,8 @@ pub async fn main(spawner: Spawner) {
     // Run the USB device.
     unwrap!(spawner.spawn(usb_task(usb)));
 
-    let (tx, mut rx) = cdc_class_full.split();
+    let (tx, rx) = cdc_class_full.split();
+    let _ = rx;
 
     //defmt_serial::runner(spawner, defmt_serial::WritableSerial::new(tx)).await;
     let logger = defmt_serial::SerialLogger::new(tx);
