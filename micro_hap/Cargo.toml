@@ -57,7 +57,6 @@ serde = { version = "1.0", features = ["derive"], default-features=false, option
 [dev-dependencies]
 
 embassy-futures = "0.1.1"
-embassy-time = "0.5"
 
 critical-section = { version = "1.2", features = ["std"]}
 

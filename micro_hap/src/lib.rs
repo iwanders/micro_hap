@@ -747,6 +747,8 @@ impl<'a> core::fmt::Debug for HapInterfaceReceiver<'a> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
 enum HapEvent {
     CharacteristicChanged(CharId),

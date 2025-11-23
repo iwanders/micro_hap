@@ -68,6 +68,7 @@ use trouble_host::prelude::{AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOV
 
 use crate::{CharId, Characteristic, DeviceId, InterfaceError, PlatformSupport, SetupId};
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
 pub struct AdvertiseFlow {
     pub advertise_data: heapless::Vec<u8, 31>,
@@ -76,6 +77,7 @@ pub struct AdvertiseFlow {
     pub until: Option<embassy_time::Instant>,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
 pub struct AdvertiseInfo<'a> {
     pub device_id: &'a DeviceId,
