@@ -4,7 +4,7 @@ use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
 mod services {
-    use micro_hap::ble::{FacadeDummyType, HapBleError, HapBleService, sig};
+    use micro_hap::ble::{FacadeDummyType, HapBleError, sig};
     use micro_hap::{
         BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
         ServiceProperties, SvcId, characteristic, descriptor, service,

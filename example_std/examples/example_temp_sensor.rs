@@ -18,8 +18,8 @@ mod hap_temp_sensor {
     use micro_hap::{
         BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
         ServiceProperties, SvcId,
-        ble::{FacadeDummyType, HapBleError, HapBleService, sig},
-        characteristic, descriptor, service,
+        ble::{FacadeDummyType, HapBleError, sig},
+        characteristic, descriptor,
         uuid::HomekitUuid16,
     };
     use trouble_host::prelude::*;
@@ -136,17 +136,10 @@ mod hap_temp_accessory {
     use example_std::RuntimeConfig;
     use example_std::{ActualPairSupport, AddressType, make_address};
 
-    use embassy_futures::join::join;
     use log::info;
-    use micro_hap::ble::HapBleService;
-    use static_cell::StaticCell;
     use trouble_host::prelude::*;
-    use zerocopy::IntoBytes;
 
-    use micro_hap::{
-        AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
-        ble::TimedWrite,
-    };
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
 
     // Put the value in a mutexed arc, that way we can modify it freely.
     type SharedF32 = std::sync::Arc<std::sync::Mutex<f32>>;

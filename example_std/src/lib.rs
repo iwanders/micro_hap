@@ -1,6 +1,6 @@
 use anyhow::Context;
 use embassy_futures::join::join;
-use log::{error, info, warn};
+use log::error;
 use micro_hap::PairCode;
 use micro_hap::{
     BleBroadcastInterval, CharId, DeviceId, InterfaceError, PlatformSupport, SetupId,

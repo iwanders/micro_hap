@@ -1580,7 +1580,7 @@ impl<'c> HapPeripheralContext<'c> {
             let flow = self
                 .advertise_manager
                 .borrow_mut()
-                .create_advertisement(&info, accessory, support)
+                .create_advertisement(&info, support)
                 .await?;
             info!("at  {:?}", flow);
             info!("at {:?}:{:?}", file!(), line!());
@@ -1593,8 +1593,7 @@ impl<'c> HapPeripheralContext<'c> {
             let params = AdvertisementParameters {
                 interval_min,
                 interval_max,
-                // tx_power: trouble_host::advertise::TxPower::Plus20dBm, // lets send with oomph.
-                // max_events: Some(5),
+                tx_power: trouble_host::advertise::TxPower::Plus20dBm, // lets send with oomph.
                 ..Default::default()
             };
             let advertiser = peripheral
@@ -1715,7 +1714,7 @@ impl<'c> HapPeripheralContext<'c> {
 
         self.advertise_manager
             .borrow_mut()
-            .create_advertisement(&info, accessory, support)
+            .create_advertisement(&info, support)
             .await
     }
     pub async fn service<
@@ -1771,7 +1770,7 @@ impl<'c> HapPeripheralContext<'c> {
                                 // run until any task ends (usually because the connection has been closed),
                                 // then return to advertising state.
                                 if let Err(e) = a.await {
-                                    error!("Error occured in processing: {e:?}");
+                                    error!("Error occured in processing: {:?}", e);
                                 }
                             }
                             Err(e) => {

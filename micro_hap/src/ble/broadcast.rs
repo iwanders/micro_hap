@@ -1,6 +1,5 @@
 use zerocopy::IntoBytes;
 
-use crate::ble::HapBleError;
 use crate::crypto::hkdf_sha512;
 use crate::pairing::PairingError;
 use crate::{AccessoryContext, CharId, InterfaceError, PlatformSupport};

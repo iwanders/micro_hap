@@ -85,7 +85,7 @@ pub struct AdvertiseInfo<'a> {
 }
 
 const ADVERTISE_HIGH_RATE: u64 = 20;
-const ADVERTISE_REGULAR_RATE: u64 = 100;
+const ADVERTISE_REGULAR_RATE: u64 = 200;
 /*
  * Mode is used to govern the statemachine, all paths lead to General.
  * After the connection disconnects we go to GeneralHighRate
@@ -209,7 +209,6 @@ impl AdvertiseManager {
     pub async fn create_advertisement(
         &mut self,
         info: &AdvertiseInfo<'_>,
-        accessory: &mut impl crate::AccessoryInterface,
         support: &mut impl PlatformSupport,
     ) -> Result<AdvertiseFlow, InterfaceError> {
         // Execute the state machine.

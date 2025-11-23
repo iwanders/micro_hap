@@ -331,17 +331,12 @@ mod hap_rgb {
     use super::hap_rgb_bulb;
     use example_std::{ActualPairSupport, AddressType, RuntimeConfig, make_address};
 
-    use embassy_futures::join::join;
     use log::info;
     use micro_hap::ble::HapBleService;
-    use static_cell::StaticCell;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 
-    use micro_hap::{
-        AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
-        ble::TimedWrite,
-    };
+    use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     #[repr(C)]
