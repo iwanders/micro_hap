@@ -45,7 +45,7 @@ pub async fn pairing_pairing_handle_incoming(
 
             TLVReader::new(&data).read_into(&mut [&mut public_key, &mut permissions])?;
 
-            let method = *(method.try_from::<PairingMethod>()?);
+            let method = method.try_from::<PairingMethod>()?;
             if method != PairingMethod::AddPairing
                 && method != PairingMethod::RemovePairing
                 && method != PairingMethod::ListPairings

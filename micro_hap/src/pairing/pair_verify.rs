@@ -147,7 +147,7 @@ pub fn pair_verify_process_m1(
     info!("Pair Verify M1: Verify Start Request");
     // let _ = (session_id, encrypted_data);
 
-    let state = *state.try_from::<PairState>()?;
+    let state = state.try_from::<PairState>()?;
     if state != PairState::ReceivedM1 {
         return Err(PairingError::IncorrectState);
     }
@@ -460,7 +460,7 @@ pub async fn pair_verify_process_m3(
 ) -> Result<(), PairingError> {
     info!("Pair Verify M3: Verify Start Request");
 
-    let state = *state.try_from::<PairState>()?;
+    let state = state.try_from::<PairState>()?;
     if state != PairState::ReceivedM3 {
         return Err(PairingError::IncorrectState);
     }

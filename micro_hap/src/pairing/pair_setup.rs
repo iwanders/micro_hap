@@ -131,10 +131,10 @@ pub fn pair_setup_process_m1(
     // info!("state: {:?}", state);
     // info!("flags: {:?}", flags);
 
-    ctx.server.pair_setup.setup.method = *method;
+    ctx.server.pair_setup.setup.method = method;
     // NONCOMPLIANCE: flags present is not set to false.
     //ctx.server.flags = PairingFlags::from_bits(flags.to_u32()?);
-    ctx.server.pair_setup.setup.state = *state.try_from::<PairState>()?;
+    ctx.server.pair_setup.setup.state = state.try_from::<PairState>()?;
 
     Ok(())
 }
@@ -149,7 +149,7 @@ pub fn pair_setup_process_m3(
 ) -> Result<(), PairingError> {
     info!("hit setup process m3");
 
-    let state = *state.try_from::<PairState>()?;
+    let state = state.try_from::<PairState>()?;
     if state != PairState::ReceivedM3 {
         return Err(PairingError::IncorrectState);
     }
@@ -182,7 +182,7 @@ pub async fn pair_setup_process_m5(
 ) -> Result<(), PairingError> {
     info!("Pair Setup M5: Exchange Request.");
 
-    let state = *state.try_from::<PairState>()?;
+    let state = state.try_from::<PairState>()?;
     if state != PairState::ReceivedM5 {
         return Err(PairingError::IncorrectState);
     }

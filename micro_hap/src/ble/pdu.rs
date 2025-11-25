@@ -1109,7 +1109,7 @@ mod test {
             //.with_supports_disconnect_notification(true)
             .with_supports_broadcast_notification(true);
         let mut new_buffer = [0u8; 20];
-        let len = crate::ble::BodyBuilder::new(&mut new_buffer)
+        let _len = crate::ble::BodyBuilder::new(&mut new_buffer)
             .add_characteristic_properties(properties)
             .end();
 
@@ -1129,7 +1129,7 @@ mod test {
                         let short = entry.short_data().unwrap();
                         println!("   properties: {v:?} from {entry:?}  with {short:?}");
                         assert_eq!(short, &[144, 2]);
-                        assert_eq!(*v.unwrap(), properties);
+                        assert_eq!(v.unwrap(), properties);
                         /*
                         let x = u16::from_le_bytes([
                             entry.short_data().unwrap()[0],

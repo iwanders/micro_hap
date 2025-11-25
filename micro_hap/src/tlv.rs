@@ -198,12 +198,9 @@ impl<'a> TLV<'a> {
     }
 
     /// Try to interpret the data as a zerocopy-enabled type.
-    pub fn try_from<T: TryFromBytes + KnownLayout + Immutable>(&self) -> Result<&T, TLVError> {
-        T::try_ref_from_prefix(self.short_data()?)
-            .map_err(|e| {
-                info!("e: {e:?}");
-                TLVError::UnexpectedValue
-            })
+    pub fn try_from<T: TryFromBytes + KnownLayout + Immutable>(&self) -> Result<T, TLVError> {
+        T::try_read_from_prefix(self.short_data()?)
+            .map_err(|_e| TLVError::UnexpectedValue)
             .map(|(a, _remaining)| a)
     }
 
@@ -244,7 +241,7 @@ impl<'a> TLV<'a> {
         &self,
     ) -> Result<T, ()> {
         let x = self.type_id;
-        (<T>::try_ref_from_bytes(&[x])).map_err(|_| ()).copied()
+        (<T>::try_read_from_bytes(&[x])).map_err(|_| ())
     }
 }
 
