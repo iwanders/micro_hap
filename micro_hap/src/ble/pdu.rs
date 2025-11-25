@@ -418,7 +418,7 @@ pub struct CharacteristicExecuteWrite {
 }
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.h#L22-L26
-#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug)]
+#[derive(PartialEq, Eq, TryFromBytes, IntoBytes, Immutable, Debug, KnownLayout, Copy, Clone)]
 #[repr(u8)]
 pub enum BleTLVType {
     /// HAP-Param-Value.
@@ -760,9 +760,10 @@ impl<'a> BodyBuilder<'a> {
     }
 
     pub fn add_characteristic_properties(mut self, properties: CharacteristicProperties) -> Self {
+        let as_data = properties.as_bytes();
         self.push_slice(
             BleTLVType::HAPCharacteristicPropertiesDescriptor as u8,
-            &[properties.0],
+            as_data,
         );
         self
     }
@@ -1087,5 +1088,66 @@ mod test {
             &buffer[255..255 + 6],
             &[0xe3, 0x82, BleTLVType::Value as u8, 0x81, 0x1f, 0x03]
         );
+    }
+
+    #[test]
+    fn test_characteristic_signature_decode() {
+        crate::test::init();
+        let outgoing: &[u8] = &[
+            2, 177, 0, 69, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 17, 0, 0, 0, 7,
+            2, 48, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 138, 0, 0, 0, 10, 2,
+            144, 2, 12, 7, 20, 0, 47, 39, 1, 0, 0, 13, 8, 0, 0, 0, 0, 0, 0, 200, 66, 14, 4, 205,
+            204, 204, 61,
+        ];
+
+        let (resp, remainder) = ResponseHeader::parse_pdu_with_remainder(outgoing).unwrap();
+        println!("zresp: {resp:?}");
+
+        let properties = CharacteristicProperties::new()
+            .with_read(true)
+            .with_supports_event_notification(true)
+            //.with_supports_disconnect_notification(true)
+            .with_supports_broadcast_notification(true);
+        let mut new_buffer = [0u8; 20];
+        let len = crate::ble::BodyBuilder::new(&mut new_buffer)
+            .add_characteristic_properties(properties)
+            .end();
+
+        for (descr, data_slice) in [
+            ("created", &new_buffer[2..]),
+            ("from replay", &remainder[2..]),
+        ] {
+            println!("THis is {descr}");
+            let reader = crate::tlv::TLVReader::new(data_slice);
+            for entry in reader {
+                let entry = entry.unwrap();
+                let t = entry.try_type::<BleTLVType>().unwrap();
+                println!("   {t:?} entry: {entry:?}");
+                match t {
+                    BleTLVType::HAPCharacteristicPropertiesDescriptor => {
+                        let v = entry.try_from::<crate::CharacteristicProperties>();
+                        let short = entry.short_data().unwrap();
+                        println!("   properties: {v:?} from {entry:?}  with {short:?}");
+                        assert_eq!(short, &[144, 2]);
+                        assert_eq!(*v.unwrap(), properties);
+                        /*
+                        let x = u16::from_le_bytes([
+                            entry.short_data().unwrap()[0],
+                            entry.short_data().unwrap()[1],
+                        ]);
+                        println!("   0xu16: 0x{x:0>4x?}");
+                        let swapped = [
+                            entry.short_data().unwrap()[1],
+                            entry.short_data().unwrap()[0],
+                        ];
+                        let from_swapped =
+                            crate::CharacteristicProperties::try_ref_from_bytes(&swapped);
+                        println!("   from_swapped: {from_swapped:?}");
+                        */
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }

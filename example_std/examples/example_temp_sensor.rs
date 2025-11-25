@@ -52,10 +52,10 @@ mod hap_temp_sensor {
     use trouble_host::prelude::*;
 
     // This makes a lightbulb with a color temperature.
-    pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x40);
-    pub const CHAR_ID_TEMP_SENSOR_SIGNATURE: CharId = CharId(0x41);
-    pub const CHAR_ID_TEMP_SENSOR_VALUE: CharId = CharId(0x42);
-    pub const CHAR_ID_TEMP_LOW_BATTERY: CharId = CharId(0x43);
+    pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x30);
+    pub const CHAR_ID_TEMP_SENSOR_SIGNATURE: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 1);
+    pub const CHAR_ID_TEMP_SENSOR_VALUE: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 2);
+    pub const CHAR_ID_TEMP_LOW_BATTERY: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 3);
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.c#L23
     pub const CHARACTERISTIC_CURRENT_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x0011);

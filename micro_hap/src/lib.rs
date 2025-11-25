@@ -432,7 +432,7 @@ impl BleProperties {
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPBLEPDU%2BTLV.c#L93
 /// Properties for a characteristic
 #[bitfield(u16)]
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct CharacteristicProperties {
     #[bits(1)]
     pub read_open: bool, // readableWithoutSecurity
