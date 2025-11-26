@@ -40,6 +40,14 @@ use bt_hci_linux::Transport;
 // THere's a LOT of validation here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryValidation.c#L321
 // But it's basically Disconnected > Broadcast > Event Notification
 // So it doesn't rule out disabling disconnected events.
+//
+//
+// I've tried reproducing it with the reference implementation, see:
+// https://github.com/iwanders/HomeKitADK_program/tree/9f4512d4de91e1bb2d66ea0037a1ec3a8bcdf518/TemperatureSensor
+// This changes the lightbulb to the temperature sensor to the best of my knowledge, the IP transport makes this into
+// a working sensor, but the BLE side does display the 'this accessory needs an update', perhaps the disconnected events
+// do just always need to be set to true if broadcasts are set... and perhaps the guidance is just to not advance the GSN
+// and emit the broadcast message that causes a connection?
 
 mod hap_temp_sensor {
     use micro_hap::{
