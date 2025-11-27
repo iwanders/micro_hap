@@ -61,7 +61,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~How much is shared between BLE & IP? Can we implement IP as well with minimal work? It's not a trivial amount of work.~
 - ~Make the accessory interface async.~ it is now, the RPi Pico 2w example uses the built-in led, toggling requires an async function.
 - ~Modify/add second example to show how to add a service, ensure common stuff is shared.~
-- Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.
+- ~Perhaps a commissioning binary to create the salt & verifier, using the `PairingCode` type that now exists.~
 - ~Make the `PlatformSupport` methods async.~ Async now, but `PlatformSupport: Send` because `Send` is on all futures, this likely needs
   some changes in the future as we probably can't `Send` peripherals? Maybe just drop the bound?
 - ~Build out `characteristic_signature_request` to support range and step, probably needed for hue.~

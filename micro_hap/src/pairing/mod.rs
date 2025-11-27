@@ -251,7 +251,7 @@ impl PairCode {
     }
 
     /// Create a pairing code from a string, including the hyphens: `111-22-333`.
-    pub fn from_str(v: &'static str) -> Result<Self, ()> {
+    pub fn from_str(v: &str) -> Result<Self, ()> {
         let mut r = [0u8; 10];
         for (i, x) in v.chars().enumerate() {
             let correct_char = if i == 3 || i == 6 {
