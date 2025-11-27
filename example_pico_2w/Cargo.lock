@@ -1063,6 +1063,7 @@ dependencies = [
 name = "example_pico_2w"
 version = "0.1.0"
 dependencies = [
+ "chacha20",
  "cortex-m",
  "cortex-m-rt",
  "critical-section",

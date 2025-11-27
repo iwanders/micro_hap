@@ -6,9 +6,19 @@ use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::DMA_CH0;
 
 use embassy_rp::pio::Pio;
+use embassy_sync::watch::DynSender;
 use static_cell::StaticCell;
+use zerocopy::IntoBytes;
 
-use embassy_futures::join::join;
+use super::hap_temp_sensor;
+use chacha20::{
+    cipher::{KeyIvInit, StreamCipher},
+    ChaCha8,
+};
+
+use embassy_futures::{join::join, select::select};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_time::Timer;
 use micro_hap::IntoBytesForAccessoryInterface;
 use trouble_host::prelude::*;
 
@@ -16,21 +26,29 @@ use micro_hap::{
     ble::broadcast::BleBroadcastParameters, ble::HapBleService, ble::TimedWrite,
     AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PlatformSupport,
 };
-struct LightBulbAccessory<'a> {
+struct LightBulbAccessory<'a, 'b> {
     name: HeaplessString<32>,
     bulb_on_state: bool,
     bulb_control: cyw43::Control<'a>,
+    temperature_value: f32,
+    low_battery: bool,
+    latest_temperature: embassy_sync::watch::DynReceiver<'b, f32>,
 }
-impl<'a> AccessoryInterface for LightBulbAccessory<'a> {
-    async fn read_characteristic<'b>(
+impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
+    async fn read_characteristic<'z>(
         &self,
         char_id: CharId,
-        output: &'b mut [u8],
-    ) -> Result<&'b [u8], InterfaceError> {
+        output: &'z mut [u8],
+    ) -> Result<&'z [u8], InterfaceError> {
         if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
             self.name.read_characteristic_into(char_id, output)
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
             self.bulb_on_state.read_characteristic_into(char_id, output)
+        } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
+            self.temperature_value
+                .read_characteristic_into(char_id, output)
+        } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
+            self.low_battery.read_characteristic_into(char_id, output)
         } else {
             Err(InterfaceError::CharacteristicUnknown(char_id))
         }
@@ -81,6 +99,7 @@ struct Server {
     protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
     pairing: micro_hap::ble::PairingService,                            // 0x0055
     lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
+    temp_sensor: hap_temp_sensor::TemperatureSensorService,
 }
 impl Server<'_> {
     pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
@@ -94,7 +113,7 @@ impl Server<'_> {
 use micro_hap::pairing::{Pairing, PairingId, ED25519_LTSK};
 use micro_hap::BleBroadcastInterval;
 
-pub struct ActualPairSupport<'a, R: embassy_rp::trng::Instance> {
+pub struct ActualPairSupport {
     pub ed_ltsk: [u8; micro_hap::pairing::ED25519_LTSK],
     pub pairings: heapless::index_map::FnvIndexMap<
         micro_hap::pairing::PairingId,
@@ -104,14 +123,16 @@ pub struct ActualPairSupport<'a, R: embassy_rp::trng::Instance> {
     pub global_state_number: u16,
     pub config_number: u8,
     pub broadcast_parameters: BleBroadcastParameters,
-    pub rng: embassy_rp::trng::Trng<'a, R>,
-    pub random_bytes: &'static [u8],
-    pub random_byte_index: usize,
     pub ble_broadcast_config: heapless::index_map::FnvIndexMap<CharId, BleBroadcastInterval, 16>,
+    pub prng: ChaCha8,
 }
 
-impl<'a, R: embassy_rp::trng::Instance> ActualPairSupport<'a, R> {
-    fn new(rng: embassy_rp::trng::Trng<'a, R>) -> Self {
+impl ActualPairSupport {
+    fn new(rng_init: u128) -> Self {
+        let mut key = [0u8; 32];
+        key[0..16].copy_from_slice(rng_init.as_bytes());
+        let nonce = [0u8; 12];
+
         Self {
             ed_ltsk: [
                 182, 215, 245, 151, 120, 82, 56, 100, 73, 148, 49, 127, 131, 22, 235, 192, 207, 15,
@@ -122,44 +143,11 @@ impl<'a, R: embassy_rp::trng::Instance> ActualPairSupport<'a, R> {
             config_number: 1,
             broadcast_parameters: Default::default(),
             ble_broadcast_config: Default::default(),
-            // [random.randrange(0,255) for i in range(512)]
-            random_byte_index: 0,
-            random_bytes: &[
-                175, 37, 92, 197, 240, 140, 237, 84, 151, 244, 199, 38, 241, 51, 93, 148, 199, 20,
-                34, 56, 27, 118, 245, 101, 158, 19, 199, 132, 16, 59, 154, 45, 165, 249, 75, 158,
-                49, 89, 185, 246, 197, 61, 128, 246, 221, 171, 185, 58, 242, 94, 197, 84, 33, 34,
-                161, 158, 204, 239, 117, 116, 33, 41, 76, 189, 48, 116, 81, 96, 22, 127, 106, 112,
-                36, 136, 174, 148, 191, 67, 130, 107, 151, 195, 161, 24, 55, 115, 227, 169, 160,
-                22, 20, 21, 10, 1, 17, 132, 201, 237, 74, 170, 49, 105, 110, 219, 245, 239, 175,
-                17, 125, 145, 121, 13, 236, 155, 10, 43, 82, 64, 93, 242, 30, 37, 62, 190, 125,
-                131, 227, 61, 1, 123, 211, 166, 253, 141, 44, 239, 6, 82, 201, 207, 17, 155, 141,
-                67, 173, 172, 179, 224, 108, 177, 43, 137, 75, 18, 54, 61, 218, 252, 74, 98, 166,
-                173, 11, 250, 148, 21, 113, 107, 50, 17, 211, 75, 49, 223, 156, 14, 155, 196, 10,
-                97, 6, 107, 41, 123, 113, 57, 18, 89, 214, 62, 94, 165, 200, 83, 46, 81, 169, 114,
-                238, 52, 188, 111, 250, 175, 41, 42, 217, 55, 240, 89, 197, 48, 35, 252, 140, 224,
-                145, 22, 35, 96, 154, 251, 248, 90, 228, 2, 150, 233, 74, 82, 237, 175, 117, 167,
-                114, 150, 213, 24, 125, 186, 83, 203, 153, 127, 233, 93, 70, 24, 237, 113, 157, 43,
-                93, 220, 225, 210, 42, 130, 56, 200, 117, 248, 200, 19, 112, 241, 91, 6, 46, 159,
-                130, 251, 76, 86, 148, 134, 150, 97, 31, 240, 18, 211, 110, 42, 142, 73, 8, 27,
-                212, 169, 105, 250, 85, 12, 224, 103, 216, 183, 191, 54, 83, 5, 152, 180, 238, 124,
-                227, 83, 97, 207, 30, 126, 220, 244, 101, 43, 199, 152, 148, 51, 41, 187, 69, 10,
-                22, 210, 54, 141, 40, 136, 213, 249, 171, 21, 83, 230, 118, 199, 9, 90, 32, 48,
-                234, 1, 210, 148, 241, 75, 252, 26, 116, 64, 59, 212, 48, 6, 161, 248, 70, 55, 176,
-                95, 144, 58, 219, 60, 35, 115, 100, 49, 93, 86, 178, 68, 231, 211, 239, 156, 34,
-                27, 39, 31, 110, 108, 171, 17, 202, 133, 170, 254, 156, 185, 70, 105, 44, 184, 41,
-                117, 45, 210, 49, 172, 101, 209, 25, 155, 111, 59, 252, 32, 230, 61, 244, 109, 162,
-                216, 17, 220, 238, 48, 104, 204, 44, 135, 33, 120, 135, 36, 114, 182, 216, 117,
-                247, 254, 111, 13, 150, 66, 164, 36, 181, 163, 127, 6, 81, 77, 151, 161, 154, 100,
-                239, 115, 82, 185, 95, 183, 125, 14, 168, 69, 66, 38, 5, 54, 15, 13, 3, 185, 162,
-                59, 44, 80, 22, 15, 206, 43, 7, 54, 151, 252, 11, 254, 203, 19, 209, 88, 105, 204,
-                39, 49, 237, 61, 146, 85, 218, 188, 78, 191, 156, 83, 197, 130, 115, 109, 26, 154,
-                215, 213, 159, 46, 86, 186,
-            ],
-            rng,
+            prng: ChaCha8::new_from_slices(&key, &nonce).unwrap(),
         }
     }
 }
-impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a, R> {
+impl PlatformSupport for ActualPairSupport {
     fn get_time(&self) -> embassy_time::Instant {
         embassy_time::Instant::now()
     }
@@ -169,11 +157,7 @@ impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a
     }
 
     async fn fill_random(&mut self, buffer: &mut [u8]) -> () {
-        // buffer.copy_from_slice(&self.random_bytes[self.random_byte_index..buffer.len()]);
-
-        // self.random_byte_index += buffer.len();
-        //
-        self.rng.fill_bytes(buffer).await;
+        self.prng.apply_keystream(buffer);
     }
 
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
@@ -244,15 +228,40 @@ impl<'a, R: embassy_rp::trng::Instance> PlatformSupport for ActualPairSupport<'a
     }
 }
 
+async fn temperature_task(
+    mut adc: embassy_rp::adc::Adc<'_, embassy_rp::adc::Async>,
+    mut temp_adc: embassy_rp::adc::Channel<'_>,
+    sender: DynSender<'_, f32>,
+    control_sender: micro_hap::HapInterfaceSender<'_>,
+) {
+    loop {
+        embassy_time::Timer::after_secs(1).await;
+        continue;
+        let value = adc.read(&mut temp_adc).await.unwrap();
+        info!("Sampled temperature adc with: {}", value);
+        // conversion; https://github.com/raspberrypi/pico-micropython-examples/blob/1dc8d73a08f0e791c7694855cb61a5bfe8537756/adc/temperature.py#L5-L14
+        let conversion_factor = 3.3f32 / 65535f32;
+        let reading = value as f32 * conversion_factor;
+        let temperature = 27.0 - (reading - 0.706) / 0.001721;
+        info!("temperature : {}", temperature);
+        // Send the value.
+        sender.send(temperature);
+        control_sender
+            .characteristic_changed(hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE)
+            .await; // send the notification.
+    }
+}
+
 // use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
 // use bt_hci::cmd::le::LeSetDataLength;
 // use bt_hci::controller::ControllerCmdSync;
-const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1a, 0x02, 0xe4, 0xff];
+const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x10, 0xe4, 0xff];
 /// Run the BLE stack.
-pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
+pub async fn run<'p, 'cyw, C>(
     controller: C,
     bulb_control: cyw43::Control<'_>,
-    rng: embassy_rp::trng::Trng<'_, R>,
+    temp_adc: embassy_rp::adc::Channel<'_>,
+    adc: embassy_rp::adc::Adc<'_, embassy_rp::adc::Async>,
 ) where
     C: Controller, // + ControllerCmdSync<LeReadLocalSupportedFeatures>
                    // + ControllerCmdSync<LeSetDataLength>,
@@ -300,11 +309,6 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
     // let mut bulb = bulb;
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
-    let mut accessory = LightBulbAccessory {
-        name: "Light Bulb".try_into().unwrap(),
-        bulb_on_state: false,
-        bulb_control,
-    };
     // let mut accessory = micro_hap::NopAccessory;
     let pair_ctx = {
         static STATE: StaticCell<micro_hap::AccessoryContext> = StaticCell::new();
@@ -396,6 +400,14 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
     hap_context
         .add_service(server.lightbulb.populate_support().unwrap())
         .unwrap();
+    hap_context
+        .add_service(
+            server
+                .temp_sensor
+                .create_hap_service(&server.server)
+                .unwrap(),
+        )
+        .unwrap();
 
     hap_context.assign_static_data(&static_information);
 
@@ -405,6 +417,20 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
 
     hap_context.print_handles();
 
+    static WATCH: embassy_sync::watch::Watch<CriticalSectionRawMutex, f32, 2> =
+        embassy_sync::watch::Watch::new_with(3.3);
+    let mut rcv0 = WATCH.receiver().unwrap();
+    let mut latest_temperature = WATCH.dyn_receiver().unwrap();
+    let mut temperature_sender = WATCH.dyn_sender();
+
+    let mut accessory = LightBulbAccessory {
+        name: "Light Bulb".try_into().unwrap(),
+        bulb_on_state: false,
+        bulb_control,
+        low_battery: false,
+        temperature_value: 13.37,
+        latest_temperature,
+    };
     //let mut support = ActualPairSupport::default();
     // Put this in static memory instead of the stack, we got some very short messages without this, did we corrupt the
     // stack? How can we detect that?
@@ -415,40 +441,56 @@ pub async fn run<'p, 'cyw, C, R: embassy_rp::trng::Instance>(
     //     > = StaticCell::new();
     //     STATE.init)
     // };
-    let mut support = ActualPairSupport::new(rng);
+    // Not sure how to allocate this statically now that it borrows.
+    //
+
+    // This isn't great, because we always initialise the same way at boot, but the trng spammed the autocorrect error.
+    let init_u128 =
+        embassy_rp::otp::get_private_random_number().expect("failed to retrieve random bytes");
+    let mut support = ActualPairSupport::new(init_u128);
     let support = &mut support;
 
-    let _ = join(ble_task(runner), async {
-        loop {
-            match hap_context
-                .advertise(&mut accessory, support, &mut peripheral)
-                .await
-            {
-                Ok(conn) => {
-                    // Increase the data length to 251 bytes per package, default is like 27.
-                    // conn.update_data_length(&stack, 251, 2120)
-                    //     .await
-                    //     .expect("Failed to set data length");
-                    let conn = conn
-                        .with_attribute_server(&server)
-                        .expect("Failed to create attribute server");
-                    // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                    let hap_services = server.as_hap();
-                    let a =
-                        hap_context.gatt_events_task(&mut accessory, support, &hap_services, &conn);
+    let _ = join(
+        join(
+            ble_task(runner),
+            temperature_task(adc, temp_adc, temperature_sender, control_sender),
+        ),
+        async {
+            loop {
+                match hap_context
+                    .advertise(&mut accessory, support, &mut peripheral)
+                    .await
+                {
+                    Ok(conn) => {
+                        // Increase the data length to 251 bytes per package, default is like 27.
+                        // conn.update_data_length(&stack, 251, 2120)
+                        //     .await
+                        //     .expect("Failed to set data length");
+                        let conn = conn
+                            .with_attribute_server(&server)
+                            .expect("Failed to create attribute server");
+                        // set up tasks when the connection is established to a central, so they don't run when no one is connected.
+                        let hap_services = server.as_hap();
+                        let a = hap_context.gatt_events_task(
+                            &mut accessory,
+                            support,
+                            &hap_services,
+                            &conn,
+                        );
 
-                    // run until any task ends (usually because the connection has been closed),
-                    // then return to advertising state.
-                    if let Err(e) = a.await {
-                        error!("Error occured in processing: {:?}", e);
+                        // run until any task ends (usually because the connection has been closed),
+                        // then return to advertising state.
+                        if let Err(e) = a.await {
+                            error!("Error occured in processing: {:?}", e);
+                        }
+                    }
+                    Err(e) => {
+                        panic!("[adv] error: {:?}", e);
                     }
                 }
-                Err(e) => {
-                    panic!("[adv] error: {:?}", e);
-                }
             }
-        }
-    })
+        },
+    )
     .await;
 }
 
@@ -485,6 +527,7 @@ use embassy_rp::pio::InterruptHandler as PioInterruptHandler;
 bind_interrupts!(struct Irqs {
     PIO2_IRQ_0 => PioInterruptHandler<PIO2>;
     TRNG_IRQ => embassy_rp::trng::InterruptHandler<TRNG>;
+    ADC_IRQ_FIFO => embassy_rp::adc::InterruptHandler;
 });
 
 #[embassy_executor::task]
@@ -529,7 +572,14 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     control.init(clm).await;
     let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
 
-    let trng = embassy_rp::trng::Trng::new(p.TRNG, Irqs, embassy_rp::trng::Config::default());
+    // let mut trng = embassy_rp::trng::Trng::new(p.TRNG, Irqs, embassy_rp::trng::Config::default());
+    // 13.459326 WARN  TRNG Autocorrect error! Resetting TRNG. Increase sample count to reduce likelihood
+    // 13.459846 WARN  TRNG CRNGT error! Increase sample count to reduce likelihood
+    // Much much spam of that last command, lets just switch to a cryptographically secure RNG.
+
+    let adcthing = p.ADC_TEMP_SENSOR;
+    let temp_channel = embassy_rp::adc::Channel::new_temp_sensor(adcthing);
+    let adc = embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
 
     // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
 
@@ -539,5 +589,5 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     //     bulb_pin.set_level(if state { Level::High } else { Level::Low });
     // };
 
-    run(controller, control, trng).await;
+    run(controller, control, temp_channel, adc).await;
 }
