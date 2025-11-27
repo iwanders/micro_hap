@@ -1,5 +1,72 @@
 #![no_std]
+/*
+#[macro_export]
+macro_rules! assign_resources {
+    {
+        $(
+            $(#[$outer:meta])*
+            $group_name:ident : $group_struct:ident {
+                $(
+                    $(#[$inner:meta])*
+                    $resource_name:ident : $resource_field:ident $(=$resource_alias:ident)?),*
+                $(,)?
+            }
+            $(,)?
+        )+
+    } => {
+        #[allow(dead_code,non_snake_case,missing_docs)]
+        pub struct AssignedResources {
+            $(pub $group_name : $group_struct),*
+        }
+        $(
+            #[allow(dead_code,non_snake_case)]
+            $(#[$outer])*
+            pub struct $group_struct {
+                $(
+                    $(#[$inner])*
+                    pub $resource_name: Peri<'static, peripherals::$resource_field>
+                ),*
+            }
+        )+
 
+
+        $($($(
+            #[allow(missing_docs)]
+            pub type $resource_alias = Peri<'static, peripherals::$resource_field>;
+        )?)*)*
+
+        #[macro_export]
+        /// `split_resources!` macro
+        macro_rules! split_resources (
+            ($p:ident) => {
+                AssignedResources {
+                    $($group_name: $group_struct {
+                        $($resource_name: $p.$resource_field),*
+                    }),*
+                }
+            }
+        );
+    };
+    {
+        $(
+            $(#[$outer:meta])*
+            $group_name:ident : $group_struct:ident {
+                $(
+                    $(#[$inner:meta])*
+                    $resource_name:ident : $resource_field:path $(=$resource_alias:ident)?),*
+                $(,)?
+            }
+            $(,)?
+        )+
+    } => {
+        compile_error!(
+            "This macro does not take full paths to the types, instead it expects `peripherals` and `Peri`
+            to exist in the current scope and one passes in just the names of the peripherals.
+            Like `use embassy_stm32::{peripherals, Peri};` or `use embassy_rp::{peripherals, Peri};`."
+        );
+    };
+}
+*/
 pub mod defmt_serial;
 
 pub mod hap;
