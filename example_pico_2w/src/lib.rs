@@ -166,6 +166,7 @@ pub async fn main(spawner: Spawner) {
 
     let delay = Duration::from_millis(500);
     Timer::after(delay).await;
+    embassy_rp::install_core0_stack_guard().expect("MPU already configured");
     info!("sys id: {:?}", rp2350_util::chip_info::get_chip_info());
     let chipid = rp2350_util::otp::get_otp_chipid();
     info!(

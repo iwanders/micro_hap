@@ -7,6 +7,8 @@ As such it contains some stuff that we should remove still:
 
 It toggles the on-board LED of the RPi Pico 2W.
 
+
+
 ## Usage
 Easiest is running `make deploy` from this directory.
 
@@ -33,3 +35,7 @@ From https://crates.io/crates/defmt-print, install with `cargo install defmt-pri
 ```
 defmt-print  -e ./target/thumbv8m.main-none-eabihf/release/firmware serial --path /dev/ttyACM
 ```
+
+# Todo / Improvements
+
+- Consider [assign_resources](https://crates.io/crates/assign-resources), found through [this issue](https://github.com/embassy-rs/embassy/issues/4868).
