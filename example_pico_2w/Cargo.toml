@@ -57,8 +57,6 @@ postcard = "1.0.0"
 # To easily convert slice of one type into another.
 zerocopy = { version = "0.8.26", features = ["derive"] }
 chacha20 = "0.9.1"
-#assign-resources = "0.5.0"
-#assign-resources = { path="../../assign-resources/"}
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 micro_hap = { path="../micro_hap/", features=["defmt"]} #, features = ["defmt"]
