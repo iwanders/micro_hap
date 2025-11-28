@@ -27,7 +27,7 @@ cyw43 = { features = [
     "defmt",
     "firmware-logs",
     "bluetooth",
-], path="../../embassy/cyw43/" } #version = "0.5.0",  but with bt-hci at 0.6
+],version = "0.6.0" } #,  but with bt-hci at 0.6
 
 # Misc stuff to make board work.
 critical-section = "1.2.0"
@@ -78,7 +78,7 @@ embassy-executor = { version = "0.9.1", features = [
     "defmt",
     #"task-arena-size-40960",
 ] }
-embassy-rp = { version = "0.8.0", features = [
+embassy-rp = { version = "0.9.0", features = [
     "defmt",
     "unstable-pac",
     "time-driver",
@@ -91,7 +91,7 @@ embassy-rp = { version = "0.8.0", features = [
    # "boot2-ram-memcpy",
     #"run-from-ram",
 ] }
-cyw43-pio = {   features = ["defmt"], path="../../embassy/cyw43-pio/" }
+cyw43-pio = {   features = ["defmt"], version="0.9.0" }
 embassy-futures = "0.1.2"
 
 
