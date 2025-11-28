@@ -1130,24 +1130,63 @@ mod test {
                         println!("   properties: {v:?} from {entry:?}  with {short:?}");
                         assert_eq!(short, &[144, 2]);
                         assert_eq!(v.unwrap(), properties);
-                        /*
-                        let x = u16::from_le_bytes([
-                            entry.short_data().unwrap()[0],
-                            entry.short_data().unwrap()[1],
-                        ]);
-                        println!("   0xu16: 0x{x:0>4x?}");
-                        let swapped = [
-                            entry.short_data().unwrap()[1],
-                            entry.short_data().unwrap()[0],
-                        ];
-                        let from_swapped =
-                            crate::CharacteristicProperties::try_ref_from_bytes(&swapped);
-                        println!("   from_swapped: {from_swapped:?}");
-                        */
                     }
                     _ => {}
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_characteristic_signature_pico_issue() {
+        /*
+         * 10.116671 DEBUG HCI rx: [02, 40, 20, 0c, 00, 08, 00, 04, 00, 12, 44, 00, 00, 06, 92, 10, 00]
+         10.117072 INFO  Write header RequestHeader { control: ControlField(0), opcode: ServiceSignatureRead, tid: TId(146) }
+         10.117129 INFO  service signature req: ServiceSignatureReadRequest{header: RequestHeader { control: ControlField(0), opcode: ServiceSignatureRead, tid: TId(146) }, svc_id: 16}
+         10.117422 WARN  Omitted processing for event because it was handled
+         10.118169 DEBUG HCI rx: [04, 13, 05, 01, 40, 00, 02, 00]
+         10.118874 DEBUG HCI tx: [02, 40, 00, 05, 00, 01, 00, 04, 00, 13]
+         10.176276 DEBUG HCI rx: [02, 40, 20, 07, 00, 03, 00, 04, 00, 0a, 44, 00]
+         10.176637 INFO  Plaintext reply: [2, 146, 0, 6, 0, 15, 2, 4, 0, 16, 0]
+         10.176879 WARN  Omitted processing for event because it was handled
+         10.177718 DEBUG HCI tx: [02, 40, 00, 10, 00, 0c, 00, 04, 00, 0b, 02, 92, 00, 06, 00, 0f, 02, 04, 00, 10, 00]
+         10.236646 DEBUG HCI rx: [02, 40, 20, 0c, 00, 08, 00, 04, 00, 12, 44, 00, 00, 01, 62, 11, 00]
+         10.237039 INFO  Write header RequestHeader { control: ControlField(0), opcode: CharacteristicSignatureRead, tid: TId(98) }
+         10.237091 INFO  CharacteristicSignatureRead: CharacteristicSignatureReadRequest{header: RequestHeader { control: ControlField(0), opcode: CharacteristicSignatureRead, tid: TId(98) }, char_id: 17}
+         10.237442 WARN  Omitted processing for event because it was handled
+         10.238162 DEBUG HCI rx: [04, 13, 05, 01, 40, 00, 02, 00]
+         10.238912 DEBUG HCI tx: [02, 40, 00, 05, 00, 01, 00, 04, 00, 13]
+         10.296344 DEBUG HCI rx: [02, 40, 20, 07, 00, 03, 00, 04, 00, 0a, 44, 00]
+         10.296710 INFO  Plaintext reply: [2, 98, 0, 53, 0, 4, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 165, 0, 0, 0, 7, 2, 16, 0, 6, 16, 145, 82, 118, 187, 38, 0, 0, 128, 0, 16, 0, 0, 162, 0, 0, 0, 10, 2, 16, 0, 12, 7, 27, 0, 0, 39, 1, 0, 0]
+         10.297012 WARN  Omitted processing for event because it was handled
+         10.297752 DEBUG HCI rx: [04, 3e, 0a, 03, 00, 40, 00, 18, 00, 00, 00, c8, 00]
+         10.298603 DEBUG HCI tx: [02, 40, 00, 3f, 00, 3b, 00, 04, 00, 0b, 02, 62, 00, 35, 00, 04, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a5, 00, 00, 00, 07, 02, 10, 00, 06, 10, 91, 52, 76, bb, 26, 00, 00, 80, 00, 10, 00, 00, a2, 00, 00, 00, 0a, 02, 10, 00, 0c, 07, 1b, 00, 00, 27, 01, 00, 00]
+         10.356571 DEBUG HCI rx: [02, 40, 20, 0c, 00, 08, 00, 04, 00, 12, 47, 00, 00, 00, e0, 12, 00]
+         10.356955 WARN  Processing returned exception: StatusError(UnsupportedPDU)
+
+        */
+        crate::test::init();
+        let incoming: &[u8] = &[
+            0x02, 0x40, 0x20, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00, 0x12, 0x44, 0x00, 0x00, 0x06,
+            0x92, 0x10, 0x00,
+        ];
+        println!("incoming: {:x?}", &incoming[12..]);
+
+        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming[12..]).unwrap();
+        println!("zresp: {resp:?}");
+        let incoming2: &[u8] = &[
+            0x02, 0x40, 0x20, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00, 0x12, 0x44, 0x00, 0x00, 0x01,
+            0x62, 0x11, 0x00,
+        ];
+        println!("incoming: {:x?}", &incoming2[12..]);
+        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming2[12..]).unwrap();
+        println!("zresp: {resp:?}");
+        let incoming3: &[u8] = &[
+            0x02, 0x40, 0x20, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00, 0x12, 0x47, 0x00, 0x00, 0x00,
+            0xe0, 0x12, 0x00,
+        ];
+        println!("incoming: {:x?}", &incoming3[12..]);
+        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming3[12..]).unwrap();
+        println!("zresp: {resp:?}");
     }
 }

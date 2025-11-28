@@ -228,14 +228,16 @@ impl PlatformSupport for ActualPairSupport {
     }
 }
 
+#[embassy_executor::task()]
 async fn temperature_task(
-    mut adc: embassy_rp::adc::Adc<'_, embassy_rp::adc::Async>,
-    mut temp_adc: embassy_rp::adc::Channel<'_>,
-    sender: DynSender<'_, f32>,
-    control_sender: micro_hap::HapInterfaceSender<'_>,
+    mut adc: embassy_rp::adc::Adc<'static, embassy_rp::adc::Async>,
+    mut temp_adc: embassy_rp::adc::Channel<'static>,
+    sender: DynSender<'static, f32>,
+    control_sender: micro_hap::HapInterfaceSender<'static>,
 ) {
     loop {
         embassy_time::Timer::after_secs(1).await;
+        continue;
         let value = adc.read(&mut temp_adc).await.unwrap();
         info!("Sampled temperature adc with: {}", value);
         // conversion; https://github.com/raspberrypi/pico-micropython-examples/blob/1dc8d73a08f0e791c7694855cb61a5bfe8537756/adc/temperature.py#L5-L14
@@ -254,13 +256,14 @@ async fn temperature_task(
 // use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
 // use bt_hci::cmd::le::LeSetDataLength;
 // use bt_hci::controller::ControllerCmdSync;
-const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x10, 0xe4, 0xff];
+const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x11, 0xe4, 0xff];
 /// Run the BLE stack.
 pub async fn run<'p, 'cyw, C>(
+    spawner: Spawner,
     controller: C,
     bulb_control: cyw43::Control<'_>,
-    temp_adc: embassy_rp::adc::Channel<'_>,
-    adc: embassy_rp::adc::Adc<'_, embassy_rp::adc::Async>,
+    temp_adc: embassy_rp::adc::Channel<'static>,
+    adc: embassy_rp::adc::Adc<'static, embassy_rp::adc::Async>,
 ) where
     C: Controller, // + ControllerCmdSync<LeReadLocalSupportedFeatures>
                    // + ControllerCmdSync<LeSetDataLength>,
@@ -452,47 +455,46 @@ pub async fn run<'p, 'cyw, C>(
     let mut support = ActualPairSupport::new(init_u128);
     let support = &mut support;
 
-    let _ = join(
-        join(
-            ble_task(runner),
-            temperature_task(adc, temp_adc, temperature_sender, control_sender),
-        ),
-        async {
-            loop {
-                match hap_context
-                    .advertise(&mut accessory, support, &mut peripheral)
-                    .await
-                {
-                    Ok(conn) => {
-                        // Increase the data length to 251 bytes per package, default is like 27.
-                        // conn.update_data_length(&stack, 251, 2120)
-                        //     .await
-                        //     .expect("Failed to set data length");
-                        let conn = conn
-                            .with_attribute_server(&server)
-                            .expect("Failed to create attribute server");
-                        // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let hap_services = server.as_hap();
-                        let a = hap_context.gatt_events_task(
-                            &mut accessory,
-                            support,
-                            &hap_services,
-                            &conn,
-                        );
+    spawner
+        .spawn(temperature_task(
+            adc,
+            temp_adc,
+            temperature_sender,
+            control_sender,
+        ))
+        .unwrap();
 
-                        // run until any task ends (usually because the connection has been closed),
-                        // then return to advertising state.
-                        if let Err(e) = a.await {
-                            error!("Error occured in processing: {:?}", e);
-                        }
-                    }
-                    Err(e) => {
-                        panic!("[adv] error: {:?}", e);
+    let _ = join(ble_task(runner), async {
+        loop {
+            match hap_context
+                .advertise(&mut accessory, support, &mut peripheral)
+                .await
+            {
+                Ok(conn) => {
+                    // Increase the data length to 251 bytes per package, default is like 27.
+                    // conn.update_data_length(&stack, 251, 2120)
+                    //     .await
+                    //     .expect("Failed to set data length");
+                    let conn = conn
+                        .with_attribute_server(&server)
+                        .expect("Failed to create attribute server");
+                    // set up tasks when the connection is established to a central, so they don't run when no one is connected.
+                    let hap_services = server.as_hap();
+                    let a =
+                        hap_context.gatt_events_task(&mut accessory, support, &hap_services, &conn);
+
+                    // run until any task ends (usually because the connection has been closed),
+                    // then return to advertising state.
+                    if let Err(e) = a.await {
+                        error!("Error occured in processing: {:?}", e);
                     }
                 }
+                Err(e) => {
+                    panic!("[adv] error: {:?}", e);
+                }
             }
-        },
-    )
+        }
+    })
     .await;
 }
 
@@ -538,15 +540,6 @@ async fn cyw43_task(
     runner.run().await
 }
 
-use assign_resources::assign_resources;
-use embassy_rp::peripherals;
-use embassy_rp::Peri;
-assign_resources! {
-    temperature: AdcResources {
-        adc_channel:   ADC_TEMP_SENSOR,
-        adc: ADC,
-    }
-}
 //#[embassy_executor::main]
 use embassy_rp::Peripherals;
 pub async fn main(spawner: Spawner, p: Peripherals) {
@@ -592,12 +585,11 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     let adc = embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
 
     // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
-
     // let mut bulb = move |state: bool| {
     //     //embassy_futures::block_on(control.gpio_set(0, true));
     //     info!("setting pin to: {}", state);
     //     bulb_pin.set_level(if state { Level::High } else { Level::Low });
     // };
 
-    run(controller, control, temp_channel, adc).await;
+    run(spawner, controller, control, temp_channel, adc).await;
 }

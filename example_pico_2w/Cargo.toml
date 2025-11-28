@@ -58,7 +58,7 @@ postcard = "1.0.0"
 zerocopy = { version = "0.8.26", features = ["derive"] }
 chacha20 = "0.9.1"
 #assign-resources = "0.5.0"
-assign-resources = { path="../../assign-resources/"}
+#assign-resources = { path="../../assign-resources/"}
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 micro_hap = { path="../micro_hap/", features=["defmt"]} #, features = ["defmt"]
@@ -88,8 +88,8 @@ embassy-rp = { version = "0.8.0", features = [
     # Is this actually better / necessary, claim is it avoids halting both cores for an XIP transfer,
     # but how do we know how much ram we have left?
     # https://github.com/embassy-rs/embassy/issues/4367#issuecomment-3032809069 may have some clues.
-    "boot2-ram-memcpy",
-    "run-from-ram",
+   # "boot2-ram-memcpy",
+    #"run-from-ram",
 ] }
 cyw43-pio = {   features = ["defmt"], path="../../embassy/cyw43-pio/" }
 embassy-futures = "0.1.2"
