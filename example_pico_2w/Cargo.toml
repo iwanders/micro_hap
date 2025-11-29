@@ -27,7 +27,7 @@ cyw43 = { features = [
     "defmt",
     "firmware-logs",
     "bluetooth",
-],version = "0.6.0" } #,  but with bt-hci at 0.6
+],version = "0.6.0" }
 
 # Misc stuff to make board work.
 critical-section = "1.2.0"
