@@ -179,7 +179,10 @@ pub async fn main(spawner: Spawner) {
     unsafe extern "C" {
         static mut _stack_end: usize;
     }
-    info!("_stack_end: {:?}", unsafe { _stack_end }); // THis is 0!
+    // THis is 0!
+    info!("_stack_end: {:?}", unsafe { _stack_end });
+    // This doesn't do anything yet.
+    // https://github.com/knurling-rs/flip-link?tab=readme-ov-file#the-problem  may be able to help.
 
     //let flash_dev_info = rp2350_util::chip_info::get_flash_dev_info();
     //info!("flash_dev_info id: {:?}", flash_dev_info);

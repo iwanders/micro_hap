@@ -64,3 +64,5 @@ decode:
 So the opcode `0x01`, and that single bit got dropped, current suspicion is the SPI bus between the cyw43 and the mcu.
 
 This is with the fix from [here](https://github.com/embassy-rs/embassy/issues/4791), on `cyw43=0.6.0,cyw43-pio=0.9.0`.
+It appears to be _much_ better with [this newer firmware](https://github.com/georgerobotics/cyw43-driver/commit/7f422fef4ea5bff7285fb78340d3f28f5461cff2),
+haven't seen a single PDU issue, saw one BadDecrypt with the higher SPI rate, but asides from that it's been fairly stable.

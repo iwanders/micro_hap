@@ -1186,7 +1186,12 @@ mod test {
             0xe0, 0x12, 0x00,
         ];
         println!("incoming: {:x?}", &incoming3[12..]);
-        // let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming3[12..]).unwrap();
-        // println!("zresp: {resp:?}");
+        let baddecode = RequestHeader::parse_pdu_with_remainder(&incoming3[12..]);
+        println!("baddecode: {baddecode:?}");
+        println!("incoming: {:x?}", &incoming3[12..]);
+        let incoming = &[0x00, 0x01, 0x72, 0x12, 0x00];
+        println!("incoming: {:x?}", incoming);
+        let baddecode2 = RequestHeader::parse_pdu_with_remainder(incoming);
+        println!("baddecode2: {baddecode2:?}");
     }
 }

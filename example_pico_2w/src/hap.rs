@@ -1,5 +1,5 @@
-use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
-use defmt::{error, info, unwrap};
+use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER, RM2_CLOCK_DIVIDER};
+use defmt::{error, info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
@@ -36,7 +36,7 @@ struct LightBulbAccessory<'a, 'b> {
 }
 impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
     async fn read_characteristic<'z>(
-        &self,
+        &mut self,
         char_id: CharId,
         output: &'z mut [u8],
     ) -> Result<&'z [u8], InterfaceError> {
@@ -45,6 +45,12 @@ impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
         } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
             self.bulb_on_state.read_characteristic_into(char_id, output)
         } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
+            let value = if self.latest_temperature.contains_value() {
+                self.latest_temperature.get().await
+            } else {
+                self.temperature_value
+            };
+            self.temperature_value = value;
             self.temperature_value
                 .read_characteristic_into(char_id, output)
         } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
@@ -234,27 +240,46 @@ async fn temperature_task(
     sender: DynSender<'_, f32>,
     control_sender: micro_hap::HapInterfaceSender<'_>,
 ) {
+    let mut i: usize = 0;
     loop {
         embassy_time::Timer::after_secs(1).await;
-        let value = adc.read(&mut temp_adc).await.unwrap();
-        info!("Sampled temperature adc with: {}", value);
-        // conversion; https://github.com/raspberrypi/pico-micropython-examples/blob/1dc8d73a08f0e791c7694855cb61a5bfe8537756/adc/temperature.py#L5-L14
-        let conversion_factor = 3.3f32 / 65535f32;
-        let reading = value as f32 * conversion_factor;
-        let temperature = 27.0 - (reading - 0.706) / 0.001721;
-        info!("temperature : {}", temperature);
-        // Send the value.
-        sender.send(temperature);
-        control_sender
-            .characteristic_changed(hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE)
-            .await; // send the notification.
+        i += 1;
+
+        let read = adc.read(&mut temp_adc).await;
+        match read {
+            Ok(value) => {
+                info!("Sampled temperature adc with: {}", value);
+                // conversion; https://github.com/raspberrypi/pico-micropython-examples/blob/1dc8d73a08f0e791c7694855cb61a5bfe8537756/adc/temperature.py#L5-L14
+
+                let conversion_factor = 3.3f32 / 65535f32;
+                let reading = value as f32 * conversion_factor;
+                let mut temperature = 27.0 - (reading - 0.706) / 0.001721;
+                // This looks so wrong, or my adc reference voltage is way way off.
+
+                // Since this is so wrong, we just fake a value every other value.
+                if i.rem_euclid(2) == 0 {
+                    temperature = i as f32 * 0.1;
+                }
+
+                info!("Sending temperature: {}", temperature);
+                sender.send(temperature);
+                info!("Notifying characteristic change");
+                control_sender
+                    .characteristic_changed(hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE)
+                    .await; // send the notification.
+                info!("  notify done.");
+            }
+            Err(e) => {
+                warn!("adc sample failed: {:?}", e);
+            }
+        }
     }
 }
 
 // use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
 // use bt_hci::cmd::le::LeSetDataLength;
 // use bt_hci::controller::ControllerCmdSync;
-const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x19, 0xe4, 0xff];
+const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x31, 0xe4, 0xff];
 /// Run the BLE stack.
 pub async fn run<'p, 'cyw, C>(
     controller: C,
@@ -553,10 +578,13 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
     let mut pio = Pio::new(p.PIO2, Irqs);
+
+    // let clock_divider = RM2_CLOCK_DIVIDER;
+    let clock_divider = RM2_CLOCK_DIVIDER;
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
-        RM2_CLOCK_DIVIDER,
+        clock_divider,
         pio.irq0,
         cs,
         p.PIN_24,
@@ -564,7 +592,25 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
         p.DMA_CH0,
     );
     // let ledpin = Output::new(, Level::Low);
+    //
+    // /*
+    // Check the warnings from here: https://github.com/embassy-rs/embassy/blob/fcd5383f475f7bd413541123d941d3d7e1cd326b/cyw43-pio/src/lib.rs#L63
+    use embassy_rp::clocks::clk_sys_freq;
+    use fixed::FixedU32;
+    let effective_pio_frequency = (clk_sys_freq() as f32 / clock_divider.to_num::<f32>()) as u32;
 
+    defmt::trace!("Effective pio frequency: {}Hz", effective_pio_frequency);
+    if clock_divider.frac() != FixedU32::<fixed::types::extra::U8>::ZERO {
+        defmt::error!(
+             "Configured clock divider is not a whole number. Some clock cycles may violate the maximum recommended GSPI speed. Use at your own risk."
+         );
+    }
+    if effective_pio_frequency > 100_000_000 {
+        defmt::error!(
+            "Configured clock divider results in a GSPI frequency greater than the manufacturer recommendation (50Mhz). Use at your own risk."
+        );
+    }
+    // */
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
     let (_net_device, bt_device, mut control, runner) =
@@ -578,9 +624,10 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
     // 13.459846 WARN  TRNG CRNGT error! Increase sample count to reduce likelihood
     // Much much spam of that last command, lets just switch to a cryptographically secure RNG.
 
+    // DO NOT CHANGE ORDER: https://github.com/embassy-rs/embassy/issues/4558
     let adcthing = p.ADC_TEMP_SENSOR;
-    let temp_channel = embassy_rp::adc::Channel::new_temp_sensor(adcthing);
     let adc = embassy_rp::adc::Adc::new(p.ADC, Irqs, embassy_rp::adc::Config::default());
+    let temp_channel = embassy_rp::adc::Channel::new_temp_sensor(adcthing);
 
     // let mut bulb_pin = Output::new(p.PIN_26, Level::Low);
     // let mut bulb = move |state: bool| {

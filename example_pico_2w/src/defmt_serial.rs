@@ -26,7 +26,7 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 static mut CS_RESTORE: critical_section::RestoreState = critical_section::RestoreState::invalid();
 
 /// Buffer for defmt messages, if this is too small overruns occur.
-const DEFMT_SERIAL_BUFFER: usize = 4096;
+const DEFMT_SERIAL_BUFFER: usize = 4096 * 2;
 
 type CS = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 type Queue = embassy_sync::pipe::Pipe<CS, DEFMT_SERIAL_BUFFER>;
