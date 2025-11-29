@@ -678,7 +678,7 @@ pub trait AccessoryInterface {
     // can we just ignore that for now? Does this need to be send?
     #[allow(async_fn_in_trait)]
     async fn read_characteristic<'a>(
-        &self,
+        &mut self,
         char_id: CharId,
         output: &'a mut [u8],
     ) -> Result<&'a [u8], InterfaceError>;
@@ -780,7 +780,7 @@ impl<M: RawMutex, const N: usize> HapControlChannel<M, N> {
 pub struct NopAccessory;
 impl AccessoryInterface for NopAccessory {
     async fn read_characteristic<'a>(
-        &self,
+        &mut self,
         char_id: CharId,
         output: &'a mut [u8],
     ) -> Result<&'a [u8], InterfaceError> {

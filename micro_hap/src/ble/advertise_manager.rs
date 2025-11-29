@@ -215,7 +215,6 @@ impl AdvertiseManager {
     ) -> Result<AdvertiseFlow, InterfaceError> {
         // Execute the state machine.
         let t = support.get_time();
-        info!("current t: {:?}", t);
 
         self.mode = match self.mode {
             AdvertisementMode::Disconnected => {
@@ -297,7 +296,6 @@ impl AdvertiseManager {
                         // we clearly don't want advertisements.
                         return Self::crate_general_advertisement(info, support).await;
                     };
-                info!("finished creating broadcast advertise data");
                 Ok(AdvertiseFlow {
                     advertise_data,
                     scan_data: Default::default(),

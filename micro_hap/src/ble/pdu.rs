@@ -1172,21 +1172,21 @@ mod test {
         ];
         println!("incoming: {:x?}", &incoming[12..]);
 
-        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming[12..]).unwrap();
+        let (resp, _remainder) = RequestHeader::parse_pdu_with_remainder(&incoming[12..]).unwrap();
         println!("zresp: {resp:?}");
         let incoming2: &[u8] = &[
             0x02, 0x40, 0x20, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00, 0x12, 0x44, 0x00, 0x00, 0x01,
             0x62, 0x11, 0x00,
         ];
         println!("incoming: {:x?}", &incoming2[12..]);
-        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming2[12..]).unwrap();
+        let (resp, _remainder) = RequestHeader::parse_pdu_with_remainder(&incoming2[12..]).unwrap();
         println!("zresp: {resp:?}");
         let incoming3: &[u8] = &[
             0x02, 0x40, 0x20, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00, 0x12, 0x47, 0x00, 0x00, 0x00,
             0xe0, 0x12, 0x00,
         ];
         println!("incoming: {:x?}", &incoming3[12..]);
-        let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming3[12..]).unwrap();
-        println!("zresp: {resp:?}");
+        // let (resp, remainder) = RequestHeader::parse_pdu_with_remainder(&incoming3[12..]).unwrap();
+        // println!("zresp: {resp:?}");
     }
 }

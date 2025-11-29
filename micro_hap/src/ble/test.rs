@@ -243,7 +243,7 @@ async fn test_hap_worker(
     }
     impl crate::AccessoryInterface for LightBulbAccessory {
         async fn read_characteristic<'a>(
-            &self,
+            &mut self,
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {

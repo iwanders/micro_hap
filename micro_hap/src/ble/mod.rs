@@ -574,7 +574,7 @@ impl<'c> HapPeripheralContext<'c> {
 
     async fn characteristic_read_request(
         &self,
-        accessory: &impl crate::AccessoryInterface,
+        accessory: &mut impl crate::AccessoryInterface,
         req: &pdu::CharacteristicReadRequest,
     ) -> Result<BufferResponse, InternalError> {
         // Well ehm, what do we do here?
@@ -1583,8 +1583,6 @@ impl<'c> HapPeripheralContext<'c> {
                 .borrow_mut()
                 .create_advertisement(&info, support)
                 .await?;
-            info!("at  {:?}", flow);
-            info!("at {:?}:{:?}", file!(), line!());
 
             let interval_min = embassy_time::Duration::from_millis(flow.advertise_interval_ms);
             // Not sure if it matters that min == max, perhaps it doesn't send if the channel is occupied?, lets add 20%?
@@ -1607,9 +1605,6 @@ impl<'c> HapPeripheralContext<'c> {
                 )
                 .await
                 .map_err(|_e| HapBleError::TroubleError(SimpleTroubleError::FailureInAdvertise))?;
-            // info!("[adv] advertising");
-            // info!("[adv] advertising with {:?}", flow);
-
             // TODO:: There's something funky going on here... if this delay is too long, we never exit the select.
             // Too long is like... 3 seconds :/
             const USE_PROPER_TIMES: bool = false;
