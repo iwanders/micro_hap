@@ -244,6 +244,9 @@ async fn temperature_task(
     loop {
         embassy_time::Timer::after_secs(1).await;
         i += 1;
+        if i > 1000 {
+            i = 0;
+        }
 
         let read = adc.read(&mut temp_adc).await;
         match read {
@@ -279,7 +282,7 @@ async fn temperature_task(
 // use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
 // use bt_hci::cmd::le::LeSetDataLength;
 // use bt_hci::controller::ControllerCmdSync;
-const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x31, 0xe4, 0xff];
+const DEVICE_ADDRESS: [u8; 6] = [0xff, 0x8f, 0x1b, 0x33, 0xe4, 0xff];
 /// Run the BLE stack.
 pub async fn run<'p, 'cyw, C>(
     controller: C,

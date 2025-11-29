@@ -15,6 +15,7 @@ pub const CHAR_ID_TEMP_SENSOR_VALUE: CharId = CharId(0x42);
 pub const CHAR_ID_TEMP_LOW_BATTERY: CharId = CharId(0x43);
 
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.c#L23
+// This always displays in 0.5 degree increments, to check is if the other temperature allows more precision.
 pub const CHARACTERISTIC_CURRENT_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x0011);
 // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPServiceTypes.c#L51
 pub const SERVICE_TEMPERATURE_SENSOR: HomekitUuid16 = HomekitUuid16::new(0x8A);
