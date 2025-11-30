@@ -274,11 +274,7 @@ pub struct HapPeripheralContext<'c> {
     prepared_reply: Option<Reply>,
     should_encrypt_reply: core::cell::Cell<bool>,
 
-    information_service: crate::Service,
-    protocol_service: crate::Service,
-    pairing_service: crate::Service,
-
-    user_services: heapless::Vec<crate::Service, 8>,
+    services: heapless::Vec<crate::Service, 8>,
 
     control_receiver: crate::HapInterfaceReceiver<'c>,
 
@@ -290,22 +286,10 @@ pub struct HapPeripheralContext<'c> {
 }
 impl<'c> HapPeripheralContext<'c> {
     fn services(&self) -> impl Iterator<Item = &crate::Service> {
-        [
-            &self.information_service,
-            &self.protocol_service,
-            &self.pairing_service,
-        ]
-        .into_iter()
-        .chain(self.user_services.iter())
+        self.services.iter()
     }
     fn services_mut(&mut self) -> impl Iterator<Item = &mut crate::Service> {
-        [
-            &mut self.information_service,
-            &mut self.protocol_service,
-            &mut self.pairing_service,
-        ]
-        .into_iter()
-        .chain(self.user_services.iter_mut())
+        self.services.iter_mut()
     }
 
     fn get_attribute_by_char(
@@ -445,9 +429,6 @@ impl<'c> HapPeripheralContext<'c> {
         pair_ctx: &'static mut AccessoryContext,
         timed_write_data: &'static mut [u8],
         timed_write: &'static mut [Option<TimedWrite>],
-        information_service: &AccessoryInformationService,
-        protocol_service: &ProtocolInformationService,
-        pairing_service: &PairingService,
         control_receiver: crate::HapInterfaceReceiver<'c>,
     ) -> Result<Self, HapBleError> {
         let timed_write_slot_buffer = timed_write_data.len() / timed_write.len();
@@ -462,10 +443,7 @@ impl<'c> HapPeripheralContext<'c> {
             timed_write: timed_write.into(),
             prepared_reply: None,
             should_encrypt_reply: false.into(),
-            information_service: information_service.populate_support()?,
-            protocol_service: protocol_service.populate_support()?,
-            pairing_service: pairing_service.populate_support()?,
-            user_services: Default::default(),
+            services: Default::default(),
 
             advertise_manager: advertise_manager.into(),
             session_active: false.into(),
@@ -501,7 +479,7 @@ impl<'c> HapPeripheralContext<'c> {
     }
 
     pub fn add_service(&mut self, srv: crate::Service) -> Result<(), HapBleError> {
-        self.user_services
+        self.services
             .push(srv)
             .map_err(|_| HapBleError::AllocationOverrun)?;
         Ok(())

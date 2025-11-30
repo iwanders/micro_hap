@@ -135,7 +135,7 @@ fn crate_hap_context(
         DATA_STATE.init([0u8; TIMED_WRITE_SLOTS * TIMED_WRITE_SLOTS_DATA])
     };
 
-    let timed_writes = {
+    let timed_write = {
         static SLOT_STATE: StaticCell<[Option<TimedWrite>; TIMED_WRITE_SLOTS]> = StaticCell::new();
         SLOT_STATE.init([None; TIMED_WRITE_SLOTS])
     };
@@ -153,13 +153,18 @@ fn crate_hap_context(
         in_buffer,
         ctx,
         timed_write_data,
-        timed_writes,
-        &server.accessory_information,
-        &server.protocol,
-        &server.pairing,
+        timed_write,
         control_receiver,
     )
     .unwrap();
+
+    ctx.add_service(server.accessory_information.populate_support().unwrap())
+        .unwrap();
+    ctx.add_service(server.protocol.populate_support().unwrap())
+        .unwrap();
+    ctx.add_service(server.pairing.populate_support().unwrap())
+        .unwrap();
+
     ctx.add_service(server.lightbulb.populate_support().unwrap())
         .unwrap();
     ctx.assign_static_data(&accessory_static_data);
