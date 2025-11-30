@@ -113,20 +113,38 @@ mod hap_lightbulb {
             HostResources::new();
 
         let mut attribute_buffer: &mut [u8] = {
-            const ATTRIBUTE_BUFFER_SIZE: usize = 32;
+            const ATTRIBUTE_BUFFER_SIZE: usize = 1024;
             static STATE: StaticCell<[u8; ATTRIBUTE_BUFFER_SIZE]> = StaticCell::new();
             STATE.init([0u8; ATTRIBUTE_BUFFER_SIZE])
         };
 
-        const ATTRIBUTE_TABLE_SIZE: usize = 32;
+        const ATTRIBUTE_TABLE_SIZE: usize = 1024;
         let mut attribute_table = trouble_host::attribute::AttributeTable::<
             CriticalSectionRawMutex,
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let _ = micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
+        let remaining_buffer =
+            micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
+                &mut attribute_table,
+                &mut attribute_buffer,
+            )
+            .unwrap();
+        let remaining_buffer =
+            micro_hap::ble::services::ProtocolInformationService::add_to_attribute_table(
+                &mut attribute_table,
+                remaining_buffer,
+            )
+            .unwrap();
+        let remaining_buffer = micro_hap::ble::services::PairingService::add_to_attribute_table(
             &mut attribute_table,
-            &mut attribute_buffer,
+            remaining_buffer,
+        )
+        .unwrap();
+        let remaining_buffer = micro_hap::ble::services::LightbulbService::add_to_attribute_table(
+            &mut attribute_table,
+            remaining_buffer,
+            0x30,
         )
         .unwrap();
 
@@ -142,11 +160,20 @@ mod hap_lightbulb {
         // Create the gatt server.
         let name = "Z"; // There's _very_ few bytes left in the advertisement
         info!("Starting advertising and GATT service");
-        let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+        let gap_config = GapConfig::Peripheral(PeripheralConfig {
             name,
             appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
-        }))
-        .unwrap();
+        });
+        //let server = Server::new_with_config().unwrap();
+        //
+        gap_config.build(&mut attribute_table).unwrap();
+
+        const CCCD_MAX: usize = 32;
+        const CONNECTIONS_MAX: usize = 3;
+        let server =
+            trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
+                attribute_table,
+            );
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
@@ -220,14 +247,15 @@ mod hap_lightbulb {
             pair_ctx,
             timed_write_data,
             timed_write,
-            &server.accessory_information,
-            &server.protocol,
-            &server.pairing,
+            todo!(), //server.accessory_information,
+            todo!(), //server.protocol,
+            todo!(), //server.pairing,
             control_receiver,
         )
         .unwrap();
         hap_context
-            .add_service(server.lightbulb.populate_support().unwrap())
+            .add_service(todo!())
+            //.add_service(server.lightbulb.populate_support().unwrap())
             .unwrap();
         hap_context.assign_static_data(&static_information);
 
@@ -248,7 +276,8 @@ mod hap_lightbulb {
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let hap_services = server.as_hap();
+                        // let hap_services = server.as_hap();
+                        let hap_services = todo!();
                         let a = hap_context.gatt_events_task(
                             &mut accessory,
                             &mut support,
