@@ -356,7 +356,7 @@ mod hap_rgb {
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for LightBulbAccessory {
         async fn read_characteristic<'a>(
-            &self,
+            &mut self,
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {

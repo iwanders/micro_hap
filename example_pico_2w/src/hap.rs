@@ -575,6 +575,7 @@ pub async fn main(spawner: Spawner, p: Peripherals) {
         let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
         let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
         let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
+        // let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw_old.bin");
         (fw, clm, btfw)
     };
 

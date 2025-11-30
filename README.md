@@ -73,7 +73,7 @@ To help people understand the code and the concepts, here's an information dump:
 - Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.
-- ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indiate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
+- ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indicate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
 - Go through all the log / defmt prints and ensure the level makes sense.
 - The Characteristic `current_temperature` (`0x0011`) always displays temperatures in 0.5 increments, can a manual temperature actually show digits?
 

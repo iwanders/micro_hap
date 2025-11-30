@@ -231,7 +231,7 @@ mod hap_temp_accessory {
     /// Implement the accessory interface for the lightbulb.
     impl AccessoryInterface for TemperatureAccessory {
         async fn read_characteristic<'a>(
-            &self,
+            &mut self,
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {
