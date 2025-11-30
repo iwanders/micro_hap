@@ -277,15 +277,6 @@ mod hap_lightbulb {
         lightbulb_b: super::services::OtherLightbulbService,  // 0x0043
         accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
     }
-    impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
-            micro_hap::ble::HapServices {
-                information: &self.accessory_information,
-                protocol: &self.protocol,
-                pairing: &self.pairing,
-            }
-        }
-    }
 
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
@@ -383,7 +374,6 @@ mod hap_lightbulb {
             &mut accessory,
             &mut support,
             &server,
-            &server.as_hap(),
         )
         .await;
     }

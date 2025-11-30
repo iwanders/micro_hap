@@ -281,8 +281,8 @@ pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
     println!("{image}");
 }
 
-use micro_hap::ble::HapPeripheralContext;
 use micro_hap::ble::TimedWrite;
+use micro_hap::ble::{HapBleService, HapPeripheralContext};
 use static_cell::StaticCell;
 
 type Mutex = embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -353,12 +353,17 @@ pub fn example_context_factory(
         pair_ctx,
         timed_write_data,
         timed_write,
-        information_service,
-        protocol,
-        pairing,
         control_receiver,
     )
     .unwrap();
+
+    ctx.add_service(information_service.populate_support().unwrap())
+        .unwrap();
+    ctx.add_service(protocol.populate_support().unwrap())
+        .unwrap();
+    ctx.add_service(pairing.populate_support().unwrap())
+        .unwrap();
+    ctx.assign_static_data(&static_information);
 
     ctx.assign_static_data(&static_information);
     (ctx, control_sender)
@@ -392,7 +397,6 @@ pub async fn example_hap_loop<
     accessory: &mut impl micro_hap::AccessoryInterface,
     support: &mut impl PlatformSupport,
     server: &'server AttributeServer<'values, M, DefaultPacketPool, ATT_MAX, CCCD_MAX, CONN_MAX>,
-    hap_services: &'server micro_hap::ble::HapServices<'_>,
 ) where
     C: Controller
         + ControllerCmdSync<LeReadLocalSupportedFeatures>
@@ -419,7 +423,7 @@ pub async fn example_hap_loop<
 
     let _ = join(
         ble_task(runner),
-        ctx.service(accessory, support, server, &mut peripheral, hap_services),
+        ctx.service(accessory, support, server, &mut peripheral),
     )
     .await;
 }

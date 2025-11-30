@@ -85,15 +85,6 @@ mod hap_lightbulb {
         pairing: micro_hap::ble::PairingService,                            // 0x0055
         lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
     }
-    impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
-            micro_hap::ble::HapServices {
-                information: &self.accessory_information,
-                protocol: &self.protocol,
-                pairing: &self.pairing,
-            }
-        }
-    }
 
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
@@ -247,9 +238,6 @@ mod hap_lightbulb {
             pair_ctx,
             timed_write_data,
             timed_write,
-            todo!(), //server.accessory_information,
-            todo!(), //server.protocol,
-            todo!(), //server.pairing,
             control_receiver,
         )
         .unwrap();
@@ -276,14 +264,7 @@ mod hap_lightbulb {
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        // let hap_services = server.as_hap();
-                        let hap_services = todo!();
-                        let a = hap_context.gatt_events_task(
-                            &mut accessory,
-                            &mut support,
-                            &hap_services,
-                            &conn,
-                        );
+                        let a = hap_context.gatt_events_task(&mut accessory, &mut support, &conn);
 
                         // run until any task ends (usually because the connection has been closed),
                         // then return to advertising state.

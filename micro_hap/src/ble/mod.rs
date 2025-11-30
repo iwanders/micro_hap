@@ -1722,7 +1722,6 @@ impl<'c> HapPeripheralContext<'c> {
             CONN_MAX,
         >,
         peripheral: &mut Peripheral<'peripheral, C, DefaultPacketPool>,
-        hap_services: &'server crate::ble::HapServices<'_>,
     ) -> Result<(), HapBleError> {
         async {
             loop {

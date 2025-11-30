@@ -480,16 +480,6 @@ mod hap_rgb {
         temp_bulb: hap_rgb_bulb::TemperatureBulbService,
         rgb_bulb: hap_rgb_bulb::RgbBulbService,
     }
-    impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
-            micro_hap::ble::HapServices {
-                information: &self.accessory_information,
-                protocol: &self.protocol,
-                pairing: &self.pairing,
-            }
-        }
-    }
-
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
@@ -557,7 +547,6 @@ mod hap_rgb {
             &mut accessory,
             &mut support,
             &server,
-            &server.as_hap(),
         )
         .await;
     }

@@ -278,15 +278,6 @@ mod hap_temp_accessory {
         //lightbulb: micro_hap::ble::LightbulbService,
         temp_sensor: hap_temp_sensor::TemperatureSensorService,
     }
-    impl Server<'_> {
-        pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
-            micro_hap::ble::HapServices {
-                information: &self.accessory_information,
-                protocol: &self.protocol,
-                pairing: &self.pairing,
-            }
-        }
-    }
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
     use bt_hci::controller::ControllerCmdSync;
@@ -375,7 +366,6 @@ mod hap_temp_accessory {
                 &mut accessory,
                 &mut support,
                 &server,
-                &server.as_hap(),
             ),
             temperature_modification_task(
                 hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE,
