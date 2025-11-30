@@ -48,6 +48,9 @@ use bt_hci_linux::Transport;
 // a working sensor, but the BLE side does display the 'this accessory needs an update', perhaps the disconnected events
 // do just always need to be set to true if broadcasts are set... and perhaps the guidance is just to not advance the GSN
 // and emit the broadcast message that causes a connection?
+//
+//
+// There is a Broadcast Characteristic property that I've not yet explored!
 
 mod hap_temp_sensor {
     use micro_hap::{

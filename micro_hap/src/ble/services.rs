@@ -2,6 +2,7 @@ use super::{HapBleError, HapBleService, sig};
 use crate::{BleProperties, CharacteristicProperties, DataSource};
 use crate::{CharId, SvcId};
 use crate::{characteristic, descriptor, service};
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use trouble_host::prelude::*;
 
 // MUST have an instance id of 1, service 3e
@@ -61,6 +62,176 @@ pub struct AccessoryInformationService {
     #[characteristic(uuid=characteristic::ADK_VERSION, read, write)]
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=9u16.to_le_bytes())]
     pub adk_version: FacadeDummyType,
+}
+
+use zerocopy::IntoBytes;
+
+macro_rules! add_facade_characteristic {
+    (
+        $service_builder:expr,
+        $characteristic_uuid:expr,
+        $iid: expr,
+        $store:expr
+    ) => {{
+        {
+            const READ_PROPS: &[CharacteristicProp] =
+                &[CharacteristicProp::Read, CharacteristicProp::Write];
+            const VALUE: [u8; 0] = [];
+            let remaining_length = $store.len();
+            let allocation_length: usize = VALUE.len();
+            let (value_store, store) = $store.split_at_mut_checked(allocation_length).ok_or(
+                BuilderError::AttributeAllocationOverrun {
+                    remaining_length,
+                    allocation_length,
+                    characteristic_uuid: $characteristic_uuid.into(),
+                    name: stringify!($characteristic_uuid),
+                },
+            )?;
+            let mut characteristic_builder = $service_builder.add_characteristic(
+                $characteristic_uuid,
+                READ_PROPS,
+                VALUE,
+                value_store,
+            );
+            let iid_value: u16 = $iid;
+            // let remaining_length = $store.len();
+            let allocation_length = iid_value.as_bytes().len();
+            let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
+                BuilderError::AttributeAllocationOverrun {
+                    remaining_length,
+                    allocation_length,
+                    characteristic_uuid: $characteristic_uuid.into(),
+                    name: stringify!($characteristic_uuid),
+                },
+            )?;
+            value_store.copy_from_slice(iid_value.as_bytes());
+            let _descriptor_object = characteristic_builder
+                .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
+            let characteristic = characteristic_builder.build();
+            ($service_builder, store, iid_value + 1, characteristic)
+        }
+    }};
+}
+
+/// Error used by the accessory interface
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum BuilderError {
+    #[error(
+        "attribute allocation failed, needed {allocation_length}, had {remaining_length} in {name}({characteristic_uuid:?})"
+    )]
+    AttributeAllocationOverrun {
+        remaining_length: usize,
+        allocation_length: usize,
+        characteristic_uuid: Uuid,
+        name: &'static str,
+    },
+}
+
+impl AccessoryInformationService {
+    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
+        attribute_table: &mut AttributeTable<'d, M, MAX>,
+        store: &'d mut [u8],
+    ) -> Result<(), BuilderError> {
+        let service = trouble_host::attribute::Service::new(crate::service::ACCESSORY_INFORMATION);
+        let mut service_builder = attribute_table.add_service(service);
+
+        let mut iid: u16 = 1;
+
+        // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
+        // pub service_instance: u16,
+        let readprops = &[CharacteristicProp::Read];
+        let value: u16 = iid;
+        let remaining_length = store.len();
+        let allocation_length = value.as_bytes().len();
+        let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
+            BuilderError::AttributeAllocationOverrun {
+                remaining_length,
+                allocation_length,
+                characteristic_uuid: characteristic::SERVICE_INSTANCE.into(),
+                name: stringify!(characteristic::SERVICE_INSTANCE),
+            },
+        )?;
+        let _svc_ais_chr_instance = service_builder
+            .add_characteristic(
+                characteristic::SERVICE_INSTANCE,
+                readprops,
+                value,
+                value_store,
+            )
+            .build();
+        iid += 1;
+
+        // #[characteristic(uuid=characteristic::IDENTIFY, read, write)]
+        // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=2u16.to_le_bytes())]
+        // pub identify: bool,
+        let readprops = &[CharacteristicProp::Read, CharacteristicProp::Write];
+        let value = false;
+        let remaining_length = store.len();
+        let allocation_length = value.as_bytes().len();
+        let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
+            BuilderError::AttributeAllocationOverrun {
+                remaining_length,
+                allocation_length,
+                characteristic_uuid: characteristic::IDENTIFY.into(),
+                name: stringify!(characteristic::IDENTIFY),
+            },
+        )?;
+        let mut svc_ais_chr_identify_builder = service_builder.add_characteristic(
+            characteristic::IDENTIFY,
+            readprops,
+            value,
+            value_store,
+        );
+        let value = iid;
+        let remaining_length = store.len();
+        let allocation_length = value.as_bytes().len();
+        let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
+            BuilderError::AttributeAllocationOverrun {
+                remaining_length,
+                allocation_length,
+                characteristic_uuid: characteristic::IDENTIFY.into(),
+                name: stringify!(characteristic::IDENTIFY),
+            },
+        )?;
+        let _svc_ais_chr_identify_descr = svc_ais_chr_identify_builder
+            .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
+        let _z = svc_ais_chr_identify_builder.build();
+        iid += 1;
+
+        // 0x20
+        // /// Manufacturer name that created the device.
+        // #[characteristic(uuid=characteristic::MANUFACTURER, read, write)]
+        // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=3u16.to_le_bytes())]
+        // pub manufacturer: FacadeDummyType,
+        let (mut service_builder, store, iid, _chr_manufacturer) =
+            add_facade_characteristic!(service_builder, characteristic::MANUFACTURER, iid, store);
+
+        let (mut service_builder, store, iid, _chr_model) =
+            add_facade_characteristic!(service_builder, characteristic::MODEL, iid, store);
+
+        let (mut service_builder, store, iid, _chr_name) =
+            add_facade_characteristic!(service_builder, characteristic::NAME, iid, store);
+
+        let (mut service_builder, store, iid, _chr_serial) =
+            add_facade_characteristic!(service_builder, characteristic::SERIAL_NUMBER, iid, store);
+        let (mut service_builder, store, iid, _chr_firmware) = add_facade_characteristic!(
+            service_builder,
+            characteristic::FIRMWARE_REVISION,
+            iid,
+            store
+        );
+        let (mut service_builder, store, iid, _chr_hardware_rev) = add_facade_characteristic!(
+            service_builder,
+            characteristic::HARDWARE_REVISION,
+            iid,
+            store
+        );
+        let (mut service_builder, store, iid, _chr_adk_version) =
+            add_facade_characteristic!(service_builder, characteristic::ADK_VERSION, iid, store);
+
+        todo!()
+    }
 }
 
 impl HapBleService for AccessoryInformationService {
