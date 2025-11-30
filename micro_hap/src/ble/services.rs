@@ -66,6 +66,39 @@ pub struct AccessoryInformationService {
 
 use zerocopy::IntoBytes;
 
+macro_rules! add_service_instance {
+    (
+        $service_builder:expr,
+        $iid: expr,
+        $store:expr
+    ) => {{
+        // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
+        // pub service_instance: u16,
+        let readprops = &[CharacteristicProp::Read];
+        let iid_value: u16 = $iid;
+        let remaining_length = $store.len();
+        let allocation_length = iid_value.as_bytes().len();
+        let (value_store, store) = $store.split_at_mut_checked(allocation_length).ok_or(
+            BuilderError::AttributeAllocationOverrun {
+                remaining_length,
+                allocation_length,
+                characteristic_uuid: characteristic::SERVICE_INSTANCE.into(),
+                name: stringify!(characteristic::SERVICE_INSTANCE),
+            },
+        )?;
+        value_store.copy_from_slice(&iid_value.as_bytes());
+        let characteristic = $service_builder
+            .add_characteristic(
+                characteristic::SERVICE_INSTANCE,
+                readprops,
+                iid_value,
+                value_store,
+            )
+            .build();
+        ($service_builder, store, iid_value + 1, characteristic)
+    }};
+}
+
 macro_rules! add_facade_characteristic {
     (
         $service_builder:expr,
@@ -132,35 +165,19 @@ impl AccessoryInformationService {
     pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
         attribute_table: &mut AttributeTable<'d, M, MAX>,
         store: &'d mut [u8],
-    ) -> Result<(), BuilderError> {
+    ) -> Result<&'d mut [u8], BuilderError> {
         let service = trouble_host::attribute::Service::new(crate::service::ACCESSORY_INFORMATION);
         let mut service_builder = attribute_table.add_service(service);
 
-        let mut iid: u16 = 1;
+        // Accessory information service MUST have a service instance of 1.
+        let iid: u16 = 1;
 
         // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
         // pub service_instance: u16,
-        let readprops = &[CharacteristicProp::Read];
-        let value: u16 = iid;
-        let remaining_length = store.len();
-        let allocation_length = value.as_bytes().len();
-        let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
-            BuilderError::AttributeAllocationOverrun {
-                remaining_length,
-                allocation_length,
-                characteristic_uuid: characteristic::SERVICE_INSTANCE.into(),
-                name: stringify!(characteristic::SERVICE_INSTANCE),
-            },
-        )?;
-        let _svc_ais_chr_instance = service_builder
-            .add_characteristic(
-                characteristic::SERVICE_INSTANCE,
-                readprops,
-                value,
-                value_store,
-            )
-            .build();
-        iid += 1;
+        let (mut service_builder, store, iid, _chr_svc_instance) =
+            add_service_instance!(service_builder, iid, store);
+
+        // Identify is a bit of a special snowflake, we also don't really handle the identify request.
 
         // #[characteristic(uuid=characteristic::IDENTIFY, read, write)]
         // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=2u16.to_le_bytes())]
@@ -197,7 +214,7 @@ impl AccessoryInformationService {
         let _svc_ais_chr_identify_descr = svc_ais_chr_identify_builder
             .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
         let _z = svc_ais_chr_identify_builder.build();
-        iid += 1;
+        let iid = iid + 1;
 
         // 0x20
         // /// Manufacturer name that created the device.
@@ -229,8 +246,9 @@ impl AccessoryInformationService {
         );
         let (mut service_builder, store, iid, _chr_adk_version) =
             add_facade_characteristic!(service_builder, characteristic::ADK_VERSION, iid, store);
+        let _ = service_builder.build();
 
-        todo!()
+        Ok(store)
     }
 }
 
@@ -377,6 +395,49 @@ pub struct ProtocolInformationService {
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x12u16.to_le_bytes())]
     pub version: FacadeDummyType,
 }
+
+impl ProtocolInformationService {
+    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
+        attribute_table: &mut AttributeTable<'d, M, MAX>,
+        store: &'d mut [u8],
+    ) -> Result<&'d mut [u8], BuilderError> {
+        let service = trouble_host::attribute::Service::new(crate::service::PROTOCOL_INFORMATION);
+        let mut service_builder = attribute_table.add_service(service);
+
+        let iid = 0x10;
+
+        // /// Service instance ID, must be a 16 bit unsigned integer.
+        // // May not be 1, value 1 is for accessory information.
+        // //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x02u16.to_le_bytes())]
+        // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x10)]
+        // pub service_instance: u16,
+        let (mut service_builder, store, iid, _chr_svc_instance) =
+            add_service_instance!(service_builder, iid, store);
+
+        // /// Service signature, only two bytes.
+        // #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
+        // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=0x11u16.to_le_bytes())]
+        // pub service_signature: FacadeDummyType,
+        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
+            service_builder,
+            characteristic::SERVICE_SIGNATURE,
+            iid,
+            store
+        );
+
+        // /// Version string.
+        // #[characteristic(uuid=characteristic::VERSION, read, write)]
+        // #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x12u16.to_le_bytes())]
+        // pub version: FacadeDummyType,
+        let (mut service_builder, store, iid, _chr_version) =
+            add_facade_characteristic!(service_builder, characteristic::VERSION, iid, store);
+
+        let _ = service_builder.build();
+
+        Ok(store)
+    }
+}
+
 impl HapBleService for ProtocolInformationService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L3200
@@ -441,6 +502,52 @@ pub struct PairingService {
     #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x25u16.to_le_bytes())]
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pub pairings: FacadeDummyType,
+}
+
+impl PairingService {
+    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
+        attribute_table: &mut AttributeTable<'d, M, MAX>,
+        store: &'d mut [u8],
+    ) -> Result<&'d mut [u8], BuilderError> {
+        let service = trouble_host::attribute::Service::new(crate::service::PAIRING);
+        let mut service_builder = attribute_table.add_service(service);
+
+        let iid = 0x20;
+
+        let (mut service_builder, store, iid, _chr_svc_instance) =
+            add_service_instance!(service_builder, iid, store);
+
+        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIR_SETUP,
+            iid,
+            store
+        );
+
+        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIR_VERIFY,
+            iid,
+            store
+        );
+
+        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_FEATURES,
+            iid,
+            store
+        );
+
+        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIRINGS,
+            iid,
+            store
+        );
+        service_builder.build();
+
+        Ok(store)
+    }
 }
 
 impl HapBleService for PairingService {
@@ -527,6 +634,33 @@ pub struct LightbulbService {
     #[characteristic(uuid=characteristic::ON, read, write, indicate )]
     pub on: FacadeDummyType,
 }
+
+impl LightbulbService {
+    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
+        attribute_table: &mut AttributeTable<'d, M, MAX>,
+        store: &'d mut [u8],
+        service_instance: u16,
+    ) -> Result<&'d mut [u8], BuilderError> {
+        let service = trouble_host::attribute::Service::new(crate::service::LIGHTBULB);
+        let mut service_builder = attribute_table.add_service(service);
+
+        let iid = service_instance;
+
+        let (mut service_builder, store, iid, _chr_svc_instance) =
+            add_service_instance!(service_builder, iid, store);
+
+        let (mut service_builder, store, iid, _chr_service_sign) =
+            add_facade_characteristic!(service_builder, characteristic::NAME, iid, store);
+
+        let (mut service_builder, store, iid, _chr_service_sign) =
+            add_facade_characteristic!(service_builder, characteristic::ON, iid, store);
+
+        service_builder.build();
+
+        Ok(store)
+    }
+}
+
 impl HapBleService for LightbulbService {
     fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         let mut service = crate::Service {
