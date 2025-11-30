@@ -377,6 +377,18 @@ impl Service {
         }
         None
     }
+    /// Retrieve a characteristic by its uuid.
+    pub fn get_characteristic_by_uuid(
+        &self,
+        attribute_uuid: &uuid::Uuid,
+    ) -> Option<&Characteristic> {
+        for a in self.characteristics.iter() {
+            if &a.uuid == attribute_uuid {
+                return Some(a);
+            }
+        }
+        None
+    }
 }
 
 // Can this be generalised?

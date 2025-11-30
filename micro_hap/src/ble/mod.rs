@@ -86,6 +86,10 @@ pub enum HapBleError {
     /// A trouble error occured.
     #[error("a trouble error occured")]
     TroubleError(#[from] SimpleTroubleError),
+
+    /// A special handle was not populated, like pair_verify.
+    #[error("a special handle was not populated")]
+    SpecialHandleError,
 }
 
 /// Limited simplified trouble errors that are copy/clone.
@@ -234,8 +238,6 @@ pub trait HapBleService {
 
 /// Simple helper struct that's used to capture input to the gatt event handler.
 pub struct HapServices<'a> {
-    pub information: &'a AccessoryInformationService,
-    pub protocol: &'a ProtocolInformationService,
     pub pairing: &'a PairingService,
 }
 
@@ -341,6 +343,14 @@ impl<'c> HapPeripheralContext<'c> {
         srv: &crate::uuid::Uuid,
     ) -> Option<&mut crate::Service> {
         for s in self.services_mut() {
+            if &s.uuid == srv {
+                return Some(s);
+            }
+        }
+        None
+    }
+    pub fn get_service_by_uuid(&self, srv: &crate::uuid::Uuid) -> Option<&crate::Service> {
+        for s in self.services() {
             if &s.uuid == srv {
                 return Some(s);
             }
@@ -973,7 +983,6 @@ impl<'c> HapPeripheralContext<'c> {
 
     async fn handle_write_incoming<'hap, 'support>(
         &self,
-        hap: &HapServices<'hap>,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
@@ -983,7 +992,14 @@ impl<'c> HapPeripheralContext<'c> {
         self.should_encrypt_reply.set(security_active);
         let mut tmp_buffer = self.in_buffer.borrow_mut();
         let data = if security_active {
-            if handle == hap.pairing.pair_verify.handle {
+            let pair_verify_handle = self
+                .get_service_by_uuid(&crate::service::PAIRING.into())
+                .ok_or(HapBleError::SpecialHandleError)?
+                .get_characteristic_by_uuid(&crate::characteristic::PAIRING_PAIR_VERIFY.into())
+                .ok_or(HapBleError::SpecialHandleError)?
+                .ble_ref()
+                .handle;
+            if handle == pair_verify_handle {
                 // pair verify is always plaintext!
                 self.should_encrypt_reply.set(false);
                 data
@@ -1249,14 +1265,13 @@ impl<'c> HapPeripheralContext<'c> {
 
     async fn handle_write_incoming_entry<'hap, 'support>(
         &mut self,
-        hap: &HapServices<'hap>,
         pair_support: &mut impl PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, HapBleError> {
         let r = self
-            .handle_write_incoming(hap, pair_support, accessory, data, handle)
+            .handle_write_incoming(pair_support, accessory, data, handle)
             .await;
         match r {
             Ok(v) => Ok(v),
@@ -1284,17 +1299,15 @@ impl<'c> HapPeripheralContext<'c> {
 
     #[cfg(test)]
     // helper function to store the reply into the prepared reply.
-    async fn handle_write_incoming_test<'hap, 'support>(
+    async fn handle_write_incoming_test<'support>(
         &mut self,
-        hap: &HapServices<'hap>,
         pair_support: &mut impl crate::PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         data: &[u8],
         handle: u16,
     ) -> Result<Option<BufferResponse>, InternalError> {
-        let resp = self.handle_write_incoming_entry(hap, pair_support, accessory, &data, handle);
+        let resp = self.handle_write_incoming_entry(pair_support, accessory, &data, handle);
 
-        info!("pair verify handle: {:?}", hap.pairing.pair_verify.handle());
         if let Some(resp) = resp.await? {
             self.prepared_reply = Some(Reply {
                 payload: resp,
@@ -1336,9 +1349,8 @@ impl<'c> HapPeripheralContext<'c> {
         self.advertise_manager.borrow_mut().state_connected(false);
     }
 
-    pub async fn process_gatt_event<'stack, 'server, 'hap, 'support, P: PacketPool>(
+    pub async fn process_gatt_event<'stack, 'server, 'support, P: PacketPool>(
         &mut self,
-        hap: &HapServices<'hap>,
         pair_support: &mut impl crate::PlatformSupport,
         accessory: &mut impl crate::AccessoryInterface,
         event: trouble_host::gatt::GattEvent<'stack, 'server, P>,
@@ -1365,7 +1377,6 @@ impl<'c> HapPeripheralContext<'c> {
             GattEvent::Write(event) => {
                 let resp = self
                     .handle_write_incoming_entry(
-                        hap,
                         pair_support,
                         accessory,
                         &event.data(),
@@ -1405,7 +1416,6 @@ impl<'c> HapPeripheralContext<'c> {
         &mut self,
         accessory: &mut impl crate::AccessoryInterface,
         support: &mut impl PlatformSupport,
-        hap_services: &HapServices<'_>,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), HapBleError> {
         const SUPER_VERBOSE: bool = false;
@@ -1515,9 +1525,8 @@ impl<'c> HapPeripheralContext<'c> {
                             //
                             if should_skip {
                             } else {
-                                let fallthrough_event = self
-                                    .process_gatt_event(hap_services, support, accessory, event)
-                                    .await?;
+                                let fallthrough_event =
+                                    self.process_gatt_event(support, accessory, event).await?;
 
                                 if let Some(event) = fallthrough_event {
                                     match event.accept() {
@@ -1738,8 +1747,7 @@ impl<'c> HapPeripheralContext<'c> {
                                     .expect("Failed to create attribute server");
 
                                 // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                                let a =
-                                    self.gatt_events_task(accessory, support, &hap_services, &conn);
+                                let a = self.gatt_events_task(accessory, support, &conn);
 
                                 // run until any task ends (usually because the connection has been closed),
                                 // then return to advertising state.
