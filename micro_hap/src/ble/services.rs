@@ -1,4 +1,4 @@
-use super::{HapBleError, HapBleService, sig};
+use super::{HapBleError, sig};
 use crate::{BleProperties, CharacteristicProperties, DataSource};
 use crate::{CharId, SvcId};
 use crate::{characteristic, descriptor, service};
@@ -623,7 +623,7 @@ impl ProtocolInformationService {
         // //#[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=0x02u16.to_le_bytes())]
         // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 0x10)]
         // pub service_instance: u16,
-        let (mut service_builder, store, iid, service_instance) =
+        let (mut service_builder, store, iid, _service_instance) =
             add_service_instance!(service_builder, iid, store);
 
         // /// Service signature, only two bytes.
@@ -807,6 +807,12 @@ impl PairingService {
 
         let (mut service_builder, store, iid, _service_instance) =
             add_service_instance!(service_builder, iid, store);
+
+        // Not a bug, this is super weird, no service signature characteristic, yet we still jump:
+        // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L33-L37
+        // #define kIID_Pairing                ((uint64_t) 0x0020)
+        // #define kIID_PairingPairSetup       ((uint64_t) 0x0022)
+        let iid = iid + 1;
 
         let (mut service_builder, store, iid, pair_setup) = add_facade_characteristic!(
             service_builder,
@@ -1151,7 +1157,7 @@ mod test {
             // has a static cell and that can't be reinitialised.
             warn!("Skipping test because `RUN_GATT_TABLE_TEST` is not set");
             info!(
-                "Run this test with RUN_GATT_TABLE_TEST=1 cargo t -- test_service_pairing_identical"
+                "Run this test with RUST_LOG=trace  RUN_GATT_TABLE_TEST=1 cargo t  --features log -- --nocapture  -- test_service_pairing_identical"
             );
             return;
         }
@@ -1164,18 +1170,16 @@ mod test {
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let (_remaining_buffer, handles) = ProtocolInformationService::add_to_attribute_table(
-            &mut attribute_table1,
-            &mut attribute_buffer,
-        )
-        .unwrap();
+        let (_remaining_buffer, handles) =
+            PairingService::add_to_attribute_table(&mut attribute_table1, &mut attribute_buffer)
+                .unwrap();
 
         let mut attribute_table2 = trouble_host::attribute::AttributeTable::<
             CriticalSectionRawMutex,
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let from_macro = ProtocolInformationService::new(&mut attribute_table2);
+        let from_macro = PairingService::new(&mut attribute_table2);
         let handles_from_macro = from_macro.to_handles();
 
         info!("handles: {handles:?}");

@@ -3,6 +3,8 @@
 use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
+// This doesn't work yet and fails on the pair verify step.
+
 mod hap_lightbulb {
     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use example_std::RuntimeConfig;
@@ -11,7 +13,7 @@ mod hap_lightbulb {
     use embassy_futures::join::join;
     use log::info;
     use micro_hap::IntoBytesForAccessoryInterface;
-    use micro_hap::ble::HapBleService;
+
     use static_cell::StaticCell;
     use trouble_host::prelude::*;
 
@@ -23,7 +25,9 @@ mod hap_lightbulb {
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
         name: HeaplessString<32>,
+        name_char: CharId,
         bulb_on_state: bool,
+        on_char: CharId,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -33,9 +37,9 @@ mod hap_lightbulb {
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
+            if char_id == self.name_char {
                 self.name.read_characteristic_into(char_id, output)
-            } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+            } else if char_id == self.on_char {
                 self.bulb_on_state.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
@@ -51,7 +55,7 @@ mod hap_lightbulb {
                 char_id, data
             );
 
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+            if char_id == self.on_char {
                 let value = data
                     .get(0)
                     .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
@@ -76,15 +80,6 @@ mod hap_lightbulb {
 
     /// Max number of L2CAP channels.
     const L2CAP_CHANNELS_MAX: usize = 5; // Signal + att
-
-    // GATT Server definition
-    #[gatt_server]
-    struct Server {
-        accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
-        protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
-        pairing: micro_hap::ble::PairingService,                            // 0x0055
-        lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
-    }
 
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
@@ -115,29 +110,35 @@ mod hap_lightbulb {
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let remaining_buffer =
+        let (remaining_buffer, information_handles) =
             micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
                 &mut attribute_table,
                 &mut attribute_buffer,
             )
             .unwrap();
-        let remaining_buffer =
+        info!("information_handles: {:?}", information_handles);
+        let (remaining_buffer, protocol_handles) =
             micro_hap::ble::services::ProtocolInformationService::add_to_attribute_table(
                 &mut attribute_table,
                 remaining_buffer,
             )
             .unwrap();
-        let remaining_buffer = micro_hap::ble::services::PairingService::add_to_attribute_table(
-            &mut attribute_table,
-            remaining_buffer,
-        )
-        .unwrap();
-        let remaining_buffer = micro_hap::ble::services::LightbulbService::add_to_attribute_table(
-            &mut attribute_table,
-            remaining_buffer,
-            0x30,
-        )
-        .unwrap();
+        info!("protocol_handles: {:?}", protocol_handles);
+        let (remaining_buffer, pairing_handles) =
+            micro_hap::ble::services::PairingService::add_to_attribute_table(
+                &mut attribute_table,
+                remaining_buffer,
+            )
+            .unwrap();
+        info!("pairing_handles: {:?}", pairing_handles);
+        let (remaining_buffer, bulb_handles) =
+            micro_hap::ble::services::LightbulbService::add_to_attribute_table(
+                &mut attribute_table,
+                remaining_buffer,
+                0x30,
+            )
+            .unwrap();
+        info!("bulb_handles: {:?}", bulb_handles);
 
         // https://github.com/embassy-rs/trouble/blob/ed3e2233318962300014bceab75ba70b3a00d88f/host-macros/src/server.rs#L202
 
@@ -171,6 +172,8 @@ mod hap_lightbulb {
         let mut accessory = LightBulbAccessory {
             name: "Light Bulb".try_into().unwrap(),
             bulb_on_state: false,
+            name_char: bulb_handles.name.hap,
+            on_char: bulb_handles.on.hap,
         };
 
         // Create the pairing context.
@@ -242,8 +245,16 @@ mod hap_lightbulb {
         )
         .unwrap();
         hap_context
-            .add_service(todo!())
-            //.add_service(server.lightbulb.populate_support().unwrap())
+            .add_service(information_handles.to_service().unwrap())
+            .unwrap();
+        hap_context
+            .add_service(protocol_handles.to_service().unwrap())
+            .unwrap();
+        hap_context
+            .add_service(pairing_handles.to_service().unwrap())
+            .unwrap();
+        hap_context
+            .add_service(bulb_handles.to_service().unwrap())
             .unwrap();
         hap_context.assign_static_data(&static_information);
 
