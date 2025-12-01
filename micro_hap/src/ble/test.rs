@@ -2005,6 +2005,8 @@ async fn test_message_exchanges() -> Result<(), InternalError> {
     crate::test::init();
     let server = create_server();
     let v = crate_hap_context(&server);
+    // Example to run with just disconnected:
+    // SKIP_DEFAULT=1 SKIP_REMOVE=1 SKIP_FAIL_RESUME=1 RUST_LOG=trace cargo t --features log -- --nocapture ble::test::test_message_exchanges
 
     let v = conditional_test!("SKIP_DEFAULT", v, &server, TestScenario::Default);
     let v = conditional_test!("SKIP_REMOVE", v, &server, TestScenario::RemoveAccessory);
