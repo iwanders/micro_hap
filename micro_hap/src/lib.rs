@@ -214,7 +214,7 @@ impl defmt::Format for CharId {
 
 /// A service id.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout, Debug, Copy, Clone, Hash)]
 #[repr(transparent)]
 pub struct SvcId(pub u16);
 
