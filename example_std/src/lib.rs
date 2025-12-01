@@ -281,8 +281,7 @@ pub fn print_pair_qr(pair_code: &PairCode, setup_id: &SetupId, category: u8) {
     println!("{image}");
 }
 
-use micro_hap::ble::TimedWrite;
-use micro_hap::ble::{HapBleService, HapPeripheralContext};
+use micro_hap::ble::{HapPeripheralContext, TimedWrite};
 use static_cell::StaticCell;
 
 type Mutex = embassy_sync::blocking_mutex::raw::NoopRawMutex;

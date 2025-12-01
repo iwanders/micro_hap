@@ -11,7 +11,7 @@ mod hap_rgb_bulb {
     use micro_hap::{
         BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
         ServiceProperties, SvcId,
-        ble::{FacadeDummyType, HapBleError, HapBleService, sig},
+        ble::{FacadeDummyType, HapBleError, sig},
         characteristic, descriptor, service,
         uuid::HomekitUuid16,
     };
@@ -48,8 +48,8 @@ mod hap_rgb_bulb {
         #[characteristic(uuid=CHARACTERISTIC_COLOR_TEMPERATURE, read, write )]
         pub color_temp: FacadeDummyType,
     }
-    impl HapBleService for TemperatureBulbService {
-        fn populate_support(&self) -> Result<Service, HapBleError> {
+    impl TemperatureBulbService {
+        pub fn populate_support(&self) -> Result<Service, HapBleError> {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: service::LIGHTBULB.into(),
@@ -182,8 +182,8 @@ mod hap_rgb_bulb {
         #[characteristic(uuid=CHARACTERISTIC_BRIGHTNESS, read, write )]
         pub brightness: FacadeDummyType,
     }
-    impl HapBleService for RgbBulbService {
-        fn populate_support(&self) -> Result<Service, HapBleError> {
+    impl RgbBulbService {
+        pub fn populate_support(&self) -> Result<Service, HapBleError> {
             let mut service = Service {
                 ble_handle: Some(self.handle),
                 uuid: service::LIGHTBULB.into(),
@@ -333,7 +333,6 @@ mod hap_rgb {
 
     use log::info;
     use micro_hap::IntoBytesForAccessoryInterface;
-    use micro_hap::ble::HapBleService;
     use trouble_host::prelude::*;
     use zerocopy::IntoBytes;
 

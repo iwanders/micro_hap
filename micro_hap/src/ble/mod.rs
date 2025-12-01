@@ -232,10 +232,6 @@ impl From<InterfaceError> for InternalError {
         InternalError::HapBleError(e.into())
     }
 }
-pub trait HapBleService {
-    fn populate_support(&self) -> Result<crate::Service, HapBleError>;
-}
-
 /// Simple helper struct that's used to capture input to the gatt event handler.
 pub struct HapServices<'a> {
     pub pairing: &'a PairingService,
@@ -617,6 +613,7 @@ impl<'c> HapPeripheralContext<'c> {
         // So now we craft the reply, technically this could happen on the read... should it happen on the read?
         let char_id = req.header.char_id;
         let chr = self.get_attribute_by_char(char_id)?;
+        info!("Write on char_id: {:?}, with uuid: {:?}", char_id, chr.uuid);
 
         let is_pair_setup = chr.uuid == characteristic::PAIRING_PAIR_SETUP.into();
         let is_pair_verify = chr.uuid == characteristic::PAIRING_PAIR_VERIFY.into();
@@ -999,6 +996,8 @@ impl<'c> HapPeripheralContext<'c> {
                 .ok_or(HapBleError::SpecialHandleError)?
                 .ble_ref()
                 .handle;
+            info!("pair_verify_handle: {:?}", pair_verify_handle);
+            info!("this handle: {:?}", handle);
             if handle == pair_verify_handle {
                 // pair verify is always plaintext!
                 self.should_encrypt_reply.set(false);
@@ -1418,7 +1417,7 @@ impl<'c> HapPeripheralContext<'c> {
         support: &mut impl PlatformSupport,
         conn: &GattConnection<'_, '_, P>,
     ) -> Result<(), HapBleError> {
-        const SUPER_VERBOSE: bool = false;
+        const SUPER_VERBOSE: bool = true;
 
         let reason = loop {
             let v = select(self.control_receiver.get_event(), conn.next()).await;

@@ -175,7 +175,6 @@ mod hap_lightbulb {
     use log::info;
     use micro_hap::IntoBytesForAccessoryInterface;
     use micro_hap::ble::FacadeDummyType;
-    use micro_hap::ble::HapBleService;
     use micro_hap::{AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode};
     use trouble_host::prelude::*;
     /// Struct to keep state for this specific accessory, with only a lightbulb.
