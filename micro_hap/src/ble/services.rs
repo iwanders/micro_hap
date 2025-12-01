@@ -546,7 +546,7 @@ pub struct ProtocolInformationServiceHandles {
     pub svc_handle: SvcBleIds,
 
     // Handles for the remainder.
-    // pub service_instance: CharBleIds,
+    // pub service_instance: CharBleIds, // not a bug, this is missing in the HAP characteristics!
     pub service_signature: CharBleIds,
     pub version: CharBleIds,
 }
@@ -561,6 +561,7 @@ impl ProtocolInformationServiceHandles {
             properties: crate::ServiceProperties::new().with_configurable(true),
         };
 
+        // This is NOT a bug, adding this as a characteristic is not what the reference does.
         /*
         service
             .characteristics
@@ -666,7 +667,7 @@ impl ProtocolInformationService {
                 ble: self.handle,
             },
             // service_instance: CharBleIds {
-            //     hap: CharId(1),
+            //     hap: CharId(0x10),
             //     ble: self.service_instance.handle,
             // },
             service_signature: CharBleIds {
@@ -711,59 +712,26 @@ pub struct PairingService {
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pub pairings: FacadeDummyType,
 }
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
+pub struct PairingServiceHandles {
+    /// Handle for the service.
+    pub svc_handle: SvcBleIds,
 
-impl PairingService {
-    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
-        attribute_table: &mut AttributeTable<'d, M, MAX>,
-        store: &'d mut [u8],
-    ) -> Result<&'d mut [u8], BuilderError> {
-        let service = trouble_host::attribute::Service::new(crate::service::PAIRING);
-        let mut service_builder = attribute_table.add_service(service);
-
-        let iid = 0x20;
-
-        let (mut service_builder, store, iid, _chr_svc_instance) =
-            add_service_instance!(service_builder, iid, store);
-
-        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
-            service_builder,
-            characteristic::PAIRING_PAIR_SETUP,
-            iid,
-            store
-        );
-
-        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
-            service_builder,
-            characteristic::PAIRING_PAIR_VERIFY,
-            iid,
-            store
-        );
-
-        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
-            service_builder,
-            characteristic::PAIRING_FEATURES,
-            iid,
-            store
-        );
-
-        let (mut service_builder, store, iid, _chr_service_sign) = add_facade_characteristic!(
-            service_builder,
-            characteristic::PAIRING_PAIRINGS,
-            iid,
-            store
-        );
-        service_builder.build();
-
-        Ok(store)
-    }
+    // Handles for the remainder.
+    // pub service_instance: CharBleIds, // not a bug, this is missing in the HAP characteristics!
+    pub pair_setup: CharBleIds,
+    pub pair_verify: CharBleIds,
+    pub features: CharBleIds,
+    pub pairings: CharBleIds,
 }
-
-impl HapBleService for PairingService {
-    fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+impl PairingServiceHandles {
+    pub fn to_service(&self) -> Result<crate::Service, HapBleError> {
         let mut service = crate::Service {
-            ble_handle: Some(self.handle),
+            ble_handle: Some(self.svc_handle.ble),
             uuid: service::PAIRING.into(),
-            iid: SvcId(0x20),
+            iid: self.svc_handle.hap,
             characteristics: Default::default(),
             properties: Default::default(),
         };
@@ -771,11 +739,14 @@ impl HapBleService for PairingService {
         service
             .characteristics
             .push(
-                crate::Characteristic::new(characteristic::PAIRING_PAIR_SETUP.into(), CharId(0x22))
-                    .with_properties(CharacteristicProperties::new().with_open_rw(true))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.pair_setup.handle).with_format_opaque(),
-                    ),
+                crate::Characteristic::new(
+                    characteristic::PAIRING_PAIR_SETUP.into(),
+                    self.pair_setup.hap,
+                )
+                .with_properties(CharacteristicProperties::new().with_open_rw(true))
+                .with_ble_properties(
+                    BleProperties::from_handle(self.pair_setup.ble).with_format_opaque(),
+                ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
@@ -783,11 +754,11 @@ impl HapBleService for PairingService {
             .push(
                 crate::Characteristic::new(
                     characteristic::PAIRING_PAIR_VERIFY.into(),
-                    CharId(0x23),
+                    self.pair_verify.hap,
                 )
                 .with_properties(CharacteristicProperties::new().with_open_rw(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.pair_verify.handle).with_format_opaque(),
+                    BleProperties::from_handle(self.pair_verify.ble).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -795,26 +766,124 @@ impl HapBleService for PairingService {
         service
             .characteristics
             .push(
-                crate::Characteristic::new(characteristic::PAIRING_FEATURES.into(), CharId(0x24))
-                    .with_properties(CharacteristicProperties::new().with_read_open(true))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.features.handle)
-                            .with_format(crate::ble::sig::Format::U8),
-                    )
-                    .with_data(crate::DataSource::Constant(&[0])),
+                crate::Characteristic::new(
+                    characteristic::PAIRING_FEATURES.into(),
+                    self.features.hap,
+                )
+                .with_properties(CharacteristicProperties::new().with_read_open(true))
+                .with_ble_properties(
+                    BleProperties::from_handle(self.features.ble)
+                        .with_format(crate::ble::sig::Format::U8),
+                )
+                .with_data(crate::DataSource::Constant(&[0])),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         service
             .characteristics
             .push(
-                crate::Characteristic::new(characteristic::PAIRING_PAIRINGS.into(), CharId(0x25))
-                    .with_properties(CharacteristicProperties::new().with_rw(true))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.pairings.handle).with_format_opaque(),
-                    ),
+                crate::Characteristic::new(
+                    characteristic::PAIRING_PAIRINGS.into(),
+                    self.pairings.hap,
+                )
+                .with_properties(CharacteristicProperties::new().with_rw(true))
+                .with_ble_properties(
+                    BleProperties::from_handle(self.pairings.ble).with_format_opaque(),
+                ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
         Ok(service)
+    }
+}
+
+impl PairingService {
+    pub fn add_to_attribute_table<'d, M: RawMutex, const MAX: usize>(
+        attribute_table: &mut AttributeTable<'d, M, MAX>,
+        store: &'d mut [u8],
+    ) -> Result<(&'d mut [u8], PairingServiceHandles), BuilderError> {
+        let service = trouble_host::attribute::Service::new(crate::service::PAIRING);
+        let mut service_builder = attribute_table.add_service(service);
+        let service_hap_id = SvcId(0x20);
+        let iid = 0x20;
+
+        let (mut service_builder, store, iid, _service_instance) =
+            add_service_instance!(service_builder, iid, store);
+
+        let (mut service_builder, store, iid, pair_setup) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIR_SETUP,
+            iid,
+            store
+        );
+
+        let (mut service_builder, store, iid, pair_verify) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIR_VERIFY,
+            iid,
+            store
+        );
+
+        let (mut service_builder, store, iid, features) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_FEATURES,
+            iid,
+            store
+        );
+
+        let (service_builder, store, iid, pairings) = add_facade_characteristic!(
+            service_builder,
+            characteristic::PAIRING_PAIRINGS,
+            iid,
+            store
+        );
+        let _ = iid;
+        let svc_handle = service_builder.build();
+
+        let handles = PairingServiceHandles {
+            svc_handle: SvcBleIds {
+                hap: service_hap_id,
+                ble: svc_handle,
+            },
+            // service_instance,
+            pair_setup,
+            pair_verify,
+            features,
+            pairings,
+        };
+
+        Ok((store, handles))
+    }
+    pub fn to_handles(&self) -> PairingServiceHandles {
+        PairingServiceHandles {
+            svc_handle: SvcBleIds {
+                hap: SvcId(0x20),
+                ble: self.handle,
+            },
+            // service_instance: CharBleIds {
+            //     hap: CharId(0x21),
+            //     ble: self.service_instance.handle,
+            // },
+            pair_setup: CharBleIds {
+                hap: CharId(0x22),
+                ble: self.pair_setup.handle,
+            },
+            pair_verify: CharBleIds {
+                hap: CharId(0x23),
+                ble: self.pair_verify.handle,
+            },
+            features: CharBleIds {
+                hap: CharId(0x24),
+                ble: self.features.handle,
+            },
+            pairings: CharBleIds {
+                hap: CharId(0x25),
+                ble: self.pairings.handle,
+            },
+        }
+    }
+
+    pub fn populate_support(&self) -> Result<crate::Service, HapBleError> {
+        let handles = self.to_handles();
+        handles.to_service()
     }
 }
 
@@ -939,6 +1008,8 @@ mod test {
     fn test_service_accessory_information_identical() {
         crate::test::init();
         if !std::env::var("RUN_GATT_TABLE_TEST").is_ok() {
+            // Running this test in parallel with the 'master' test_exchange test fails because AccessoryInformationService
+            // has a static cell and that can't be reinitialised.
             warn!("Skipping test because `RUN_GATT_TABLE_TEST` is not set");
             info!(
                 "Run this test with RUN_GATT_TABLE_TEST=1 cargo t -- test_service_accessory_information_identical"
@@ -954,7 +1025,7 @@ mod test {
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let (remaining_buffer, handles) = AccessoryInformationService::add_to_attribute_table(
+        let (_remaining_buffer, handles) = AccessoryInformationService::add_to_attribute_table(
             &mut attribute_table1,
             &mut attribute_buffer,
         )
@@ -977,6 +1048,8 @@ mod test {
     fn test_service_protocol_identical() {
         crate::test::init();
         if !std::env::var("RUN_GATT_TABLE_TEST").is_ok() {
+            // Running this test in parallel with the 'master' test_exchange test fails because AccessoryInformationService
+            // has a static cell and that can't be reinitialised.
             warn!("Skipping test because `RUN_GATT_TABLE_TEST` is not set");
             info!(
                 "Run this test with RUN_GATT_TABLE_TEST=1 cargo t -- test_service_protocol_identical"
@@ -992,7 +1065,46 @@ mod test {
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
-        let (remaining_buffer, handles) = ProtocolInformationService::add_to_attribute_table(
+        let (_remaining_buffer, handles) = ProtocolInformationService::add_to_attribute_table(
+            &mut attribute_table1,
+            &mut attribute_buffer,
+        )
+        .unwrap();
+
+        let mut attribute_table2 = trouble_host::attribute::AttributeTable::<
+            CriticalSectionRawMutex,
+            ATTRIBUTE_TABLE_SIZE,
+        >::new();
+
+        let from_macro = ProtocolInformationService::new(&mut attribute_table2);
+        let handles_from_macro = from_macro.to_handles();
+
+        info!("handles: {handles:?}");
+        info!("handles_from_macro: {handles_from_macro:?}");
+        assert_eq!(handles, handles_from_macro);
+    }
+    #[test]
+    fn test_service_pairing_identical() {
+        crate::test::init();
+        if !std::env::var("RUN_GATT_TABLE_TEST").is_ok() {
+            // Running this test in parallel with the 'master' test_exchange test fails because AccessoryInformationService
+            // has a static cell and that can't be reinitialised.
+            warn!("Skipping test because `RUN_GATT_TABLE_TEST` is not set");
+            info!(
+                "Run this test with RUN_GATT_TABLE_TEST=1 cargo t -- test_service_pairing_identical"
+            );
+            return;
+        }
+
+        let mut attribute_buffer = [0u8; 1024];
+
+        const ATTRIBUTE_TABLE_SIZE: usize = 1024;
+        let mut attribute_table1 = trouble_host::attribute::AttributeTable::<
+            CriticalSectionRawMutex,
+            ATTRIBUTE_TABLE_SIZE,
+        >::new();
+
+        let (_remaining_buffer, handles) = ProtocolInformationService::add_to_attribute_table(
             &mut attribute_table1,
             &mut attribute_buffer,
         )
