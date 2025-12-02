@@ -94,8 +94,8 @@ macro_rules! add_facade_characteristic_props {
                 descriptor::CHARACTERISTIC_INSTANCE_UUID,
                 value_store,
             );
-            let characteristic = characteristic_builder.build();
             info!("_descriptor_object.handle: {}", _descriptor_object.handle());
+            let characteristic = characteristic_builder.build();
             info!("characteristic.handle: {}", characteristic.handle);
             let char_id = CharId(iid_value);
             (
@@ -1042,6 +1042,7 @@ impl LightbulbService {
         service_instance: u16,
     ) -> Result<(&'d mut [u8], LightbulbServiceHandles), BuilderError> {
         let service = trouble_host::attribute::Service::new(crate::service::LIGHTBULB);
+
         let mut service_builder = attribute_table.add_service(service);
         let service_hap_id = SvcId(service_instance);
         let iid = service_instance;

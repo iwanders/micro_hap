@@ -37,6 +37,11 @@ mod hap_lightbulb {
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {
+            info!(
+                "AccessoryInterface read to characterstic: 0x{:02?}",
+                char_id
+            );
+
             if char_id == self.name_char {
                 self.name.read_characteristic_into(char_id, output)
             } else if char_id == self.on_char {
@@ -51,7 +56,7 @@ mod hap_lightbulb {
             data: &[u8],
         ) -> Result<CharacteristicResponse, InterfaceError> {
             info!(
-                "AccessoryInterface to characterstic: 0x{:02?} data: {:02?}",
+                "AccessoryInterface write to characterstic: 0x{:02?} data: {:02?}",
                 char_id, data
             );
 
