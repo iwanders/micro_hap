@@ -110,6 +110,17 @@ mod hap_lightbulb {
             ATTRIBUTE_TABLE_SIZE,
         >::new();
 
+        // Create the gatt server.
+        let name = "Z"; // There's _very_ few bytes left in the advertisement
+        info!("Starting advertising and GATT service");
+        let gap_config = GapConfig::Peripheral(PeripheralConfig {
+            name,
+            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+        });
+        //let server = Server::new_with_config().unwrap();
+        //
+        gap_config.build(&mut attribute_table).unwrap();
+
         let (remaining_buffer, information_handles) =
             micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
                 &mut attribute_table,
@@ -148,17 +159,6 @@ mod hap_lightbulb {
             runner,
             ..
         } = stack.build();
-
-        // Create the gatt server.
-        let name = "Z"; // There's _very_ few bytes left in the advertisement
-        info!("Starting advertising and GATT service");
-        let gap_config = GapConfig::Peripheral(PeripheralConfig {
-            name,
-            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
-        });
-        //let server = Server::new_with_config().unwrap();
-        //
-        gap_config.build(&mut attribute_table).unwrap();
 
         const CCCD_MAX: usize = 32;
         const CONNECTIONS_MAX: usize = 3;

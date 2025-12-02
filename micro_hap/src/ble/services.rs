@@ -49,16 +49,17 @@ macro_rules! add_service_instance {
     }};
 }
 
-macro_rules! add_facade_characteristic {
+/// Add a standard characteristic for the facade, with control over its properties like Read, Write, Indicate
+macro_rules! add_facade_characteristic_props {
     (
         $service_builder:expr,
         $characteristic_uuid:expr,
+        $characteristic_props:expr,
         $iid: expr,
         $store:expr
     ) => {{
         {
-            const READ_PROPS: &[CharacteristicProp] =
-                &[CharacteristicProp::Read, CharacteristicProp::Write];
+            const READ_PROPS: &[CharacteristicProp] = &$characteristic_props;
             const VALUE: [u8; 0] = [];
             let remaining_length = $store.len();
             let allocation_length: usize = VALUE.len();
@@ -76,6 +77,7 @@ macro_rules! add_facade_characteristic {
                 VALUE,
                 value_store,
             );
+            // Next, create the characteristic instance descriptor.
             let iid_value: u16 = $iid;
             // let remaining_length = $store.len();
             let allocation_length = iid_value.as_bytes().len();
@@ -88,9 +90,13 @@ macro_rules! add_facade_characteristic {
                 },
             )?;
             value_store.copy_from_slice(iid_value.as_bytes());
-            let _descriptor_object = characteristic_builder
-                .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
+            let _descriptor_object = characteristic_builder.add_descriptor_ro::<&[u8], _>(
+                descriptor::CHARACTERISTIC_INSTANCE_UUID,
+                value_store,
+            );
             let characteristic = characteristic_builder.build();
+            info!("_descriptor_object.handle: {}", _descriptor_object.handle());
+            info!("characteristic.handle: {}", characteristic.handle);
             let char_id = CharId(iid_value);
             (
                 $service_builder,
@@ -105,6 +111,44 @@ macro_rules! add_facade_characteristic {
     }};
 }
 
+/// Add a standard read-write characteristic, like for the facade.
+macro_rules! add_facade_characteristic {
+    (
+        $service_builder:expr,
+        $characteristic_uuid:expr,
+        $iid: expr,
+        $store:expr
+    ) => {{
+        add_facade_characteristic_props!(
+            $service_builder,
+            $characteristic_uuid,
+            [CharacteristicProp::Read, CharacteristicProp::Write],
+            $iid,
+            $store
+        )
+    }};
+}
+
+macro_rules! add_facade_characteristic_indicate {
+    (
+        $service_builder:expr,
+        $characteristic_uuid:expr,
+        $iid: expr,
+        $store:expr
+    ) => {{
+        add_facade_characteristic_props!(
+            $service_builder,
+            $characteristic_uuid,
+            [
+                CharacteristicProp::Read,
+                CharacteristicProp::Write,
+                CharacteristicProp::Indicate
+            ],
+            $iid,
+            $store
+        )
+    }};
+}
 /// Error used by the accessory interface
 #[derive(thiserror::Error, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -807,12 +851,14 @@ impl PairingService {
 
         let (mut service_builder, store, iid, _service_instance) =
             add_service_instance!(service_builder, iid, store);
+        // iid == 21 now
 
         // Not a bug, this is super weird, no service signature characteristic, yet we still jump:
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L33-L37
         // #define kIID_Pairing                ((uint64_t) 0x0020)
         // #define kIID_PairingPairSetup       ((uint64_t) 0x0022)
         let iid = iid + 1;
+        // iid is 22 now.
 
         let (mut service_builder, store, iid, pair_setup) = add_facade_characteristic!(
             service_builder,
@@ -1014,7 +1060,7 @@ impl LightbulbService {
             add_facade_characteristic!(service_builder, characteristic::NAME, iid, store);
 
         let (service_builder, store, iid, on) =
-            add_facade_characteristic!(service_builder, characteristic::ON, iid, store);
+            add_facade_characteristic_indicate!(service_builder, characteristic::ON, iid, store);
         let _ = iid;
 
         let svc_handle = service_builder.build();
