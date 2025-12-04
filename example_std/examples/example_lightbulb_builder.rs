@@ -132,31 +132,27 @@ mod hap_lightbulb {
             appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
         });
         //let server = Server::new_with_config().unwrap();
-        //
-        // gap_config.build(&mut attribute_table).unwrap();
+        gap_config.build(&mut attribute_table).unwrap();
+        // This is the body of new_with_config
 
-        /*
         let (remaining_buffer, information_handles) =
             micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
                 &mut attribute_table,
                 &mut attribute_buffer,
             )
             .unwrap();
-        info!("information_handles: {:?}", information_handles);
         let (remaining_buffer, protocol_handles) =
             micro_hap::ble::services::ProtocolInformationService::add_to_attribute_table(
                 &mut attribute_table,
                 remaining_buffer,
             )
             .unwrap();
-        info!("protocol_handles: {:?}", protocol_handles);
         let (remaining_buffer, pairing_handles) =
             micro_hap::ble::services::PairingService::add_to_attribute_table(
                 &mut attribute_table,
                 remaining_buffer,
             )
             .unwrap();
-        info!("pairing_handles: {:?}", pairing_handles);
         let (remaining_buffer, bulb_handles) =
             micro_hap::ble::services::LightbulbService::add_to_attribute_table(
                 &mut attribute_table,
@@ -164,8 +160,13 @@ mod hap_lightbulb {
                 0x30,
             )
             .unwrap();
+        // These handles and CharIds exactly match the ones from the derive macro.
+        info!("information_handles: {:?}", information_handles);
+        info!("protocol_handles: {:?}", protocol_handles);
+        info!("pairing_handles: {:?}", pairing_handles);
         info!("bulb_handles: {:?}", bulb_handles);
-        */
+
+        // end of new_with_config(gapconfig)
 
         // https://github.com/embassy-rs/trouble/blob/ed3e2233318962300014bceab75ba70b3a00d88f/host-macros/src/server.rs#L202
 
@@ -178,11 +179,12 @@ mod hap_lightbulb {
 
         const CCCD_MAX: usize = 32;
         const CONNECTIONS_MAX: usize = 3;
-        // let server =
-        //     trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
-        //         attribute_table,
-        //     );
+        let server =
+            trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
+                attribute_table,
+            );
 
+        /*
         let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
             name,
             appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
@@ -192,6 +194,13 @@ mod hap_lightbulb {
         let protocol_handles = server.protocol.to_handles();
         let pairing_handles = server.pairing.to_handles();
         let bulb_handles = server.lightbulb.to_handles();
+        info!("information_handles: {:?}", information_handles);
+        info!("protocol_handles: {:?}", protocol_handles);
+        info!("pairing_handles: {:?}", pairing_handles);
+        info!("bulb_handles: {:?}", bulb_handles);
+        // This exactly matches the ids as specified through the manual table build.
+        // Discrepancy must be something in the gatt table?
+        */
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472

@@ -27,7 +27,9 @@ macro_rules! add_service_instance {
                 name: stringify!(characteristic::SERVICE_INSTANCE),
             },
         )?;
-        value_store.copy_from_slice(&iid_value.as_bytes());
+        value_store.copy_from_slice(trouble_host::types::gatt_traits::AsGatt::as_gatt(
+            &iid_value,
+        ));
         let characteristic = $service_builder
             .add_characteristic(
                 characteristic::SERVICE_INSTANCE,
@@ -89,9 +91,13 @@ macro_rules! add_facade_characteristic_props {
                     name: stringify!($characteristic_uuid),
                 },
             )?;
-            value_store.copy_from_slice(iid_value.as_bytes());
-            let _descriptor_object = characteristic_builder.add_descriptor_ro::<&[u8], _>(
+            value_store.copy_from_slice(trouble_host::types::gatt_traits::AsGatt::as_gatt(
+                &iid_value,
+            ));
+            let props = [CharacteristicProp::Read];
+            let _descriptor_object = characteristic_builder.add_descriptor::<&[u8], _>(
                 descriptor::CHARACTERISTIC_INSTANCE_UUID,
+                &props,
                 value_store,
             );
             info!("_descriptor_object.handle: {}", _descriptor_object.handle());
