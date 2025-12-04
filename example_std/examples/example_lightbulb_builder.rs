@@ -22,6 +22,15 @@ mod hap_lightbulb {
         ble::TimedWrite,
     };
 
+    // GATT Server definition
+    #[gatt_server]
+    struct GattServer {
+        accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
+        protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
+        pairing: micro_hap::ble::PairingService,                            // 0x0055
+        lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
+    }
+
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
         name: HeaplessString<32>,
@@ -124,8 +133,9 @@ mod hap_lightbulb {
         });
         //let server = Server::new_with_config().unwrap();
         //
-        gap_config.build(&mut attribute_table).unwrap();
+        // gap_config.build(&mut attribute_table).unwrap();
 
+        /*
         let (remaining_buffer, information_handles) =
             micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
                 &mut attribute_table,
@@ -155,6 +165,7 @@ mod hap_lightbulb {
             )
             .unwrap();
         info!("bulb_handles: {:?}", bulb_handles);
+        */
 
         // https://github.com/embassy-rs/trouble/blob/ed3e2233318962300014bceab75ba70b3a00d88f/host-macros/src/server.rs#L202
 
@@ -167,10 +178,20 @@ mod hap_lightbulb {
 
         const CCCD_MAX: usize = 32;
         const CONNECTIONS_MAX: usize = 3;
-        let server =
-            trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
-                attribute_table,
-            );
+        // let server =
+        //     trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
+        //         attribute_table,
+        //     );
+
+        let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+            name,
+            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+        }))
+        .unwrap();
+        let information_handles = server.accessory_information.to_handles();
+        let protocol_handles = server.protocol.to_handles();
+        let pairing_handles = server.pairing.to_handles();
+        let bulb_handles = server.lightbulb.to_handles();
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
