@@ -30,7 +30,8 @@ trouble-host = { features = [
     "log",
     ], git = "https://github.com/embassy-rs/trouble", rev = "51cf300cb4951370ce043ffe5f67594a420cfd3e" }
  #   ], path = "../../trouble/host" }
-bt-hci-linux = {path = "../../trouble/bt-hci-linux"}
+bt-hci-linux = {git = "https://github.com/embassy-rs/trouble", rev = "51cf300cb4951370ce043ffe5f67594a420cfd3e"}
+#bt-hci-linux = {path = "../../trouble/bt-hci-linux"}
     #git = "https://github.com/embassy-rs/trouble", rev = "26ec6794d0a976dd91cd694b631c72b16ddf651b"
 
 
