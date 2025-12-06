@@ -3,8 +3,6 @@
 use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
-// This doesn't work yet and fails on the pair verify step.
-
 mod hap_lightbulb {
     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use example_std::RuntimeConfig;
@@ -21,15 +19,6 @@ mod hap_lightbulb {
         AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PairCode,
         ble::TimedWrite,
     };
-
-    // GATT Server definition
-    #[gatt_server]
-    struct GattServer {
-        accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
-        protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
-        pairing: micro_hap::ble::PairingService,                            // 0x0055
-        lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
-    }
 
     /// Struct to keep state for this specific accessory, with only a lightbulb.
     struct LightBulbAccessory {
@@ -166,8 +155,6 @@ mod hap_lightbulb {
         info!("pairing_handles: {:?}", pairing_handles);
         info!("bulb_handles: {:?}", bulb_handles);
 
-        // end of new_with_config(gapconfig)
-
         // https://github.com/embassy-rs/trouble/blob/ed3e2233318962300014bceab75ba70b3a00d88f/host-macros/src/server.rs#L202
 
         let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
@@ -183,24 +170,6 @@ mod hap_lightbulb {
             trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
                 attribute_table,
             );
-
-        /*
-        let server = GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-            name,
-            appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
-        }))
-        .unwrap();
-        let information_handles = server.accessory_information.to_handles();
-        let protocol_handles = server.protocol.to_handles();
-        let pairing_handles = server.pairing.to_handles();
-        let bulb_handles = server.lightbulb.to_handles();
-        info!("information_handles: {:?}", information_handles);
-        info!("protocol_handles: {:?}", protocol_handles);
-        info!("pairing_handles: {:?}", pairing_handles);
-        info!("bulb_handles: {:?}", bulb_handles);
-        // This exactly matches the ids as specified through the manual table build.
-        // Discrepancy must be something in the gatt table?
-        */
 
         // Create this specific accessory.
         // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
