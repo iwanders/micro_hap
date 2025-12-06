@@ -406,6 +406,16 @@ impl BleProperties {
             characteristic: Default::default(),
         }
     }
+    pub fn from_characteristic(
+        characteristic: trouble_host::attribute::Characteristic<ble::FacadeDummyType>,
+    ) -> Self {
+        Self {
+            handle: characteristic.handle,
+            format: Default::default(),
+            characteristic: Some(characteristic),
+        }
+    }
+
     pub fn with_format(self, format: ble::sig::Format) -> Self {
         let mut ble_format = self.format;
         ble_format.format = format;

@@ -32,14 +32,6 @@ struct Server {
     pairing: PairingService,
     lightbulb: LightbulbService,
 }
-impl Server<'_> {
-    pub fn as_hap(&self) -> HapServices<'_> {
-        HapServices {
-            pairing: &self.pairing,
-        }
-    }
-}
-
 fn create_server() -> Server<'static> {
     let name = "Acme Light Bulb";
     let server: Server<'static> =
@@ -222,7 +214,6 @@ enum TestScenario {
 }
 
 async fn test_hap_worker(
-    server: &Server<'static>,
     values: (
         &'static HapControlChannel<Mutex, 16>,
         HapPeripheralContext<'static>,
@@ -238,8 +229,6 @@ async fn test_hap_worker(
 > {
     let (control_channel, mut ctx) = values;
     reset_context(&mut ctx).await;
-    let hap = server.as_hap();
-
     struct LightBulbAccessory {
         name: HeaplessString<32>,
         bulb_on_state: bool,
@@ -1994,9 +1983,7 @@ macro_rules! conditional_test {
         if std::env::var($env_var).is_ok() {
             $control_ctx
         } else {
-            test_hap_worker(&$server, $control_ctx, $testscenario)
-                .await
-                .unwrap()
+            test_hap_worker($control_ctx, $testscenario).await.unwrap()
         }
     };
 }
