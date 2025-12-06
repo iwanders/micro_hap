@@ -31,7 +31,6 @@ pub use ble::BleBroadcastInterval;
 
 // We probably should handle some gatt reads manually with:
 // https://github.com/embassy-rs/trouble/pull/311
-//
 
 // Hmm, maybe this does what we need;
 // https://github.com/sysgrok/rs-matter-embassy/blob/79a2a7786ad28e2ae186e4136e22c93a2c343599/rs-matter-embassy/src/ble.rs#L301

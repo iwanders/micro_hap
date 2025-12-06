@@ -7,18 +7,20 @@ use trouble_host::prelude::*;
 
 use zerocopy::IntoBytes;
 
+#[macro_export]
 macro_rules! add_service_instance {
     (
         $service_builder:expr,
         $iid: expr,
         $store:expr
     ) => {{
+        use $crate::ble::BuilderError;
         // #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = 1)]
         // pub service_instance: u16,
         let readprops = &[CharacteristicProp::Read];
         let iid_value: u16 = $iid;
         let remaining_length = $store.len();
-        let allocation_length = iid_value.as_bytes().len();
+        let allocation_length = trouble_host::types::gatt_traits::AsGatt::as_gatt(&iid_value).len();
         let (value_store, store) = $store.split_at_mut_checked(allocation_length).ok_or(
             BuilderError::AttributeAllocationOverrun {
                 remaining_length,
@@ -52,6 +54,7 @@ macro_rules! add_service_instance {
 }
 
 /// Add a standard characteristic for the facade, with control over its properties like Read, Write, Indicate
+#[macro_export]
 macro_rules! add_facade_characteristic_props {
     (
         $service_builder:expr,
@@ -61,6 +64,7 @@ macro_rules! add_facade_characteristic_props {
         $store:expr
     ) => {{
         {
+            use $crate::ble::BuilderError;
             const READ_PROPS: &[CharacteristicProp] = &$characteristic_props;
             const VALUE: [u8; 0] = [];
             let remaining_length = $store.len();
@@ -82,7 +86,8 @@ macro_rules! add_facade_characteristic_props {
             // Next, create the characteristic instance descriptor.
             let iid_value: u16 = $iid;
             // let remaining_length = $store.len();
-            let allocation_length = iid_value.as_bytes().len();
+            let allocation_length =
+                trouble_host::types::gatt_traits::AsGatt::as_gatt(&iid_value).len();
             let (value_store, store) = store.split_at_mut_checked(allocation_length).ok_or(
                 BuilderError::AttributeAllocationOverrun {
                     remaining_length,
@@ -100,9 +105,9 @@ macro_rules! add_facade_characteristic_props {
                 &props,
                 value_store,
             );
-            info!("_descriptor_object.handle: {}", _descriptor_object.handle());
+            // info!("_descriptor_object.handle: {}", _descriptor_object.handle());
             let characteristic = characteristic_builder.build();
-            info!("characteristic.handle: {}", characteristic.handle);
+            // info!("characteristic.handle: {}", characteristic.handle);
             let char_id = CharId(iid_value);
             (
                 $service_builder,
@@ -118,6 +123,7 @@ macro_rules! add_facade_characteristic_props {
 }
 
 /// Add a standard read-write characteristic, like for the facade.
+#[macro_export]
 macro_rules! add_facade_characteristic {
     (
         $service_builder:expr,
@@ -125,7 +131,7 @@ macro_rules! add_facade_characteristic {
         $iid: expr,
         $store:expr
     ) => {{
-        add_facade_characteristic_props!(
+        $crate::add_facade_characteristic_props!(
             $service_builder,
             $characteristic_uuid,
             [CharacteristicProp::Read, CharacteristicProp::Write],
@@ -135,6 +141,7 @@ macro_rules! add_facade_characteristic {
     }};
 }
 
+#[macro_export]
 macro_rules! add_facade_characteristic_indicate {
     (
         $service_builder:expr,
@@ -142,7 +149,7 @@ macro_rules! add_facade_characteristic_indicate {
         $iid: expr,
         $store:expr
     ) => {{
-        add_facade_characteristic_props!(
+        $crate::add_facade_characteristic_props!(
             $service_builder,
             $characteristic_uuid,
             [
