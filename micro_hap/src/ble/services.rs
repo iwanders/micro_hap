@@ -7,6 +7,28 @@ use trouble_host::prelude::*;
 
 use zerocopy::IntoBytes;
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub struct SvcBleIds {
+    pub hap: SvcId,
+    pub ble: u16,
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
+pub struct CharBleIds<T: Copy + trouble_host::types::gatt_traits::AsGatt> {
+    pub hap: CharId,
+    pub ble: trouble_host::attribute::Characteristic<T>,
+}
+impl<T: Copy + trouble_host::types::gatt_traits::AsGatt> core::cmp::Eq for CharBleIds<T> {}
+impl<T: Copy + trouble_host::types::gatt_traits::AsGatt> core::cmp::PartialEq for CharBleIds<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hap == other.hap && self.ble.handle == other.ble.handle
+    }
+}
+pub type FacadeBleIds = CharBleIds<FacadeDummyType>;
+pub type ServiceInstanceBleIds = CharBleIds<u16>;
+
 #[macro_export]
 macro_rules! add_service_instance {
     (
@@ -47,7 +69,7 @@ macro_rules! add_service_instance {
             iid_value + 1,
             CharBleIds {
                 hap: char_id,
-                ble: characteristic.handle,
+                ble: characteristic,
             },
         )
     }};
@@ -115,7 +137,7 @@ macro_rules! add_facade_characteristic_props {
                 iid_value + 1,
                 CharBleIds {
                     hap: char_id,
-                    ble: characteristic.handle,
+                    ble: characteristic,
                 },
             )
         }
@@ -236,38 +258,22 @@ pub struct AccessoryInformationService {
     pub adk_version: FacadeDummyType,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
-pub struct SvcBleIds {
-    pub hap: SvcId,
-    pub ble: u16,
-}
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
-pub struct CharBleIds {
-    pub hap: CharId,
-    pub ble: u16,
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct AccessoryInformationServiceHandles {
     /// Handle for the service.
     pub svc_handle: SvcBleIds,
 
     // Handles for the remainder.
-    pub service_instance: CharBleIds,
-    pub identify: CharBleIds,
-    pub manufacturer: CharBleIds,
-    pub model: CharBleIds,
-    pub name: CharBleIds,
-    pub serial_number: CharBleIds,
-    pub firmware_revision: CharBleIds,
-    pub hardware_revision: CharBleIds,
-    pub adk_version: CharBleIds,
+    pub service_instance: ServiceInstanceBleIds,
+    pub identify: CharBleIds<bool>,
+    pub manufacturer: FacadeBleIds,
+    pub model: FacadeBleIds,
+    pub name: FacadeBleIds,
+    pub serial_number: FacadeBleIds,
+    pub firmware_revision: FacadeBleIds,
+    pub hardware_revision: FacadeBleIds,
+    pub adk_version: FacadeBleIds,
 }
 impl AccessoryInformationServiceHandles {
     pub fn to_service(&self) -> Result<crate::Service, HapBleError> {
@@ -286,7 +292,7 @@ impl AccessoryInformationServiceHandles {
                     characteristic::SERVICE_INSTANCE.into(),
                     self.service_instance.hap,
                 )
-                .with_ble_properties(BleProperties::from_handle(self.service_instance.ble)),
+                .with_ble_properties(BleProperties::from_handle(self.service_instance.ble.handle)),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
@@ -296,7 +302,7 @@ impl AccessoryInformationServiceHandles {
                 crate::Characteristic::new(characteristic::IDENTIFY.into(), self.identify.hap)
                     .with_properties(CharacteristicProperties::new().with_write(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.identify.ble)
+                        BleProperties::from_handle(self.identify.ble.handle)
                             .with_format(sig::Format::Boolean),
                     ),
             )
@@ -311,7 +317,7 @@ impl AccessoryInformationServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.manufacturer.ble)
+                    BleProperties::from_characteristic(self.manufacturer.ble)
                         .with_format(sig::Format::StringUtf8),
                 ),
             )
@@ -323,7 +329,7 @@ impl AccessoryInformationServiceHandles {
                 crate::Characteristic::new(characteristic::MODEL.into(), self.model.hap)
                     .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.model.ble)
+                        BleProperties::from_characteristic(self.model.ble)
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -335,7 +341,7 @@ impl AccessoryInformationServiceHandles {
                 crate::Characteristic::new(characteristic::NAME.into(), self.name.hap)
                     .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.name.ble)
+                        BleProperties::from_characteristic(self.name.ble)
                             .with_format(sig::Format::StringUtf8),
                     ),
             )
@@ -350,7 +356,7 @@ impl AccessoryInformationServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.serial_number.ble)
+                    BleProperties::from_characteristic(self.serial_number.ble)
                         .with_format(sig::Format::StringUtf8),
                 ),
             )
@@ -365,7 +371,7 @@ impl AccessoryInformationServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.firmware_revision.ble)
+                    BleProperties::from_characteristic(self.firmware_revision.ble)
                         .with_format(sig::Format::StringUtf8),
                 ),
             )
@@ -380,7 +386,7 @@ impl AccessoryInformationServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.hardware_revision.ble)
+                    BleProperties::from_characteristic(self.hardware_revision.ble)
                         .with_format(sig::Format::StringUtf8),
                 ),
             )
@@ -399,7 +405,7 @@ impl AccessoryInformationServiceHandles {
                         .with_hidden(true),
                 )
                 .with_ble_properties(
-                    BleProperties::from_handle(self.adk_version.ble)
+                    BleProperties::from_characteristic(self.adk_version.ble)
                         .with_format(sig::Format::StringUtf8),
                 ),
             )
@@ -465,7 +471,6 @@ impl AccessoryInformationService {
             .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
         let chr_identify = svc_ais_chr_identify_builder.build();
         let charid_identify = CharId(iid);
-        let handle_identify = chr_identify.handle;
         let iid = iid + 1;
 
         // 0x20
@@ -509,7 +514,7 @@ impl AccessoryInformationService {
             service_instance,
             identify: CharBleIds {
                 hap: charid_identify,
-                ble: handle_identify,
+                ble: chr_identify,
             },
             manufacturer: chr_manufacturer,
             model: chr_model,
@@ -531,39 +536,39 @@ impl AccessoryInformationService {
             },
             service_instance: CharBleIds {
                 hap: CharId(1),
-                ble: self.service_instance.handle,
+                ble: self.service_instance,
             },
             identify: CharBleIds {
                 hap: CharId(2),
-                ble: self.identify.handle,
+                ble: self.identify,
             },
             manufacturer: CharBleIds {
                 hap: CharId(3),
-                ble: self.manufacturer.handle,
+                ble: self.manufacturer,
             },
             model: CharBleIds {
                 hap: CharId(4),
-                ble: self.model.handle,
+                ble: self.model,
             },
             name: CharBleIds {
                 hap: CharId(5),
-                ble: self.name.handle,
+                ble: self.name,
             },
             serial_number: CharBleIds {
                 hap: CharId(6),
-                ble: self.serial_number.handle,
+                ble: self.serial_number,
             },
             firmware_revision: CharBleIds {
                 hap: CharId(7),
-                ble: self.firmware_revision.handle,
+                ble: self.firmware_revision,
             },
             hardware_revision: CharBleIds {
                 hap: CharId(8),
-                ble: self.hardware_revision.handle,
+                ble: self.hardware_revision,
             },
             adk_version: CharBleIds {
                 hap: CharId(9),
-                ble: self.adk_version.handle,
+                ble: self.adk_version,
             },
         }
     }
@@ -596,17 +601,16 @@ pub struct ProtocolInformationService {
     pub version: FacadeDummyType,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct ProtocolInformationServiceHandles {
     /// Handle for the service.
     pub svc_handle: SvcBleIds,
 
     // Handles for the remainder.
     // pub service_instance: CharBleIds, // not a bug, this is missing in the HAP characteristics!
-    pub service_signature: CharBleIds,
-    pub version: CharBleIds,
+    pub service_signature: FacadeBleIds,
+    pub version: FacadeBleIds,
 }
 impl ProtocolInformationServiceHandles {
     pub fn to_service(&self) -> Result<crate::Service, HapBleError> {
@@ -642,7 +646,8 @@ impl ProtocolInformationServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.service_signature.ble).with_format_opaque(),
+                    BleProperties::from_handle(self.service_signature.ble.handle)
+                        .with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -653,7 +658,7 @@ impl ProtocolInformationServiceHandles {
                 crate::Characteristic::new(characteristic::VERSION.into(), self.version.hap)
                     .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.version.ble)
+                        BleProperties::from_characteristic(self.version.ble)
                             .with_format(sig::Format::StringUtf8),
                     )
                     .with_data(crate::DataSource::Constant("2.2.0".as_bytes())),
@@ -730,11 +735,11 @@ impl ProtocolInformationService {
             // },
             service_signature: CharBleIds {
                 hap: CharId(0x11),
-                ble: self.service_signature.handle,
+                ble: self.service_signature,
             },
             version: CharBleIds {
                 hap: CharId(0x12),
-                ble: self.version.handle,
+                ble: self.version,
             },
         }
     }
@@ -770,19 +775,18 @@ pub struct PairingService {
     #[characteristic(uuid=characteristic::PAIRING_PAIRINGS, read, write)]
     pub pairings: FacadeDummyType,
 }
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct PairingServiceHandles {
     /// Handle for the service.
     pub svc_handle: SvcBleIds,
 
     // Handles for the remainder.
     // pub service_instance: CharBleIds, // not a bug, this is missing in the HAP characteristics!
-    pub pair_setup: CharBleIds,
-    pub pair_verify: CharBleIds,
-    pub features: CharBleIds,
-    pub pairings: CharBleIds,
+    pub pair_setup: FacadeBleIds,
+    pub pair_verify: FacadeBleIds,
+    pub features: FacadeBleIds,
+    pub pairings: FacadeBleIds,
 }
 impl PairingServiceHandles {
     pub fn to_service(&self) -> Result<crate::Service, HapBleError> {
@@ -803,7 +807,7 @@ impl PairingServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_open_rw(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.pair_setup.ble).with_format_opaque(),
+                    BleProperties::from_characteristic(self.pair_setup.ble).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -816,7 +820,7 @@ impl PairingServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_open_rw(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.pair_verify.ble).with_format_opaque(),
+                    BleProperties::from_characteristic(self.pair_verify.ble).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -830,7 +834,7 @@ impl PairingServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read_open(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.features.ble)
+                    BleProperties::from_characteristic(self.features.ble)
                         .with_format(crate::ble::sig::Format::U8),
                 )
                 .with_data(crate::DataSource::Constant(&[0])),
@@ -845,7 +849,7 @@ impl PairingServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_rw(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.pairings.ble).with_format_opaque(),
+                    BleProperties::from_characteristic(self.pairings.ble).with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -930,19 +934,19 @@ impl PairingService {
             // },
             pair_setup: CharBleIds {
                 hap: CharId(0x22),
-                ble: self.pair_setup.handle,
+                ble: self.pair_setup,
             },
             pair_verify: CharBleIds {
                 hap: CharId(0x23),
-                ble: self.pair_verify.handle,
+                ble: self.pair_verify,
             },
             features: CharBleIds {
                 hap: CharId(0x24),
-                ble: self.features.handle,
+                ble: self.features,
             },
             pairings: CharBleIds {
                 hap: CharId(0x25),
-                ble: self.pairings.handle,
+                ble: self.pairings,
             },
         }
     }
@@ -977,18 +981,17 @@ pub struct LightbulbService {
     #[characteristic(uuid=characteristic::ON, read, write, indicate )]
     pub on: FacadeDummyType,
 }
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct LightbulbServiceHandles {
     /// Handle for the service.
     pub svc_handle: SvcBleIds,
 
     // Handles for the remainder.
     // pub service_instance: CharBleIds, // not a bug, this is missing in the HAP characteristics!
-    pub service_signature: CharBleIds,
-    pub name: CharBleIds,
-    pub on: CharBleIds,
+    pub service_signature: FacadeBleIds,
+    pub name: FacadeBleIds,
+    pub on: FacadeBleIds,
 }
 impl LightbulbServiceHandles {
     pub fn to_service(&self) -> Result<crate::Service, HapBleError> {
@@ -1009,7 +1012,8 @@ impl LightbulbServiceHandles {
                 )
                 .with_properties(CharacteristicProperties::new().with_read(true))
                 .with_ble_properties(
-                    BleProperties::from_handle(self.service_signature.ble).with_format_opaque(),
+                    BleProperties::from_characteristic(self.service_signature.ble)
+                        .with_format_opaque(),
                 ),
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
@@ -1020,7 +1024,7 @@ impl LightbulbServiceHandles {
                 crate::Characteristic::new(characteristic::NAME.into(), self.name.hap)
                     .with_properties(CharacteristicProperties::new().with_read(true))
                     .with_ble_properties(
-                        BleProperties::from_handle(self.name.ble)
+                        BleProperties::from_characteristic(self.name.ble)
                             .with_format(sig::Format::StringUtf8),
                     )
                     .with_data(DataSource::AccessoryInterface),
@@ -1039,7 +1043,8 @@ impl LightbulbServiceHandles {
                             .with_supports_broadcast_notification(true),
                     )
                     .with_ble_properties(
-                        BleProperties::from_handle(self.on.ble).with_format(sig::Format::Boolean),
+                        BleProperties::from_characteristic(self.on.ble)
+                            .with_format(sig::Format::Boolean),
                     )
                     .with_data(DataSource::AccessoryInterface),
             )
@@ -1105,15 +1110,15 @@ impl LightbulbService {
             // },
             service_signature: CharBleIds {
                 hap: CharId(0x31),
-                ble: self.service_signature.handle,
+                ble: self.service_signature,
             },
             name: CharBleIds {
                 hap: CharId(0x32),
-                ble: self.name.handle,
+                ble: self.name,
             },
             on: CharBleIds {
                 hap: CharId(0x33),
-                ble: self.on.handle,
+                ble: self.on,
             },
         }
     }
