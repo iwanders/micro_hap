@@ -3,54 +3,7 @@
 use bt_hci::controller::ExternalController;
 use bt_hci_linux::Transport;
 
-// This contains one service that's a temperature sensor.
-
-// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.h#L194
-//
-// This is the wrong way to do this:
-// https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L473-L475
-//
-// * - Disconnected events should only be used to reflect important state changes in the accessory.
-// *   For example, contact sensor state changes or current door state changes should use this property.
-// *   On the other hand, a temperature sensor must not use this property for changes in temperature readings.
-//
-// Disabling disconnected_events however, ~makes the sensor disappear~ show up as '--' in the room view
-// from the apple home application, and it also does not register for broadcasts, is that expected behaviour because
-// my phone isn't a home hub, which would (probably) fulfill the role of listening to broadcasts normally?
-//
-// Weirdly enough, even it doesn't show up, I can ask Siri for the temperature in my living room (the room of the sensor)
-// and when asked, it does actually connect immediately, retrieves the temperature value and reports the correct value.
-//
-// Long pressing on the sensor shows 'This accessory requires an update before it can be used in the Home App, Try updating
-// it using the manufacturer's app.'
-//
-// Wonder if this is https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAP.h#L470C14-L471
-//
-// * - This property must be set on at least one characteristic of an accessory to work around an issue
-// *   in certain versions of the Home app that would otherwise claim that Additional Setup is required.
-//
-// Let's try adding a low battery characteristic that will have the disconnected events enabled. This ONLY works if you
-// give it a range & step, but this can now actually show 'low battery' for the accessory.
-//  Probably because min<max validation here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryValidation.c#L534
-//
-//
-// Nope, that doesn't help, the moment I remove disconnected_events from anything it gives the warning that it needs
-// an update..
-//
-// THere's a LOT of validation here: https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryValidation.c#L321
-// But it's basically Disconnected > Broadcast > Event Notification
-// So it doesn't rule out disabling disconnected events.
-//
-//
-// I've tried reproducing it with the reference implementation, see:
-// https://github.com/iwanders/HomeKitADK_program/tree/9f4512d4de91e1bb2d66ea0037a1ec3a8bcdf518/TemperatureSensor
-// This changes the lightbulb to the temperature sensor to the best of my knowledge, the IP transport makes this into
-// a working sensor, but the BLE side does display the 'this accessory needs an update', perhaps the disconnected events
-// do just always need to be set to true if broadcasts are set... and perhaps the guidance is just to not advance the GSN
-// and emit the broadcast message that causes a connection?
-//
-//
-// There is a Broadcast Characteristic property that I've not yet explored!
+// See notes in the non-builder flavour.
 
 mod hap_temp_accessory {
     use example_std::RuntimeConfig;

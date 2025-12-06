@@ -50,7 +50,11 @@ use bt_hci_linux::Transport;
 // and emit the broadcast message that causes a connection?
 //
 //
-// There is a Broadcast Characteristic property that I've not yet explored!
+// There is a Broadcast Characteristic property that I've not yet explored, explored in f58dd6db151fbc922adb95fa6183cb69b9a2ff8a
+// with the _builder flavour of this one, it doesn't result in the iPhone setting up the broadcast configuration.
+// In addition to the 'this accessory needs an update' of course.
+// So it is still not possible to get ios to report on the temperature just by doing a broadcast with the encrypted
+// value in it :(
 
 mod hap_temp_accessory {
     use example_std::RuntimeConfig;
