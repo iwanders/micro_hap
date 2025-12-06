@@ -74,8 +74,8 @@ mod hap_temp_accessory {
     struct TemperatureAccessory {
         temperature_value: SharedF32,
         temperature_char: CharId,
-        low_battery: u8,
-        low_battery_char: CharId,
+        // low_battery: u8,
+        // low_battery_char: CharId,
     }
 
     /// Implement the accessory interface for the lightbulb.
@@ -90,8 +90,8 @@ mod hap_temp_accessory {
                 let value = *self.temperature_value.lock().unwrap();
 
                 value.read_characteristic_into(char_id, output)
-            } else if char_id == self.low_battery_char {
-                self.low_battery.read_characteristic_into(char_id, output)
+            // } else if char_id == self.low_battery_char {
+            //     self.low_battery.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
             }
@@ -286,8 +286,8 @@ mod hap_temp_accessory {
         let mut accessory = TemperatureAccessory {
             temperature_value: accessory_ptr,
             temperature_char: temperature_handles.value.hap,
-            low_battery: 0,
-            low_battery_char: temperature_handles.low_battery.hap,
+            // low_battery: 0,
+            // low_battery_char: temperature_handles.low_battery.hap,
         };
 
         let category = 10; // sensors
