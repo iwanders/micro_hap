@@ -52,165 +52,9 @@ use bt_hci_linux::Transport;
 //
 // There is a Broadcast Characteristic property that I've not yet explored!
 
-mod hap_temp_sensor {
-    use micro_hap::{
-        BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
-        ServiceProperties, SvcId,
-        ble::{FacadeDummyType, HapBleError, sig},
-        characteristic, descriptor,
-        uuid::HomekitUuid16,
-    };
-    use trouble_host::prelude::*;
-
-    // This makes a lightbulb with a color temperature.
-    pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x30);
-    pub const CHAR_ID_TEMP_SENSOR_SIGNATURE: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 1);
-    pub const CHAR_ID_TEMP_SENSOR_VALUE: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 2);
-    pub const CHAR_ID_TEMP_LOW_BATTERY: CharId = CharId(SERVICE_ID_TEMP_SENSOR.0 + 3);
-
-    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPCharacteristicTypes.c#L23
-    pub const CHARACTERISTIC_CURRENT_TEMPERATURE: HomekitUuid16 = HomekitUuid16::new(0x0011);
-    // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPServiceTypes.c#L51
-    pub const SERVICE_TEMPERATURE_SENSOR: HomekitUuid16 = HomekitUuid16::new(0x8A);
-
-    #[gatt_service(uuid = SERVICE_TEMPERATURE_SENSOR)]
-    pub struct TemperatureSensorService {
-        #[characteristic(uuid=characteristic::SERVICE_INSTANCE, read, value = SERVICE_ID_TEMP_SENSOR.0)]
-        pub service_instance: u16,
-
-        /// Service signature, only two bytes.
-        #[characteristic(uuid=characteristic::SERVICE_SIGNATURE, read, write)]
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read,  value=CHAR_ID_TEMP_SENSOR_SIGNATURE.0.to_le_bytes())]
-        pub service_signature: FacadeDummyType,
-
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_SENSOR_VALUE.0.to_le_bytes())]
-        #[characteristic(uuid=CHARACTERISTIC_CURRENT_TEMPERATURE, read, write, indicate)]
-        pub value: FacadeDummyType,
-
-        #[descriptor(uuid=descriptor::CHARACTERISTIC_INSTANCE_UUID, read, value=CHAR_ID_TEMP_LOW_BATTERY.0.to_le_bytes())]
-        #[characteristic(uuid=characteristic::CHARACTERISTIC_LOW_BATTERY, read, write, indicate)]
-        pub low_battery: FacadeDummyType,
-    }
-    use embassy_sync::blocking_mutex::raw::RawMutex;
-    impl TemperatureSensorService {
-        pub fn create_hap_service<
-            'server,
-            'values,
-            M: RawMutex,
-            const ATT_MAX: usize,
-            const CCCD_MAX: usize,
-            const CONN_MAX: usize,
-        >(
-            &self,
-            server: &'server AttributeServer<
-                'values,
-                M,
-                DefaultPacketPool,
-                ATT_MAX,
-                CCCD_MAX,
-                CONN_MAX,
-            >,
-        ) -> Result<Service, HapBleError> {
-            let mut service = Service {
-                ble_handle: Some(self.handle),
-                uuid: SERVICE_TEMPERATURE_SENSOR.into(),
-                iid: SERVICE_ID_TEMP_SENSOR,
-                characteristics: Default::default(),
-                properties: ServiceProperties::new().with_primary(true),
-            };
-
-            service
-                .characteristics
-                .push(
-                    Characteristic::new(
-                        characteristic::SERVICE_SIGNATURE.into(),
-                        CHAR_ID_TEMP_SENSOR_SIGNATURE,
-                    )
-                    .with_properties(CharacteristicProperties::new().with_read(true))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.service_signature.handle)
-                            .with_format_opaque(),
-                    ),
-                )
-                .map_err(|_| HapBleError::AllocationOverrun)?;
-
-            service
-                .characteristics
-                .push(
-                    Characteristic::new(
-                        CHARACTERISTIC_CURRENT_TEMPERATURE.into(),
-                        CHAR_ID_TEMP_SENSOR_VALUE,
-                    )
-                    .with_properties(
-                        CharacteristicProperties::new()
-                            .with_read(true)
-                            .with_supports_event_notification(true)
-                            .with_supports_disconnect_notification(true)
-                            .with_supports_broadcast_notification(true),
-                    )
-                    .with_range(micro_hap::VariableRange {
-                        start: micro_hap::VariableUnion::F32(0.0),
-                        end: micro_hap::VariableUnion::F32(100.0),
-                        inclusive: true,
-                    })
-                    .with_step(micro_hap::VariableUnion::F32(0.1))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.value.handle)
-                            .with_format(sig::Format::F32)
-                            .with_unit(sig::Unit::Celsius)
-                            .with_characteristic(
-                                server
-                                    .table()
-                                    .find_characteristic_by_value_handle(self.value.handle)
-                                    .unwrap(),
-                            ),
-                    )
-                    .with_data(DataSource::AccessoryInterface),
-                )
-                .map_err(|_| HapBleError::AllocationOverrun)?;
-
-            service
-                .characteristics
-                .push(
-                    Characteristic::new(
-                        characteristic::CHARACTERISTIC_LOW_BATTERY.into(),
-                        CHAR_ID_TEMP_LOW_BATTERY,
-                    )
-                    .with_properties(
-                        CharacteristicProperties::new()
-                            .with_read(true)
-                            .with_supports_event_notification(true)
-                            .with_supports_disconnect_notification(true)
-                            .with_supports_broadcast_notification(true),
-                    )
-                    .with_range(micro_hap::VariableRange {
-                        start: micro_hap::VariableUnion::U8(0),
-                        end: micro_hap::VariableUnion::U8(1),
-                        inclusive: true,
-                    })
-                    .with_step(micro_hap::VariableUnion::U8(1))
-                    .with_ble_properties(
-                        BleProperties::from_handle(self.low_battery.handle)
-                            .with_format(sig::Format::U8)
-                            .with_characteristic(
-                                server
-                                    .table()
-                                    .find_characteristic_by_value_handle(self.low_battery.handle)
-                                    .unwrap(),
-                            ),
-                    )
-                    .with_data(DataSource::AccessoryInterface),
-                )
-                .map_err(|_| HapBleError::AllocationOverrun)?;
-
-            Ok(service)
-        }
-    }
-}
-
 mod hap_temp_accessory {
-    use super::hap_temp_sensor;
     use example_std::RuntimeConfig;
+    use example_std::temperature_sensor::TemperatureSensorService;
     use example_std::{ActualPairSupport, AddressType, make_address};
 
     use log::info;
@@ -241,13 +85,13 @@ mod hap_temp_accessory {
             info!("read on {:?}", char_id);
             info!(
                 "hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {:?}",
-                hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE
+                example_std::temperature_sensor::CHAR_ID_TEMP_SENSOR_VALUE
             );
-            if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
+            if char_id == example_std::temperature_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
                 let value = *self.temperature_value.lock().unwrap();
 
                 value.read_characteristic_into(char_id, output)
-            } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
+            } else if char_id == example_std::temperature_sensor::CHAR_ID_TEMP_LOW_BATTERY {
                 self.low_battery.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
@@ -276,7 +120,7 @@ mod hap_temp_accessory {
         protocol: micro_hap::ble::ProtocolInformationService,
         pairing: micro_hap::ble::PairingService,
         //lightbulb: micro_hap::ble::LightbulbService,
-        temp_sensor: hap_temp_sensor::TemperatureSensorService,
+        temp_sensor: TemperatureSensorService,
     }
     use bt_hci::cmd::le::LeReadLocalSupportedFeatures;
     use bt_hci::cmd::le::LeSetDataLength;
@@ -326,12 +170,7 @@ mod hap_temp_accessory {
         };
         // hap_context.add_service(&server.lightbulb).unwrap();
         hap_context
-            .add_service(
-                server
-                    .temp_sensor
-                    .create_hap_service(&server.server)
-                    .unwrap(),
-            )
+            .add_service(server.temp_sensor.populate_support().unwrap())
             .unwrap();
 
         let category = 10; // sensors
@@ -368,7 +207,7 @@ mod hap_temp_accessory {
                 &server,
             ),
             temperature_modification_task(
-                hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE,
+                example_std::temperature_sensor::CHAR_ID_TEMP_SENSOR_VALUE,
                 f32ptr,
                 &control_sender,
             ),
