@@ -48,7 +48,7 @@ pub struct TemperatureServiceHandles {
 
     pub service_signature: FacadeBleIds,
     pub value: FacadeBleIds,
-    // pub low_battery: FacadeBleIds,
+    pub low_battery: FacadeBleIds,
 }
 
 impl TemperatureServiceHandles {
@@ -84,8 +84,8 @@ impl TemperatureServiceHandles {
                         CharacteristicProperties::new()
                             .with_read(true)
                             .with_supports_event_notification(true)
-                            .with_supports_disconnect_notification(true) //,
-                            .with_supports_broadcast_notification(true), //
+                            .with_supports_disconnect_notification(true)
+                            .with_supports_broadcast_notification(true),
                     )
                     .with_range(micro_hap::VariableRange {
                         start: micro_hap::VariableUnion::F32(0.0),
@@ -102,35 +102,34 @@ impl TemperatureServiceHandles {
             )
             .map_err(|_| HapBleError::AllocationOverrun)?;
 
-        /*
-                service
-                    .characteristics
-                    .push(
-                        Characteristic::new(
-                            characteristic::CHARACTERISTIC_LOW_BATTERY.into(),
-                            self.low_battery.hap,
-                        )
-                        .with_properties(
-                            CharacteristicProperties::new()
-                                .with_read(true)
-                                .with_supports_event_notification(true)
-                                .with_supports_disconnect_notification(true)
-                                .with_supports_broadcast_notification(true),
-                        )
-                        .with_range(micro_hap::VariableRange {
-                            start: micro_hap::VariableUnion::U8(0),
-                            end: micro_hap::VariableUnion::U8(1),
-                            inclusive: true,
-                        })
-                        .with_step(micro_hap::VariableUnion::U8(1))
-                        .with_ble_properties(
-                            BleProperties::from_characteristic(self.low_battery.ble)
-                                .with_format(sig::Format::U8),
-                        )
-                        .with_data(DataSource::AccessoryInterface),
-                    )
-                    .map_err(|_| HapBleError::AllocationOverrun)?;
-        */
+        service
+            .characteristics
+            .push(
+                Characteristic::new(
+                    characteristic::CHARACTERISTIC_LOW_BATTERY.into(),
+                    self.low_battery.hap,
+                )
+                .with_properties(
+                    CharacteristicProperties::new()
+                        .with_read(true)
+                        .with_supports_event_notification(true)
+                        .with_supports_disconnect_notification(true)
+                        .with_supports_broadcast_notification(true),
+                )
+                .with_range(micro_hap::VariableRange {
+                    start: micro_hap::VariableUnion::U8(0),
+                    end: micro_hap::VariableUnion::U8(1),
+                    inclusive: true,
+                })
+                .with_step(micro_hap::VariableUnion::U8(1))
+                .with_ble_properties(
+                    BleProperties::from_characteristic(self.low_battery.ble)
+                        .with_format(sig::Format::U8),
+                )
+                .with_data(DataSource::AccessoryInterface),
+            )
+            .map_err(|_| HapBleError::AllocationOverrun)?;
+
         Ok(service)
     }
 }
@@ -156,25 +155,19 @@ impl TemperatureSensorService {
             store
         );
 
-        let (mut service_builder, store, iid, value) = micro_hap::add_facade_characteristic_props!(
+        let (mut service_builder, store, iid, value) = micro_hap::add_facade_characteristic_indicate!(
             service_builder,
             CHARACTERISTIC_CURRENT_TEMPERATURE,
-            [
-                CharacteristicProp::Read,
-                CharacteristicProp::Write,
-                CharacteristicProp::Indicate,
-                CharacteristicProp::Broadcast,
-            ],
             iid,
             store
         );
 
-        // let (service_builder, store, iid, low_battery) = micro_hap::add_facade_characteristic_indicate!(
-        //     service_builder,
-        //     characteristic::CHARACTERISTIC_LOW_BATTERY,
-        //     iid,
-        //     store
-        // );
+        let (service_builder, store, iid, low_battery) = micro_hap::add_facade_characteristic_indicate!(
+            service_builder,
+            characteristic::CHARACTERISTIC_LOW_BATTERY,
+            iid,
+            store
+        );
         let _ = iid;
 
         let svc_handle = service_builder.build();
@@ -186,7 +179,7 @@ impl TemperatureSensorService {
             },
             service_signature,
             value,
-            // low_battery,
+            low_battery,
         };
 
         Ok((store, handles))
@@ -209,10 +202,10 @@ impl TemperatureSensorService {
                 hap: CharId(0x32),
                 ble: self.value,
             },
-            // low_battery: CharBleIds {
-            //     hap: CharId(0x33),
-            //     ble: self.low_battery,
-            // },
+            low_battery: CharBleIds {
+                hap: CharId(0x33),
+                ble: self.low_battery,
+            },
         }
     }
 
