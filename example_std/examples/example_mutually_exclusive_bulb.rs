@@ -13,7 +13,7 @@ mod services {
 
     // Why do we duplicate this from micro_hap::ble::services? because the gatt_service macro contains a static cell
     // and we want to allocate two of them... They must also be offset with their CharIds.
-    // TODO: This is obviously less than ideal.
+    // See the _builder example for a solution that works without this duplication.
     const ID_OFFSET: u16 = 0x10;
     pub const CHAR_ID_LIGHTBULB_NAME: CharId = CharId(0x32 + ID_OFFSET);
     pub const CHAR_ID_LIGHTBULB_ON: CharId = CharId(0x33 + ID_OFFSET);
