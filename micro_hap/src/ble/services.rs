@@ -453,6 +453,7 @@ impl AccessoryInformationService {
                 name: stringify!(characteristic::IDENTIFY),
             },
         )?;
+        value_store.copy_from_slice(trouble_host::types::gatt_traits::AsGatt::as_gatt(&value));
         let _svc_ais_chr_identify_descr = svc_ais_chr_identify_builder
             .add_descriptor_ro::<u16, _>(descriptor::CHARACTERISTIC_INSTANCE_UUID, value_store);
         let chr_identify = svc_ais_chr_identify_builder.build();
