@@ -80,7 +80,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.~ There's a builder now for the attribute table and HAP services that avoids the trouble macro's.
 - ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indicate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
 - ~Go through all the log / defmt prints and ensure the level makes sense.~
-- The Characteristic `current_temperature` (`0x0011`) always displays temperatures in 0.5 increments, can a manual temperature actually show digits?
+- ~The Characteristic `current_temperature` (`0x0011`) always displays temperatures in 0.5 increments, can a manual temperature actually show digits?~ Doesn't seem to exist, only in relation to target temperatures?
 
 ## example_std
 This example is intended to run a Linux host, similar to [trouble's linux](https://github.com/embassy-rs/trouble/tree/main/examples/linux) examples.
