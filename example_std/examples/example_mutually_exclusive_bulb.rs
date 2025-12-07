@@ -196,11 +196,11 @@ mod hap_lightbulb {
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
+            if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_NAME {
                 self.name_a.read_characteristic_into(char_id, output)
             } else if char_id == super::services::CHAR_ID_LIGHTBULB_NAME {
                 self.name_b.read_characteristic_into(char_id, output)
-            } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+            } else if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON {
                 self.bulb_state_a.read_characteristic_into(char_id, output)
             } else if char_id == super::services::CHAR_ID_LIGHTBULB_ON {
                 self.bulb_state_b.read_characteristic_into(char_id, output)
@@ -220,30 +220,32 @@ mod hap_lightbulb {
                 char_id, data
             );
 
-            if char_id != micro_hap::ble::CHAR_ID_LIGHTBULB_ON
+            if char_id != micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON
                 && char_id != super::services::CHAR_ID_LIGHTBULB_ON
             {
                 return Err(InterfaceError::CharacteristicUnknown(char_id));
             }
 
             println!("Before {}, {}", self.bulb_state_a, self.bulb_state_b);
-            let (boolean_val, boolean_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                (&mut self.bulb_state_a, &mut self.bulb_state_b)
-            } else {
-                (&mut self.bulb_state_b, &mut self.bulb_state_a)
-            };
+            let (boolean_val, boolean_other) =
+                if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON {
+                    (&mut self.bulb_state_a, &mut self.bulb_state_b)
+                } else {
+                    (&mut self.bulb_state_b, &mut self.bulb_state_a)
+                };
 
-            let (char_id_val, char_id_other) = if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
-                (
-                    micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
-                    super::services::CHAR_ID_LIGHTBULB_ON,
-                )
-            } else {
-                (
-                    super::services::CHAR_ID_LIGHTBULB_ON,
-                    micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
-                )
-            };
+            let (char_id_val, char_id_other) =
+                if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON {
+                    (
+                        micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON,
+                        super::services::CHAR_ID_LIGHTBULB_ON,
+                    )
+                } else {
+                    (
+                        super::services::CHAR_ID_LIGHTBULB_ON,
+                        micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON,
+                    )
+                };
 
             let value = data
                 .get(0)
@@ -362,7 +364,7 @@ mod hap_lightbulb {
         };
 
         hap_context.ugly_todo_inject_trouble_characteristic(
-            micro_hap::ble::CHAR_ID_LIGHTBULB_ON,
+            micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON,
             characteristic_a,
         );
 

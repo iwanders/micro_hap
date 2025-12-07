@@ -31,9 +31,9 @@ mod hap_lightbulb {
             char_id: CharId,
             output: &'a mut [u8],
         ) -> Result<&'a [u8], InterfaceError> {
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
+            if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_NAME {
                 self.name.read_characteristic_into(char_id, output)
-            } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+            } else if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON {
                 self.bulb_on_state.read_characteristic_into(char_id, output)
             } else {
                 Err(InterfaceError::CharacteristicUnknown(char_id))
@@ -49,7 +49,7 @@ mod hap_lightbulb {
                 char_id, data
             );
 
-            if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+            if char_id == micro_hap::ble::services::lightbulb::CHAR_ID_LIGHTBULB_ON {
                 let value = data
                     .get(0)
                     .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
