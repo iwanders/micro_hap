@@ -1,10 +1,12 @@
 pub mod accessory_information;
+pub mod humidity_sensor;
 pub mod lightbulb;
 pub mod pairing;
 pub mod protocol_information;
 pub mod temperature_sensor;
 
 pub use accessory_information::{AccessoryInformationService, AccessoryInformationServiceHandles};
+pub use humidity_sensor::{HumiditySensorService, HumiditySensorServiceHandles};
 pub use lightbulb::{LightbulbService, LightbulbServiceHandles};
 pub use pairing::{PairingService, PairingServiceHandles};
 pub use protocol_information::{ProtocolInformationService, ProtocolInformationServiceHandles};
