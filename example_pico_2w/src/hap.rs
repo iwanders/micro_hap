@@ -287,14 +287,15 @@ pub async fn run<'p, 'cyw, C>(
     // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
     let address: Address = Address::random(DEVICE_ADDRESS);
 
-    // This is a bit over the top in size... but we have sufficient ram.
+    // The unused space in this one can be printed.
     let mut attribute_buffer: &mut [u8] = {
-        const ATTRIBUTE_BUFFER_SIZE: usize = 1024;
+        const ATTRIBUTE_BUFFER_SIZE: usize = 128;
         static STATE: StaticCell<[u8; ATTRIBUTE_BUFFER_SIZE]> = StaticCell::new();
         STATE.init([0u8; ATTRIBUTE_BUFFER_SIZE])
     };
 
-    const ATTRIBUTE_TABLE_SIZE: usize = 1024;
+    // The unused space in this one is harder to determine.
+    const ATTRIBUTE_TABLE_SIZE: usize = 128;
     let mut attribute_table = trouble_host::attribute::AttributeTable::<
         CriticalSectionRawMutex,
         ATTRIBUTE_TABLE_SIZE,
@@ -343,6 +344,13 @@ pub async fn run<'p, 'cyw, C>(
             0x40,
         )
         .unwrap();
+
+    info!(
+        "attribute buffer left over bytes: {}",
+        remaining_buffer.len()
+    );
+    //info!("attribute table left over bytes: {}", attribute_table.len()); // not easily reachable :(
+
     // These handles and CharIds exactly match the ones from the derive macro.
     info!("information_handles: {:?}", information_handles);
     info!("protocol_handles: {:?}", protocol_handles);
