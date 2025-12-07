@@ -2,11 +2,13 @@ pub mod accessory_information;
 pub mod lightbulb;
 pub mod pairing;
 pub mod protocol_information;
+pub mod temperature_sensor;
 
 pub use accessory_information::{AccessoryInformationService, AccessoryInformationServiceHandles};
 pub use lightbulb::{LightbulbService, LightbulbServiceHandles};
 pub use pairing::{PairingService, PairingServiceHandles};
 pub use protocol_information::{ProtocolInformationService, ProtocolInformationServiceHandles};
+pub use temperature_sensor::{TemperatureSensorService, TemperatureServiceHandles};
 
 use crate::{CharId, SvcId};
 use trouble_host::prelude::*;
@@ -15,10 +17,11 @@ pub mod prelude {
     pub use super::{
         BuilderError, CharBleIds, FacadeBleIds, FacadeDummyType, ServiceInstanceBleIds, SvcBleIds,
     };
+    pub use crate as micro_hap;
     pub use crate::ble::{HapBleError, sig};
     pub use crate::{
-        BleProperties, CharId, CharacteristicProperties, DataSource, Service, SvcId,
-        characteristic, descriptor, service,
+        BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
+        ServiceProperties, SvcId, characteristic, descriptor, service, uuid::HomekitUuid16,
     };
     pub use crate::{
         add_facade_characteristic, add_facade_characteristic_indicate,

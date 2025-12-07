@@ -1,13 +1,4 @@
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use micro_hap::{
-    BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
-    ServiceProperties, SvcId,
-    ble::services::{CharBleIds, SvcBleIds},
-    ble::{FacadeDummyType, HapBleError, sig},
-    characteristic, descriptor,
-    uuid::HomekitUuid16,
-};
-use trouble_host::prelude::*;
+use super::prelude::*;
 
 // This makes a lightbulb with a color temperature.
 pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x30);

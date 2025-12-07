@@ -14,7 +14,7 @@ use micro_hap::pairing::{ED25519_LTSK, Pairing, PairingId};
 
 use clap::Parser;
 
-pub mod temperature_sensor;
+pub use micro_hap::ble::services::temperature_sensor;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
