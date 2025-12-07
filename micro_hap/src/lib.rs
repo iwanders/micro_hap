@@ -926,7 +926,7 @@ impl AccessoryContext {
         self.server.disconnect();
     }
     fn reset_secure_session(&mut self) {
-        error!("resetting secure session.");
+        info!("Resetting secure session.");
         self.session = Default::default()
     }
 }

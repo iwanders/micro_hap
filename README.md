@@ -17,8 +17,6 @@ This is useful if an WiFi network is not available, for example for a moving sen
 
 While this is a (relatively?) feature-complete implementation, it has not been thoroughly tested or checked for correctness
 and security.
-Using [matter](https://en.wikipedia.org/wiki/Matter_(standard)) may be a more modern communication protocol
-to use instead, if your hardware can support that.
 
 
 ## Testing
@@ -81,7 +79,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - ~The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.~ There's a builder now for the attribute table and HAP services that avoids the trouble macro's.
 - ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indicate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
-- Go through all the log / defmt prints and ensure the level makes sense.
+- ~Go through all the log / defmt prints and ensure the level makes sense.~
 - The Characteristic `current_temperature` (`0x0011`) always displays temperatures in 0.5 increments, can a manual temperature actually show digits?
 
 ## example_std
@@ -92,9 +90,12 @@ It also requires freeing that interface, usually by disabling your bluetooth ser
 
 This contains multiple examples:
 - `example_lightbulb` The default lightbulb example with just an on-off toggle.
+- `example_lightbulb_builder` This uses the builder to create the services and characteristics.
 - `example_rgb` This contains two lightbulbs, one that allows modifying the color temperature, and one that facilitates hue, staturation and brightness configuration.
 - `example_temp_sensor`: This fakes a temperature sensor and broadcasts its value.
+- `example_temp_sensor_builder` This uses the builder to create the services and characteristics.
 - `example_mutually_exclusive`: This contains two lightbulbs, which uses indicate to disable the other lightbulb if you try to switch both on.
+- `example_mutually_exclusive_builder`: This uses the builder to deduplicate the previous example.
 
 ## example_pico_2w
 This example is a gutted version of the project I'm originally developing this for.

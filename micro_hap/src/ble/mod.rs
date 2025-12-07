@@ -737,8 +737,8 @@ impl<'c> HapPeripheralContext<'c> {
                     let characteristic_written = match r {
                         CharacteristicResponse::Modified => {
                             // Do things to this characteristic to mark it dirty.
-                            error!(
-                                "Should mark the characteristic dirty and advance the global state number, and notify!"
+                            info!(
+                                "Should mark the characteristic dirty and advance the global state number, and notify!",
                             );
                             true
                         }
@@ -1119,7 +1119,7 @@ impl<'c> HapPeripheralContext<'c> {
                         let chr = self.get_attribute_by_char(req.char_id)?;
 
                         if !chr.properties.supports_broadcast_notification() {
-                            error!(
+                            warn!(
                                 "setting broadcast for something that doesn't support broadcast notification"
                             );
                             return Err(HapBleStatusError::InvalidRequest.into());
@@ -1170,7 +1170,6 @@ impl<'c> HapPeripheralContext<'c> {
                 let t = pair_support.get_time();
                 self.timed_write_prune(t);
                 let parsed_header = pdu::CharacteristicWriteRequestHeader::parse_pdu(data)?;
-                warn!("timed write, h; {:?}", parsed_header);
                 let chr = self.get_attribute_by_char(parsed_header.char_id)?;
                 if !chr.properties.write_open() && !security_active {
                     // Nope...
@@ -1533,7 +1532,7 @@ impl<'c> HapPeripheralContext<'c> {
                                         Err(e) => warn!("[gatt] error sending response: {:?}", e),
                                     };
                                 } else {
-                                    warn!("Omitted processing for event because it was handled");
+                                    info!("Omitted processing for event because it was handled");
                                 }
                             }
                         }

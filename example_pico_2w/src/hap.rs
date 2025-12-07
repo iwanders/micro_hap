@@ -158,7 +158,7 @@ impl PlatformSupport for ActualPairSupport {
     }
 
     async fn store_pairing(&mut self, pairing: &Pairing) -> Result<(), InterfaceError> {
-        error!("Storing pairing");
+        info!("Storing pairing");
         self.pairings
             .insert(pairing.id, *pairing)
             .expect("assuming we have anough space for now");
@@ -166,7 +166,7 @@ impl PlatformSupport for ActualPairSupport {
     }
 
     async fn get_pairing(&mut self, id: &PairingId) -> Result<Option<Pairing>, InterfaceError> {
-        error!("retrieving id pairing id");
+        info!("retrieving id pairing id");
         Ok(self.pairings.get(id).copied())
     }
     async fn remove_pairing(&mut self, id: &PairingId) -> Result<(), InterfaceError> {
