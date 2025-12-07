@@ -10,21 +10,20 @@ use embassy_sync::watch::DynSender;
 use static_cell::StaticCell;
 use zerocopy::IntoBytes;
 
-use super::hap_temp_sensor;
 use chacha20::{
     cipher::{KeyIvInit, StreamCipher},
     ChaCha8,
 };
 
-use embassy_futures::{join::join, select::select};
+use embassy_futures::join::join;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::Timer;
 use micro_hap::IntoBytesForAccessoryInterface;
 use trouble_host::prelude::*;
 
 use micro_hap::{
-    ble::broadcast::BleBroadcastParameters, ble::HapBleService, ble::TimedWrite,
-    AccessoryInterface, CharId, CharacteristicResponse, InterfaceError, PlatformSupport,
+    ble::broadcast::BleBroadcastParameters, ble::services::LightbulbServiceHandles,
+    ble::TimedWrite, AccessoryInterface, CharId, CharacteristicResponse, InterfaceError,
+    PlatformSupport,
 };
 struct LightBulbAccessory<'a, 'b> {
     name: HeaplessString<32>,
@@ -33,6 +32,8 @@ struct LightBulbAccessory<'a, 'b> {
     temperature_value: f32,
     low_battery: bool,
     latest_temperature: embassy_sync::watch::DynReceiver<'b, f32>,
+    temperature_handles: temperature_sensor::TemperatureServiceHandles,
+    bulb_handles: LightbulbServiceHandles,
 }
 impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
     async fn read_characteristic<'z>(
@@ -40,11 +41,11 @@ impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
         char_id: CharId,
         output: &'z mut [u8],
     ) -> Result<&'z [u8], InterfaceError> {
-        if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_NAME {
+        if char_id == self.bulb_handles.name.hap {
             self.name.read_characteristic_into(char_id, output)
-        } else if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+        } else if char_id == self.bulb_handles.on.hap {
             self.bulb_on_state.read_characteristic_into(char_id, output)
-        } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE {
+        } else if char_id == self.temperature_handles.value.hap {
             let value = if self.latest_temperature.contains_value() {
                 self.latest_temperature.get().await
             } else {
@@ -53,7 +54,7 @@ impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
             self.temperature_value = value;
             self.temperature_value
                 .read_characteristic_into(char_id, output)
-        } else if char_id == hap_temp_sensor::CHAR_ID_TEMP_LOW_BATTERY {
+        } else if char_id == self.temperature_handles.low_battery.hap {
             self.low_battery.read_characteristic_into(char_id, output)
         } else {
             Err(InterfaceError::CharacteristicUnknown(char_id))
@@ -69,7 +70,7 @@ impl<'a, 'b> AccessoryInterface for LightBulbAccessory<'a, 'b> {
             char_id.0, data
         );
 
-        if char_id == micro_hap::ble::CHAR_ID_LIGHTBULB_ON {
+        if char_id == self.bulb_handles.on.hap {
             let value = data
                 .get(0)
                 .ok_or(InterfaceError::CharacteristicWriteInvalid)?;
@@ -95,27 +96,17 @@ const CONNECTIONS_MAX: usize = 3;
 /// Max number of L2CAP channels.
 const L2CAP_CHANNELS_MAX: usize = 5; // Signal + att
 
-// Putting the bulb at the end means ios will jump over the service request.
-// Is this because of the +1 here?
-// https://github.com/embassy-rs/trouble/blob/366ee88a2aa19db11eb0707c71d797156abe23f5/host/src/attribute.rs#L616
-// GATT Server definition
-#[gatt_server]
-struct Server {
-    accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
-    protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
-    pairing: micro_hap::ble::PairingService,                            // 0x0055
-    lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
-    temp_sensor: hap_temp_sensor::TemperatureSensorService,
-}
-impl Server<'_> {
-    pub fn as_hap(&self) -> micro_hap::ble::HapServices<'_> {
-        micro_hap::ble::HapServices {
-            information: &self.accessory_information,
-            protocol: &self.protocol,
-            pairing: &self.pairing,
-        }
-    }
-}
+// This macro approach doesn't work to easily managed the CharIds after you have more than one service, since they
+// all need unique CharIds, but they're also values in ble descriptors.
+// #[gatt_server]
+// struct Server {
+//     accessory_information: micro_hap::ble::AccessoryInformationService, // 0x003e
+//     protocol: micro_hap::ble::ProtocolInformationService,               // 0x00a2
+//     pairing: micro_hap::ble::PairingService,                            // 0x0055
+//     lightbulb: micro_hap::ble::LightbulbService,                        // 0x0043
+//     temp_sensor: temperature_sensor::TemperatureSensorService,
+// }
+use crate::temperature_sensor;
 use micro_hap::pairing::{Pairing, PairingId, ED25519_LTSK};
 use micro_hap::BleBroadcastInterval;
 
@@ -238,6 +229,7 @@ async fn temperature_task(
     mut adc: embassy_rp::adc::Adc<'_, embassy_rp::adc::Async>,
     mut temp_adc: embassy_rp::adc::Channel<'_>,
     sender: DynSender<'_, f32>,
+    char_id: CharId,
     control_sender: micro_hap::HapInterfaceSender<'_>,
 ) {
     let mut i: usize = 0;
@@ -267,9 +259,7 @@ async fn temperature_task(
                 info!("Sending temperature: {}", temperature);
                 sender.send(temperature);
                 info!("Notifying characteristic change");
-                control_sender
-                    .characteristic_changed(hap_temp_sensor::CHAR_ID_TEMP_SENSOR_VALUE)
-                    .await; // send the notification.
+                control_sender.characteristic_changed(char_id).await; // send the notification.
                 info!("  notify done.");
             }
             Err(e) => {
@@ -297,6 +287,68 @@ pub async fn run<'p, 'cyw, C>(
     // use e.g. the MAC 6 byte array as the address (how to get that varies by the platform).
     let address: Address = Address::random(DEVICE_ADDRESS);
 
+    // This is a bit over the top in size... but we have sufficient ram.
+    let mut attribute_buffer: &mut [u8] = {
+        const ATTRIBUTE_BUFFER_SIZE: usize = 1024;
+        static STATE: StaticCell<[u8; ATTRIBUTE_BUFFER_SIZE]> = StaticCell::new();
+        STATE.init([0u8; ATTRIBUTE_BUFFER_SIZE])
+    };
+
+    const ATTRIBUTE_TABLE_SIZE: usize = 1024;
+    let mut attribute_table = trouble_host::attribute::AttributeTable::<
+        CriticalSectionRawMutex,
+        ATTRIBUTE_TABLE_SIZE,
+    >::new();
+
+    // Create the gatt server.
+    let name = "Z"; // There's _very_ few bytes left in the advertisement
+    info!("Starting advertising and GATT service");
+    let gap_config = GapConfig::Peripheral(PeripheralConfig {
+        name,
+        appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
+    });
+    //let server = Server::new_with_config().unwrap();
+    gap_config.build(&mut attribute_table).unwrap();
+    // This is the body of new_with_config
+
+    let (remaining_buffer, information_handles) =
+        micro_hap::ble::services::AccessoryInformationService::add_to_attribute_table(
+            &mut attribute_table,
+            &mut attribute_buffer,
+        )
+        .unwrap();
+    let (remaining_buffer, protocol_handles) =
+        micro_hap::ble::services::ProtocolInformationService::add_to_attribute_table(
+            &mut attribute_table,
+            remaining_buffer,
+        )
+        .unwrap();
+    let (remaining_buffer, pairing_handles) =
+        micro_hap::ble::services::PairingService::add_to_attribute_table(
+            &mut attribute_table,
+            remaining_buffer,
+        )
+        .unwrap();
+    let (remaining_buffer, bulb_handles) =
+        micro_hap::ble::services::LightbulbService::add_to_attribute_table(
+            &mut attribute_table,
+            remaining_buffer,
+            0x30,
+        )
+        .unwrap();
+    let (remaining_buffer, temperature_handles) =
+        temperature_sensor::TemperatureSensorService::add_to_attribute_table(
+            &mut attribute_table,
+            remaining_buffer,
+            0x40,
+        )
+        .unwrap();
+    // These handles and CharIds exactly match the ones from the derive macro.
+    info!("information_handles: {:?}", information_handles);
+    info!("protocol_handles: {:?}", protocol_handles);
+    info!("pairing_handles: {:?}", pairing_handles);
+    // info!("temperature_handles: {:?}", temperature_handles);
+
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
         HostResources::new();
 
@@ -307,13 +359,11 @@ pub async fn run<'p, 'cyw, C>(
         ..
     } = stack.build();
 
-    let name = "W"; // There's _very_ few bytes left in the advertisement
-    info!("Starting advertising and GATT service");
-    let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name,
-        appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
-    }))
-    .unwrap();
+    const CCCD_MAX: usize = 32;
+    const CONNECTIONS_MAX: usize = 3;
+    let server = trouble_host::prelude::AttributeServer::<_, _, _, CCCD_MAX, CONNECTIONS_MAX>::new(
+        attribute_table,
+    );
 
     // Setup the accessory information.
     let static_information = micro_hap::AccessoryInformationStatic {
@@ -328,12 +378,6 @@ pub async fn run<'p, 'cyw, C>(
         ]),
         ..Default::default()
     };
-    // let _ = server.accessory_information.unwrap();
-    //
-
-    // let mut pin = pin;
-    // let mut bulb = move |value: bool| pin.set_level(if value { Level::High } else { Level::Low });
-    // let mut bulb = bulb;
 
     // https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/Applications/Lightbulb/DB.c#L472
     // let mut accessory = micro_hap::NopAccessory;
@@ -421,24 +465,25 @@ pub async fn run<'p, 'cyw, C>(
         pair_ctx,
         timed_write_data,
         timed_write,
-        &server.accessory_information,
-        &server.protocol,
-        &server.pairing,
         control_receiver,
     )
     .unwrap();
-    hap_context
-        .add_service(server.lightbulb.populate_support().unwrap())
-        .unwrap();
-    hap_context
-        .add_service(
-            server
-                .temp_sensor
-                .create_hap_service(&server.server)
-                .unwrap(),
-        )
-        .unwrap();
 
+    hap_context
+        .add_service(information_handles.to_service().unwrap())
+        .unwrap();
+    hap_context
+        .add_service(protocol_handles.to_service().unwrap())
+        .unwrap();
+    hap_context
+        .add_service(pairing_handles.to_service().unwrap())
+        .unwrap();
+    hap_context
+        .add_service(bulb_handles.to_service().unwrap())
+        .unwrap();
+    hap_context
+        .add_service(temperature_handles.to_service().unwrap())
+        .unwrap();
     hap_context.assign_static_data(&static_information);
 
     //info!("hap_context: {:0>#2x?}", hap_context);
@@ -460,19 +505,9 @@ pub async fn run<'p, 'cyw, C>(
         low_battery: false,
         temperature_value: 13.37,
         latest_temperature,
+        temperature_handles,
+        bulb_handles,
     };
-    //let mut support = ActualPairSupport::default();
-    // Put this in static memory instead of the stack, we got some very short messages without this, did we corrupt the
-    // stack? How can we detect that?
-    // Still getting connection termination.
-    // let support = {
-    //     static STATE: StaticCell<
-    //         ActualPairSupport<embassy_rp::trng::Trng<'_, embassy_rp::trng::Instance>>,
-    //     > = StaticCell::new();
-    //     STATE.init)
-    // };
-    // Not sure how to allocate this statically now that it borrows.
-    //
 
     // This isn't great, because we always initialise the same way at boot, but the trng spammed the autocorrect error.
     let init_u128 =
@@ -480,10 +515,18 @@ pub async fn run<'p, 'cyw, C>(
     let mut support = ActualPairSupport::new(init_u128);
     let support = &mut support;
 
+    let temperature_char_id = temperature_handles.value.hap;
+
     let _ = join(
         join(
             ble_task(runner),
-            temperature_task(adc, temp_adc, temperature_sender, control_sender),
+            temperature_task(
+                adc,
+                temp_adc,
+                temperature_sender,
+                temperature_char_id,
+                control_sender,
+            ),
         ),
         async {
             loop {
@@ -500,13 +543,7 @@ pub async fn run<'p, 'cyw, C>(
                             .with_attribute_server(&server)
                             .expect("Failed to create attribute server");
                         // set up tasks when the connection is established to a central, so they don't run when no one is connected.
-                        let hap_services = server.as_hap();
-                        let a = hap_context.gatt_events_task(
-                            &mut accessory,
-                            support,
-                            &hap_services,
-                            &conn,
-                        );
+                        let a = hap_context.gatt_events_task(&mut accessory, support, &conn);
 
                         // run until any task ends (usually because the connection has been closed),
                         // then return to advertising state.

@@ -1099,9 +1099,12 @@ impl LightbulbService {
         Ok((store, handles))
     }
     pub fn to_handles(&self) -> LightbulbServiceHandles {
+        self.to_handles_offset(0x30)
+    }
+    pub fn to_handles_offset(&self, hap_id: u16) -> LightbulbServiceHandles {
         LightbulbServiceHandles {
             svc_handle: SvcBleIds {
-                hap: SvcId(0x30),
+                hap: SvcId(hap_id + 0x00),
                 ble: self.handle,
             },
             // service_instance: CharBleIds {
@@ -1109,15 +1112,15 @@ impl LightbulbService {
             //     ble: self.service_instance.handle,
             // },
             service_signature: CharBleIds {
-                hap: CharId(0x31),
+                hap: CharId(hap_id + 0x01),
                 ble: self.service_signature,
             },
             name: CharBleIds {
-                hap: CharId(0x32),
+                hap: CharId(hap_id + 0x02),
                 ble: self.name,
             },
             on: CharBleIds {
-                hap: CharId(0x33),
+                hap: CharId(hap_id + 0x03),
                 ble: self.on,
             },
         }
@@ -1125,6 +1128,10 @@ impl LightbulbService {
 
     pub fn populate_support(&self) -> Result<crate::Service, HapBleError> {
         let handles = self.to_handles();
+        handles.to_service()
+    }
+    pub fn populate_support_offset(&self, hap_id: u16) -> Result<crate::Service, HapBleError> {
+        let handles = self.to_handles_offset(hap_id);
         handles.to_service()
     }
 }

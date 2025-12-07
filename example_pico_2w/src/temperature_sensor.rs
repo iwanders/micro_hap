@@ -1,11 +1,13 @@
+// This is a verbatim copy of the temperature sensor from the example_std temperature sensor.
+// -- Start of copy --
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use micro_hap::{
-    BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
-    ServiceProperties, SvcId,
     ble::services::{CharBleIds, SvcBleIds},
-    ble::{FacadeDummyType, HapBleError, sig},
+    ble::{sig, FacadeDummyType, HapBleError},
     characteristic, descriptor,
     uuid::HomekitUuid16,
+    BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,
+    ServiceProperties, SvcId,
 };
 use trouble_host::prelude::*;
 
