@@ -19,7 +19,7 @@ pub mod prelude {
     pub use super::{
         BuilderError, CharBleIds, FacadeBleIds, FacadeDummyType, ServiceInstanceBleIds, SvcBleIds,
     };
-    pub use crate as micro_hap;
+
     pub use crate::ble::{HapBleError, sig};
     pub use crate::{
         BleProperties, CharId, Characteristic, CharacteristicProperties, DataSource, Service,

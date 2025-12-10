@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate as micro_hap;
 
 // This makes a lightbulb with a color temperature.
 pub const SERVICE_ID_HUMIDITY_SENSOR: SvcId = SvcId(0x30);
@@ -118,7 +119,7 @@ impl HumiditySensorService {
             store
         );
 
-        let (mut service_builder, store, iid, value) = micro_hap::add_facade_characteristic_indicate!(
+        let (service_builder, store, iid, value) = micro_hap::add_facade_characteristic_indicate!(
             service_builder,
             CHARACTERISTIC_CURRENT_RELATIVE_HUMIDITY,
             iid,

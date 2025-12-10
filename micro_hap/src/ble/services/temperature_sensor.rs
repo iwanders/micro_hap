@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate as micro_hap;
 
 // This makes a lightbulb with a color temperature.
 pub const SERVICE_ID_TEMP_SENSOR: SvcId = SvcId(0x30);
