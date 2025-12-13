@@ -48,6 +48,7 @@ To help people understand the code and the concepts, here's an information dump:
   only real trouble errors are bubbled up to the calling code.
 - The `InternalError` is internal, some of its values end up being HAP protocol status results, others end up bubbling
   through to the user application like `InterfaceError`.
+- Only a single controller can be connected at a time.
 
 ## Todo / Improvements
 - ~Clean up error handling.n (snafu / thiserror?)~
@@ -75,7 +76,7 @@ To help people understand the code and the concepts, here's an information dump:
 - ~Implement TimedWrite request.~
 - ~Implement `CharacteristicExecuteWrite`.~
 - ~Do we ever need to support interleaved requests? So write on characteristic 1, write on characteristic 2, read on 1, read on 2. -> Probably [not](https://github.com/apple/HomeKitADK/blob/fb201f98f5fdc7fef6a455054f08b59cca5d1ec8/HAP/HAPAccessoryServer%2BInternal.h#L206).~
-- Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.
+- ~Implement `SetupInfo`'s serialize/deserialize, this [issue](https://github.com/serde-rs/serde/issues/1937#issuecomment-812137971) is helpful.~ Done
 - ~Bluetooth session cache for session resume.~ ~Cache exists, use during initial setup works, works for lightbulb, not for thermometer between restarts. Issue was that the device id shouldn't change!~
 - ~The services made with `#[gatt_service(..` have a `StaticCell` in them, as such they can't be instantiated twice. This makes the mutually exclusive lightbulb example cumbersome.~ There's a builder now for the attribute table and HAP services that avoids the trouble macro's.
 - ~File PR [into trouble](https://github.com/embassy-rs/trouble/pull/502) to add `indicate` functionality, because `notify != indicate`.~ Merged, consuming this commit.
